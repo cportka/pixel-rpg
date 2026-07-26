@@ -13,16 +13,23 @@ const seed = params.has('seed') ? Number(params.get('seed')) >>> 0 : (Date.now()
 const game = new Game(seed);
 const renderer = new Renderer(canvas);
 
-// Integer upscale to the largest multiple that fits the window.
+// Integer upscale to the largest multiple that fits the window — computed in
+// DEVICE pixels so fractional devicePixelRatio (125%/150% displays) still gets
+// uniform game pixels under image-rendering: pixelated.
 function fit() {
-  const scale = Math.max(1, Math.floor(Math.min(innerWidth / SCREEN_W, innerHeight / SCREEN_H)));
-  canvas.style.width = `${SCREEN_W * scale}px`;
-  canvas.style.height = `${SCREEN_H * scale}px`;
+  const dpr = window.devicePixelRatio || 1;
+  const scale = Math.max(
+    1,
+    Math.floor(Math.min((innerWidth * dpr) / SCREEN_W, (innerHeight * dpr) / SCREEN_H)),
+  );
+  canvas.style.width = `${(SCREEN_W * scale) / dpr}px`;
+  canvas.style.height = `${(SCREEN_H * scale) / dpr}px`;
 }
 addEventListener('resize', fit);
 fit();
 
 const keys = new Set();
+const pressed = new Set(); // taps latched between simulation steps
 const KEYMAP = {
   ArrowUp: 'up', KeyW: 'up',
   ArrowDown: 'down', KeyS: 'down',
@@ -35,6 +42,7 @@ addEventListener('keydown', (e) => {
   const action = KEYMAP[e.code];
   if (action) {
     keys.add(action);
+    if (!e.repeat) pressed.add(action); // survive a tap released mid-hitch
     e.preventDefault();
   }
 });
@@ -50,8 +58,8 @@ function inputState() {
     down: keys.has('down'),
     left: keys.has('left'),
     right: keys.has('right'),
-    swap: keys.has('swap'),
-    action: keys.has('action'),
+    swap: keys.has('swap') || pressed.has('swap'),
+    action: keys.has('action') || pressed.has('action'),
   };
 }
 
@@ -60,13 +68,18 @@ const STEP = 1 / 60;
 let last = performance.now();
 let acc = 0;
 function frame(now) {
-  acc += Math.min(0.1, (now - last) / 1000);
+  const dt = Math.min(0.1, (now - last) / 1000);
+  acc += dt;
   last = now;
+  let stepped = false;
   while (acc >= STEP) {
     game.update(STEP, inputState());
     acc -= STEP;
+    stepped = true;
   }
-  renderer.render(game);
+  // Latched taps are cleared only once a step has actually consumed them.
+  if (stepped) pressed.clear();
+  renderer.render(game, dt);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

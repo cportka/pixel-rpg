@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Game, CAPTION_TTL } from '../src/core/game.js';
+import { Game, CAPTION_TTL, FETCH_TIMEOUT } from '../src/core/game.js';
+import { trunkBox } from '../src/core/world.js';
 
 const STEP = 1 / 60;
 const IDLE = {};
@@ -38,9 +39,12 @@ test('input moves the active character only (the other follows on its own)', () 
   g.update(STEP, { right: true });
   assert.ok(g.person.x > px);
   g.update(STEP, { swap: true });
-  const dx = g.dog.x;
-  g.update(STEP, { swap: true, down: true });
-  assert.ok(g.dog.y > 0 || g.dog.x !== dx || g.dog.walking);
+  const dogY = g.dog.y;
+  const person = { x: g.person.x, y: g.person.y };
+  g.update(STEP, { down: true });
+  assert.ok(g.dog.y > dogY, 'down input moved the dog');
+  assert.equal(g.person.x, person.x, 'person did not move while the dog is active');
+  assert.equal(g.person.y, person.y);
 });
 
 test('captions expire after CAPTION_TTL', () => {
@@ -113,6 +117,61 @@ test('hearts fade out', () => {
   g.hearts.push({ x: 0, y: 0, t: 0.2 });
   for (let i = 0; i < 30; i++) g.update(STEP, IDLE);
   assert.equal(g.hearts.length, 0);
+});
+
+test('fetch survives a trunk directly between dog and ball (detour steering)', () => {
+  // Regression: straight-line chasing wedged the dog on trunk corners and
+  // soft-locked the fetch state machine forever. Real collision world here —
+  // no openGame() stub.
+  const g = new Game(1);
+  const tree = g.world.chunkAt(0, 0).trees.find((t) => t.kind === 'tree');
+  assert.ok(tree, 'seed 1 grows a tree in chunk 0,0');
+  const b = trunkBox(tree);
+  const cy = b.y + 3; // dog feet box overlaps the trunk rows at this height
+  g.person.x = b.x - 30;
+  g.person.y = cy;
+  g.dog.x = b.x - 6; // wedged against the left trunk face...
+  g.dog.y = cy;
+  g.ball = { x: b.x + b.w + 30, y: cy, vx: 0, vy: 0, carried: false }; // ...ball on the right
+  g.fetch = 'thrown';
+  g.fetchTime = 0;
+
+  let pickedUp = false;
+  for (let i = 0; i < 60 * 20 && !pickedUp; i++) {
+    g.update(STEP, IDLE);
+    if (g.fetch === 'returning') pickedUp = true;
+  }
+  assert.ok(pickedUp, 'dog steered around the trunk and picked the ball up');
+});
+
+test('a hopeless fetch resets after FETCH_TIMEOUT instead of soft-locking', () => {
+  const g = openGame();
+  g.update(STEP, { action: true });
+  assert.equal(g.fetch, 'thrown');
+  g.ball.x = 1e7; // unreachable
+  g.ball.vx = 0;
+  g.ball.vy = 0;
+  const steps = Math.ceil((FETCH_TIMEOUT + 1) / STEP);
+  for (let i = 0; i < steps; i++) g.update(STEP, IDLE);
+  assert.equal(g.fetch, 'idle');
+  assert.equal(g.ball, null);
+  g.update(STEP, {});
+  g.update(STEP, { action: true });
+  assert.ok(g.ball, 'throwing works again after the reset');
+});
+
+test('the ball cannot fly into a trunk — it drops at the trunk face', () => {
+  const g = new Game(7); // real collision world
+  const tree = g.world.chunkAt(0, 0).trees.find((t) => t.kind === 'tree');
+  const b = trunkBox(tree);
+  g.ball = { x: b.x - 10, y: b.y + 2, vx: 200, vy: 0, carried: false };
+  for (let i = 0; i < 240; i++) g.updateBall(STEP);
+  assert.ok(g.ball.x < b.x, 'ball stopped before entering the trunk');
+  assert.equal(
+    g.world.collides(g.ball.x - 1, g.ball.y - 1, 2, 2),
+    false,
+    'ball never rests inside a trunk box',
+  );
 });
 
 test('same seed, same forest — the game world is reproducible', () => {

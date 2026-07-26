@@ -80,10 +80,11 @@ test('follower starts beyond FOLLOW_START and settles inside FOLLOW_STOP', () =>
   const before = dog.x;
   updateFollower(dog, leader, 0.1, openWorld);
   assert.ok(dog.x < before, 'moving toward the leader');
-  // Run until settled.
+  // Run until settled — the stop check precedes movement, so the settle
+  // distance is bounded by FOLLOW_STOP itself, not the looser start radius.
   for (let i = 0; i < 400; i++) updateFollower(dog, leader, 1 / 30, openWorld);
   assert.equal(dog.following, false);
-  assert.ok(Math.hypot(dog.x, dog.y) <= FOLLOW_START, 'ended close to the leader');
+  assert.ok(Math.hypot(dog.x, dog.y) <= FOLLOW_STOP, 'ended inside the stop radius');
 });
 
 test('follower inside the start radius stays put', () => {

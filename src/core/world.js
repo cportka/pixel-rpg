@@ -15,10 +15,27 @@ export const TREE_VARIANTS = ['ember', 'ember', 'ember', 'leafy', 'leafy'];
 
 const MIN_TREE_GAP = 34; // px between tree anchors within a chunk
 
+const PRUNE_KEEP_RADIUS = 6; // chunks kept around the player when pruning
+const PRUNE_THRESHOLD = 220; // cache size that triggers a prune sweep
+
 export class World {
   constructor(seed) {
     this.seed = seed >>> 0;
     this.chunks = new Map();
+  }
+
+  /**
+   * Drop cached chunks far from chunk-coordinates (ccx, ccy). Generation is
+   * deterministic, so eviction is lossless — revisited chunks regenerate
+   * identically. Keeps memory bounded on an endless wander.
+   */
+  prune(ccx, ccy, radius = PRUNE_KEEP_RADIUS) {
+    if (this.chunks.size <= PRUNE_THRESHOLD) return;
+    for (const [key, chunk] of this.chunks) {
+      if (Math.abs(chunk.cx - ccx) > radius || Math.abs(chunk.cy - ccy) > radius) {
+        this.chunks.delete(key);
+      }
+    }
   }
 
   /** The chunk at chunk-coordinates (cx, cy), generating it on first access. */

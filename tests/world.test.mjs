@@ -68,6 +68,28 @@ test('collides is true on a trunk and false in open space', () => {
   assert.equal(w.collides(free.x, free.y, 6, 3), false);
 });
 
+test('prune bounds the chunk cache and eviction is lossless', () => {
+  const w = new World(5);
+  for (let cx = 0; cx < 18; cx++) {
+    for (let cy = 0; cy < 18; cy++) w.chunkAt(cx, cy);
+  }
+  const farBefore = JSON.stringify(w.chunkAt(17, 17));
+  assert.equal(w.chunks.size, 324);
+  w.prune(0, 0);
+  assert.ok(w.chunks.size < 324, 'far chunks were evicted');
+  assert.ok(w.chunks.has('0,0'), 'nearby chunks were kept');
+  assert.equal(w.chunks.has('17,17'), false, 'distant chunk was dropped');
+  assert.equal(JSON.stringify(w.chunkAt(17, 17)), farBefore, 'regenerates identically');
+});
+
+test('prune below the threshold is a no-op', () => {
+  const w = new World(5);
+  w.chunkAt(0, 0);
+  w.chunkAt(50, 50);
+  w.prune(0, 0);
+  assert.ok(w.chunks.has('50,50'), 'small caches are left alone');
+});
+
 test('sparklesInRect only returns sparkles inside the rect', () => {
   const w = new World(11);
   for (const s of w.sparklesInRect(0, 0, CHUNK, CHUNK)) {

@@ -31,14 +31,20 @@ export class Renderer {
         return c;
       });
     this.treeCache = new Map();
+    this.frame = 0;
     this.camX = 0;
     this.camY = 0;
     this.camInit = false;
   }
 
-  /** Rasterize (and cache) a tree's pixel cloud onto its own canvas. */
+  /**
+   * Rasterize (and cache) a tree's pixel cloud onto its own canvas.
+   * The key includes every field treePixels() reads — detailSeed alone
+   * collides across distinct trees (independent 32-bit draws).
+   */
   treeSprite(tree) {
-    let entry = this.treeCache.get(tree.detailSeed);
+    const key = `${tree.kind}:${tree.variant}:${tree.size}:${tree.detailSeed}`;
+    let entry = this.treeCache.get(key);
     if (!entry) {
       const geo = treePixels(tree);
       const w = geo.maxX - geo.minX + 1;
@@ -49,10 +55,23 @@ export class Renderer {
         g.fillStyle = p.c;
         g.fillRect(p.x - geo.minX, p.y - geo.minY, 1, 1);
       }
-      entry = { canvas: c, offX: geo.minX, offY: geo.minY };
-      this.treeCache.set(tree.detailSeed, entry);
+      entry = { canvas: c, offX: geo.minX, offY: geo.minY, lastUsed: 0 };
+      this.treeCache.set(key, entry);
     }
+    entry.lastUsed = this.frame;
     return entry;
+  }
+
+  /**
+   * Drop sprites not drawn recently, so an endless wander doesn't accumulate
+   * offscreen canvases forever. Regeneration is deterministic, so this is
+   * lossless — a revisited tree re-rasterizes identically.
+   */
+  sweepCache(maxSize = 400, staleFrames = 120) {
+    if (this.treeCache.size <= maxSize) return;
+    for (const [key, entry] of this.treeCache) {
+      if (this.frame - entry.lastUsed > staleFrames) this.treeCache.delete(key);
+    }
   }
 
   drawSpriteMap(map, x, y, flip = false) {
@@ -77,10 +96,11 @@ export class Renderer {
     for (const p of textPixels(text)) ctx.fillRect(x0 + p.x, topY + p.y, 1, 1);
   }
 
-  /** Draw one frame of the game. */
-  render(game) {
+  /** Draw one frame of the game. dt is the real time since the last frame. */
+  render(game, dt = 1 / 60) {
     const ctx = this.ctx;
-    const cam = this.updateCamera(game);
+    this.frame++;
+    const cam = this.updateCamera(game, dt);
     const viewX = cam.x - SCREEN_W / 2;
     const viewY = cam.y - SCREEN_H / 2;
 
@@ -144,9 +164,11 @@ export class Renderer {
     if (game.caption) {
       this.drawText(game.caption.text, SCREEN_W / 2, Math.round(SCREEN_H * 0.24) - GLYPH_H);
     }
+
+    this.sweepCache();
   }
 
-  updateCamera(game) {
+  updateCamera(game, dt = 1 / 60) {
     const target = game.activeChar;
     const ty = target.y - 6;
     if (!this.camInit) {
@@ -154,8 +176,9 @@ export class Renderer {
       this.camY = ty;
       this.camInit = true;
     } else {
-      // Smooth follow; snaps tight enough that pixels don't swim.
-      const k = 0.12;
+      // Smooth follow; dt-corrected so convergence speed is refresh-rate
+      // independent (k = 0.12 per 60Hz frame, compounded for the real dt).
+      const k = 1 - Math.pow(1 - 0.12, dt * 60);
       this.camX += (target.x - this.camX) * k;
       this.camY += (ty - this.camY) * k;
     }
