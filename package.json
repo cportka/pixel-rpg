@@ -1,0 +1,12 @@
+{
+  "name": "pixel-rpg",
+  "version": "0.1.0",
+  "description": "A pixelated RPG — a person and their dog wander a procedurally generated magical forest.",
+  "type": "module",
+  "scripts": {
+    "test": "bash tests/run-tests.sh",
+    "start": "python3 -m http.server 8000"
+  },
+  "license": "MIT",
+  "private": true
+}
