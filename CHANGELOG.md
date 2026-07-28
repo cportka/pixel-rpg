@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.3.0] - 2026-07-28
+
+### Added
+- **Tap / click to move**: tap anywhere and the active character walks there
+  (pointer events — mouse, touch, and pen). A marching-dot marker shows the
+  destination; keys override and cancel it; the walk reuses the detour
+  steering so a tapped spot behind a tree is reached around it, and a tap on
+  a trunk is abandoned after a couple of seconds instead of wedging.
+- **Mobile support**: pixel SWAP and BALL touch buttons (bottom corners, shown
+  on coarse pointers or with `?touch=1`), `touch-action: none` and tap-highlight
+  suppression, web-app metas, and the existing DPR-aware integer scaling.
+
 ## [0.2.0] - 2026-07-28
 
 ### Added

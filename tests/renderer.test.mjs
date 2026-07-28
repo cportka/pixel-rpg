@@ -2,7 +2,7 @@
 // game state and drawing without needing a DOM.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Renderer, SCREEN_W, SCREEN_H, RENDER_FPS } from '../src/gfx/renderer.js';
+import { Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons } from '../src/gfx/renderer.js';
 import { WALK_CYCLE_FPS } from '../src/gfx/sprites.js';
 import { Game } from '../src/core/game.js';
 
@@ -72,6 +72,44 @@ test('captions anchored at screen corners stay fully on screen', () => {
         `pixel (${x},${y}) off screen for anchor (${ax},${ay})`);
     }
   }
+});
+
+test('touch buttons exist only when together, on screen, not overlapping', () => {
+  const alone = new Game(1);
+  assert.deepEqual(uiButtons(alone), [], 'no buttons while alone');
+  const together = new Game(1, { story: false });
+  const buttons = uiButtons(together);
+  assert.equal(buttons.length, 2);
+  const ids = buttons.map((b) => b.id).sort();
+  assert.deepEqual(ids, ['action', 'swap']);
+  for (const b of buttons) {
+    assert.ok(b.x >= 0 && b.y >= 0 && b.x + b.w <= SCREEN_W && b.y + b.h <= SCREEN_H, `${b.id} on screen`);
+  }
+  const [l, r] = [...buttons].sort((a, b) => a.x - b.x);
+  assert.ok(l.x + l.w < r.x, 'buttons do not overlap');
+});
+
+test('screenToWorld maps the screen center to the camera position', () => {
+  const r = makeRenderer(fakeCanvas());
+  const g = new Game(42, { story: false });
+  r.render(g);
+  const w = r.screenToWorld(SCREEN_W / 2, SCREEN_H / 2);
+  assert.ok(Math.abs(w.x - g.person.x) <= 2, `x ${w.x} ≈ ${g.person.x}`);
+  assert.ok(Math.abs(w.y - (g.person.y - 6)) <= 2, `y ${w.y} ≈ ${g.person.y - 6}`);
+  // A known offset round-trips.
+  const w2 = r.screenToWorld(SCREEN_W / 2 + 25, SCREEN_H / 2 - 10);
+  assert.ok(Math.abs(w2.x - w.x - 25) <= 0.001);
+  assert.ok(Math.abs(w2.y - w.y + 10) <= 0.001);
+});
+
+test('rendering with a tap marker and touch UI paints in bounds', () => {
+  const canvas = fakeCanvas();
+  const r = makeRenderer(canvas);
+  r.showTouchUI = true;
+  const g = new Game(42, { story: false });
+  g.setMoveTarget(g.person.x + 20, g.person.y + 10);
+  r.render(g);
+  assert.ok(canvas.ctx.ops.fillRect > 100);
 });
 
 test('drawLeash paints a run of marching dots between the pair', () => {

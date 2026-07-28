@@ -1,7 +1,7 @@
 // Browser entry point: canvas setup, integer upscaling, input, and the loop.
 
 import { Game } from './core/game.js';
-import { Renderer, SCREEN_W, SCREEN_H, RENDER_FPS } from './gfx/renderer.js';
+import { Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons } from './gfx/renderer.js';
 
 const canvas = document.getElementById('screen');
 canvas.width = SCREEN_W;
@@ -13,6 +13,12 @@ const seed = params.has('seed') ? Number(params.get('seed')) >>> 0 : (Date.now()
 // ?story=0 skips the opening and starts with the dog found and leashed.
 const game = new Game(seed, { story: params.get('story') !== '0' });
 const renderer = new Renderer(canvas);
+
+// Touch UI shows on coarse pointers (phones/tablets), on first touch, or
+// forced with ?touch=1 for demos and screenshots.
+renderer.showTouchUI =
+  params.get('touch') === '1' ||
+  (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
 
 // Integer upscale to the largest multiple that fits the window — computed in
 // DEVICE pixels so fractional devicePixelRatio (125%/150% displays) still gets
@@ -52,6 +58,27 @@ addEventListener('keyup', (e) => {
   if (action) keys.delete(action);
 });
 addEventListener('blur', () => keys.clear());
+
+// Tap / click to move: hit-test the touch buttons first, otherwise walk to
+// the tapped world position. pointerdown covers mouse, touch, and pen.
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (e.pointerType !== 'mouse') renderer.showTouchUI = true;
+  const rect = canvas.getBoundingClientRect();
+  const sx = ((e.clientX - rect.left) / rect.width) * SCREEN_W;
+  const sy = ((e.clientY - rect.top) / rect.height) * SCREEN_H;
+  if (renderer.showTouchUI) {
+    for (const b of uiButtons(game)) {
+      if (sx >= b.x && sx < b.x + b.w && sy >= b.y && sy < b.y + b.h) {
+        pressed.add(b.id); // same latch path as a key tap
+        return;
+      }
+    }
+  }
+  const w = renderer.screenToWorld(sx, sy);
+  game.setMoveTarget(w.x, w.y);
+});
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 function inputState() {
   return {

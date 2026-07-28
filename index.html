@@ -2,21 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#08060d" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>PIXEL RPG</title>
   <style>
     html, body {
       margin: 0;
       height: 100%;
-      background: #000;
+      background: #08060d;
       display: grid;
       place-items: center;
       overflow: hidden;
+      overscroll-behavior: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
     canvas {
       image-rendering: pixelated;
       image-rendering: crisp-edges;
-      background: #000;
+      background: #08060d;
+      touch-action: none;
     }
   </style>
 </head>
