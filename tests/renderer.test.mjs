@@ -2,14 +2,19 @@
 // game state and drawing without needing a DOM.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Renderer, SCREEN_W, SCREEN_H } from '../src/gfx/renderer.js';
+import { Renderer, SCREEN_W, SCREEN_H, RENDER_FPS } from '../src/gfx/renderer.js';
+import { WALK_CYCLE_FPS } from '../src/gfx/sprites.js';
 import { Game } from '../src/core/game.js';
 
 function fakeCanvas(w = SCREEN_W, h = SCREEN_H) {
   const ctx = {
     fillStyle: '#000000',
     ops: { fillRect: 0, drawImage: 0 },
-    fillRect() { this.ops.fillRect++; },
+    rects: [],
+    fillRect(x, y, rw, rh) {
+      this.ops.fillRect++;
+      this.rects.push([x, y, rw, rh]);
+    },
     drawImage() { this.ops.drawImage++; },
   };
   return { width: w, height: h, ctx, getContext: () => ctx };
@@ -26,6 +31,61 @@ test('renders a frame without throwing and paints pixels', () => {
   r.render(g);
   assert.ok(canvas.ctx.ops.fillRect > 100, 'background + sprites + text painted');
   assert.ok(canvas.ctx.ops.drawImage > 0, 'cached tree sprites blitted');
+});
+
+test('renders the together state (leash path) without throwing', () => {
+  const canvas = fakeCanvas();
+  const r = makeRenderer(canvas);
+  const g = new Game(42, { story: false });
+  assert.ok(g.leashActive());
+  r.render(g);
+  assert.ok(canvas.ctx.ops.fillRect > 100);
+});
+
+test('the presentation cadence constants match the reference footage', () => {
+  assert.equal(RENDER_FPS, 15, 'presentation cadence is the reference ~15 fps');
+  assert.equal(WALK_CYCLE_FPS, 7.5, 'walk cycle advances at half the render rate');
+});
+
+test('no leash is drawn while alone; it appears once the pair meet', () => {
+  const r = makeRenderer(fakeCanvas());
+  const g = new Game(42); // story mode: alone
+  let leashCalls = 0;
+  r.drawLeash = () => leashCalls++;
+  r.render(g);
+  assert.equal(leashCalls, 0, 'alone: no leash');
+  g.meetDog();
+  r.render(g);
+  assert.equal(leashCalls, 1, 'together: leash drawn');
+});
+
+test('captions anchored at screen corners stay fully on screen', () => {
+  const canvas = fakeCanvas();
+  const r = makeRenderer(canvas);
+  const text = 'IN THE BEGINNING THERE WAS ONLY THE DARK'; // wraps to 2 lines
+  for (const [ax, ay] of [[0, 0], [SCREEN_W, SCREEN_H], [0, SCREEN_H], [SCREEN_W, 0]]) {
+    canvas.ctx.rects.length = 0;
+    r.drawCaption(text, ax, ay);
+    assert.ok(canvas.ctx.rects.length > 0, 'caption painted');
+    for (const [x, y, w, h] of canvas.ctx.rects) {
+      assert.ok(x >= 0 && y >= 0 && x + w <= SCREEN_W && y + h <= SCREEN_H,
+        `pixel (${x},${y}) off screen for anchor (${ax},${ay})`);
+    }
+  }
+});
+
+test('drawLeash paints a run of marching dots between the pair', () => {
+  const canvas = fakeCanvas();
+  const r = makeRenderer(canvas);
+  const g = new Game(42, { story: false });
+  g.person.x = 0;
+  g.person.y = 0;
+  g.dog.x = 40;
+  g.dog.y = 0;
+  const before = canvas.ctx.ops.fillRect;
+  r.drawLeash(g, -160, -100);
+  const dots = canvas.ctx.ops.fillRect - before;
+  assert.ok(dots >= 8, `a 40px leash paints several dots (got ${dots})`);
 });
 
 test('tree sprites are cached per full identity, not detailSeed alone', () => {
@@ -95,7 +155,7 @@ test('camera eases toward a moved character', () => {
 test('a full simulated minute renders from every camera state', () => {
   const canvas = fakeCanvas();
   const r = makeRenderer(canvas);
-  const g = new Game(7);
+  const g = new Game(7, { story: false });
   const inputs = [
     { right: true }, { down: true }, { left: true }, { up: true },
     { swap: true }, {}, { action: true }, {},

@@ -1,10 +1,12 @@
 # pixel-rpg
 
-A pixelated RPG: a person and their dog wander a procedurally generated magical
-forest — dithered ember-red and green trees scattered in a black void, twinkling
-motes between them, and a pink ball for playing fetch.
+A pixelated neo-noir RPG. At the beginning of the universe there is only the
+dark and one small person, wandering the lonely woods — smoke-and-plum dithered
+trees in a violet-black void, twinkling motes between them. Somewhere out there
+waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
+eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.1.0
+**Version:** 0.2.0
 
 ## Play
 
@@ -23,10 +25,11 @@ then open <http://localhost:8000>. Append `?seed=123` for a reproducible forest.
 | Key | Action |
 | --- | --- |
 | Arrows / WASD | Walk |
-| Tab or C | Swap control between the person and the dog |
+| Tab or C | Swap control between the person and the dog (once you've found them) |
 | Space or E | Throw the ball (as the person) — the dog fetches |
 
-Whichever character you aren't controlling follows along on its own.
+You start alone; follow the whimpers to find the dog. After that, whichever
+character you aren't controlling follows along on its own.
 
 ## Architecture
 
@@ -39,14 +42,18 @@ integer-upscaled with `image-rendering: pixelated`.
     a pure function of `(seed, cx, cy)`, generated lazily and cached.
   - `entities.js` — characters, per-axis collision against tree trunks
     (feet-box, so you can walk behind canopies), follow AI with hysteresis.
-  - `game.js` — control swapping, captions, and the fetch state machine.
+  - `game.js` — the story (alone → a friend → home), control swapping,
+    captions, and the fetch state machine.
 - `src/gfx/` — rendering:
-  - `palette.js` — the palette, lifted from the style-reference recording.
-  - `sprites.js` — person/dog/ball/heart pixel maps with walk cycles.
-  - `font.js` — 5x7 pixel font for captions (pure data + geometry).
-  - `trees.js` — procedural dithered trees as pure pixel-cloud geometry.
-  - `renderer.js` — y-sorted painter with per-seed cached tree rasters and a
-    smoothed camera.
+  - `palette.js` — the neo-noir smokey-darks-and-purples palette.
+  - `sprites.js` — person/dog/ball/heart pixel maps with reference-cadence
+    walk cycles.
+  - `font.js` — bold variable-width 8px caption font (pure data + geometry),
+    with word-wrap.
+  - `trees.js` — procedural dithered trees as pure 2x1-block geometry.
+  - `renderer.js` — y-sorted painter with cached tree rasters, the dotted
+    leash, character-anchored captions, and a smoothed camera; presentation
+    runs at the reference's chunky ~15 fps while the simulation stays 60 Hz.
 - `src/main.js` — browser bootstrap: input, fixed-step loop, integer scaling.
 
 ## Development

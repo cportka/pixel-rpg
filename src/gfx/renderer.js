@@ -2,16 +2,21 @@
 // the page upscales with image-rendering: pixelated. World objects are
 // y-sorted by their baseline so characters walk in front of and behind trees.
 //
-// Trees are rasterized once per detailSeed onto small offscreen canvases and
-// cached — generation is deterministic, so the cache never goes stale.
+// Presentation runs at RENDER_FPS (the reference footage's chunky ~15Hz
+// cadence) — main.js calls render() at that rate while the simulation stays
+// at 60Hz. Trees are rasterized once per identity onto small offscreen
+// canvases and cached; generation is deterministic, so eviction is lossless.
 
-import { PALETTE, SPRITE_COLORS, SPARKLE_TINTS } from './palette.js';
+import { PALETTE, SPRITE_COLORS, SPARKLE_TINTS, LEASH_COLORS } from './palette.js';
 import { PERSON_FRAMES, DOG_FRAMES, BALL_SPRITE, HEART_SPRITE, walkFrame, spriteSize } from './sprites.js';
-import { treePixels } from './trees.js';
-import { textPixels, measureText, GLYPH_H } from './font.js';
+import { treePixels, BLOCK_W, BLOCK_H } from './trees.js';
+import { textPixels, measureText, wrapText, GLYPH_H, LINE_GAP } from './font.js';
 
 export const SCREEN_W = 320;
 export const SCREEN_H = 200;
+export const RENDER_FPS = 15; // presentation cadence, matched to the reference
+
+const CAPTION_MAX_W = 280; // wrap captions to at most this many px
 
 export class Renderer {
   /**
@@ -38,7 +43,7 @@ export class Renderer {
   }
 
   /**
-   * Rasterize (and cache) a tree's pixel cloud onto its own canvas.
+   * Rasterize (and cache) a tree's block cloud onto its own canvas.
    * The key includes every field treePixels() reads — detailSeed alone
    * collides across distinct trees (independent 32-bit draws).
    */
@@ -53,7 +58,7 @@ export class Renderer {
       const g = c.getContext('2d');
       for (const p of geo.pixels) {
         g.fillStyle = p.c;
-        g.fillRect(p.x - geo.minX, p.y - geo.minY, 1, 1);
+        g.fillRect(p.x - geo.minX, p.y - geo.minY, BLOCK_W, BLOCK_H);
       }
       entry = { canvas: c, offX: geo.minX, offY: geo.minY, lastUsed: 0 };
       this.treeCache.set(key, entry);
@@ -82,29 +87,71 @@ export class Renderer {
       for (let col = 0; col < line.length; col++) {
         const ch = line[col];
         if (ch === '.') continue;
-        ctx.fillStyle = SPRITE_COLORS[ch] ?? PALETTE.white;
+        ctx.fillStyle = SPRITE_COLORS[ch] ?? PALETTE.moonlight;
         const px = flip ? x + (w - 1 - col) : x + col;
         ctx.fillRect(px, y + row, 1, 1);
       }
     }
   }
 
-  drawText(text, centerX, topY, color = PALETTE.white) {
+  drawText(text, centerX, topY, color = PALETTE.moonlight) {
     const ctx = this.ctx;
     const x0 = Math.round(centerX - measureText(text) / 2);
     ctx.fillStyle = color;
     for (const p of textPixels(text)) ctx.fillRect(x0 + p.x, topY + p.y, 1, 1);
   }
 
+  /**
+   * The dotted leash: a slightly sagging run of marching dots between the
+   * person's hand and the dog's neck, cycling magenta/violet/blue.
+   */
+  drawLeash(game, viewX, viewY) {
+    const p = game.person;
+    const d = game.dog;
+    const x1 = p.x + (d.x >= p.x ? 3 : -3);
+    const y1 = p.y - 8;
+    const x2 = d.x - d.facing * 5;
+    const y2 = d.y - 5;
+    const dist = Math.hypot(x2 - x1, y2 - y1);
+    if (dist < 4) return;
+    const sag = Math.min(6, dist * 0.12);
+    const steps = Math.max(2, Math.round(dist / 4));
+    const ctx = this.ctx;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      // Quadratic bezier through a sagging midpoint.
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2 + sag;
+      const bx = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * mx + t * t * x2;
+      const by = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * my + t * t * y2;
+      ctx.fillStyle = LEASH_COLORS[(i + this.frame) % LEASH_COLORS.length];
+      ctx.fillRect(Math.round(bx - viewX), Math.round(by - viewY), 1, 1);
+    }
+  }
+
+  /** Wrapped caption anchored above a character, clamped to the screen. */
+  drawCaption(text, anchorScreenX, anchorScreenY) {
+    const lines = wrapText(text, CAPTION_MAX_W);
+    const lineH = GLYPH_H + LINE_GAP;
+    let top = Math.round(anchorScreenY) - 22 - lines.length * lineH;
+    top = Math.max(4, Math.min(top, SCREEN_H - lines.length * lineH - 4));
+    lines.forEach((line, i) => {
+      const w = measureText(line);
+      let cx = Math.round(anchorScreenX);
+      cx = Math.max(2 + w / 2, Math.min(cx, SCREEN_W - 2 - w / 2));
+      this.drawText(line, cx, top + i * lineH);
+    });
+  }
+
   /** Draw one frame of the game. dt is the real time since the last frame. */
-  render(game, dt = 1 / 60) {
+  render(game, dt = 1 / RENDER_FPS) {
     const ctx = this.ctx;
     this.frame++;
     const cam = this.updateCamera(game, dt);
     const viewX = cam.x - SCREEN_W / 2;
     const viewY = cam.y - SCREEN_H / 2;
 
-    ctx.fillStyle = PALETTE.black;
+    ctx.fillStyle = PALETTE.void;
     ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
 
     // Magical motes twinkling in the dark.
@@ -122,6 +169,9 @@ export class Renderer {
         ctx.fillRect(x, y + 1, 1, 1);
       }
     }
+
+    // The leash runs under the characters but over the ground.
+    if (game.leashActive()) this.drawLeash(game, viewX, viewY);
 
     // Y-sorted world: trees, characters, ball — all by baseline.
     const drawables = [];
@@ -160,9 +210,10 @@ export class Renderer {
       this.drawSpriteMap(HEART_SPRITE, Math.round(h.x - viewX - 3), Math.round(h.y - viewY - rise));
     }
 
-    // Caption, centered in the upper third like the reference.
+    // Caption above whoever you're playing, like the reference footage.
     if (game.caption) {
-      this.drawText(game.caption.text, SCREEN_W / 2, Math.round(SCREEN_H * 0.24) - GLYPH_H);
+      const a = game.activeChar;
+      this.drawCaption(game.caption.text, a.x - viewX, a.y - viewY);
     }
 
     this.sweepCache();

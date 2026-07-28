@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PALETTE, SPRITE_COLORS, SPARKLE_TINTS } from '../src/gfx/palette.js';
+import { PALETTE, SPRITE_COLORS, SPARKLE_TINTS, LEASH_COLORS } from '../src/gfx/palette.js';
 import {
   PERSON_FRAMES, DOG_FRAMES, BALL_SPRITE, HEART_SPRITE, walkFrame, spriteSize,
 } from '../src/gfx/sprites.js';
-import { GLYPHS, GLYPH_W, GLYPH_H, measureText, textPixels } from '../src/gfx/font.js';
-import { treePixels } from '../src/gfx/trees.js';
+import {
+  GLYPHS, GLYPH_H, TRACKING, SPACE_W, glyphWidth, measureText, textPixels, wrapText,
+} from '../src/gfx/font.js';
+import { treePixels, BLOCK_W } from '../src/gfx/trees.js';
 
 const HEX = /^#[0-9a-f]{6}$/;
 
@@ -14,6 +16,8 @@ test('palette entries are well-formed hex colors', () => {
     assert.match(value, HEX, `PALETTE.${name}`);
   }
   for (const tint of SPARKLE_TINTS) assert.match(tint, HEX);
+  for (const c of LEASH_COLORS) assert.match(c, HEX);
+  assert.ok(LEASH_COLORS.length >= 3, 'leash cycles through at least 3 colors');
 });
 
 function checkSpriteMap(name, map) {
@@ -34,6 +38,49 @@ test('all sprite maps are rectangular and use palette keys', () => {
   checkSpriteMap('heart', HEART_SPRITE);
 });
 
+test('sprites match the reference proportions', () => {
+  const person = spriteSize(PERSON_FRAMES.stand);
+  assert.ok(person.h >= 16, `person is tall (${person.h}px)`);
+  assert.ok(person.w <= 10, 'person is thin');
+  const dog = spriteSize(DOG_FRAMES.stand);
+  assert.ok(dog.w >= 12, 'dog is long');
+  assert.ok(dog.h < person.h, 'dog is shorter than the person');
+});
+
+test('every character frame is one connected silhouette (no severed pixels)', () => {
+  // Regression: a 1px hole in the walk frames left a floating 2px forearm.
+  const components = (map) => {
+    const lit = new Set();
+    map.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== '.') lit.add(`${x},${y}`); }));
+    let count = 0;
+    const seen = new Set();
+    for (const start of lit) {
+      if (seen.has(start)) continue;
+      count++;
+      const stack = [start];
+      while (stack.length) {
+        const cell = stack.pop();
+        if (seen.has(cell)) continue;
+        seen.add(cell);
+        const [cx, cy] = cell.split(',').map(Number);
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const n = `${cx + dx},${cy + dy}`;
+            if (lit.has(n) && !seen.has(n)) stack.push(n);
+          }
+        }
+      }
+    }
+    return count;
+  };
+  for (const [name, map] of Object.entries(PERSON_FRAMES)) {
+    assert.equal(components(map), 1, `person.${name} has floating pixels`);
+  }
+  for (const [name, map] of Object.entries(DOG_FRAMES)) {
+    assert.equal(components(map), 1, `dog.${name} has floating pixels`);
+  }
+});
+
 test('walk frames within a set share one canvas size', () => {
   for (const frames of [PERSON_FRAMES, DOG_FRAMES]) {
     const sizes = Object.values(frames).map((m) => JSON.stringify(spriteSize(m)));
@@ -41,57 +88,113 @@ test('walk frames within a set share one canvas size', () => {
   }
 });
 
-test('walkFrame rests on stand and animates while walking', () => {
+test('walkFrame rests on stand and cycles through the stride', () => {
   assert.equal(walkFrame(PERSON_FRAMES, false, 12.3), PERSON_FRAMES.stand);
   const seen = new Set();
-  for (let t = 0; t < 1; t += 1 / 60) seen.add(walkFrame(DOG_FRAMES, true, t));
-  assert.ok(seen.size >= 3, 'walking cycles through multiple frames');
+  for (let t = 0; t < 1; t += 1 / 60) seen.add(walkFrame(PERSON_FRAMES, true, t));
+  assert.ok(seen.size >= 3, 'a full stride uses at least 3 distinct frames');
+  const dogSeen = new Set();
+  for (let t = 0; t < 1; t += 1 / 60) dogSeen.add(walkFrame(DOG_FRAMES, true, t));
+  assert.ok(dogSeen.size >= 2, 'dog trot alternates');
 });
 
-test('font glyphs are all 5x7 bitmaps of 0/1', () => {
+test('walk cadence is chunky, not fluttering', () => {
+  // At the reference cadence a frame holds for multiple 60Hz ticks.
+  let changes = 0;
+  let prev = null;
+  for (let i = 0; i < 60; i++) {
+    const f = walkFrame(PERSON_FRAMES, true, i / 60);
+    if (f !== prev) changes++;
+    prev = f;
+  }
+  assert.ok(changes <= 10, `${changes} frame changes in 1s — should be ~7.5`);
+  assert.ok(changes >= 5, `${changes} frame changes in 1s — should be ~7.5`);
+});
+
+test('font glyphs are 8 tall, rectangular, and use only X/.', () => {
   for (const [ch, glyph] of Object.entries(GLYPHS)) {
     assert.equal(glyph.length, GLYPH_H, `glyph '${ch}' height`);
+    const w = glyph[0].length;
+    assert.ok(w >= 2, `glyph '${ch}' width`);
     for (const row of glyph) {
-      assert.equal(row.length, GLYPH_W, `glyph '${ch}' width`);
-      assert.match(row, /^[01]+$/, `glyph '${ch}' bits`);
+      assert.equal(row.length, w, `glyph '${ch}' ragged`);
+      assert.match(row, /^[X.]+$/, `glyph '${ch}' bits`);
     }
   }
 });
 
-test("every caption the game shows can be typeset", () => {
+test('the font is bold: every letter stem is at least 2px thick', () => {
+  // Sample a few letters whose left edge is a vertical stem.
+  for (const ch of ['H', 'L', 'B', 'N', 'K']) {
+    const glyph = GLYPHS[ch];
+    for (const row of glyph) {
+      if (row.startsWith('X')) assert.ok(row.startsWith('XX'), `'${ch}' stem row '${row}'`);
+    }
+  }
+});
+
+test('the font is variable-width (narrow I)', () => {
+  assert.ok(glyphWidth('I') < glyphWidth('H'), 'I is narrower than H');
+  assert.equal(glyphWidth(' '), SPACE_W);
+});
+
+test('every caption the game can show can be typeset', () => {
   const captions = [
+    'IN THE BEGINNING THERE WAS ONLY THE DARK',
+    'ONE SMALL PERSON, ALL ALONE IN THE WOODS',
+    'A SOFT WHIMPER DRIFTS FROM THE NORTH',
+    'A SOFT WHIMPER DRIFTS FROM THE SOUTH',
+    'A SOFT WHIMPER DRIFTS FROM THE EAST',
+    'A SOFT WHIMPER DRIFTS FROM THE WEST',
+    'A FRIENDLY LOST DOG!',
+    'TOGETHER WE WILL FIND HOME',
     'FETCH IS OUR FAVORITE GAME!',
-    'GOOD DOG',
+    'THE WOODS FEEL WARMER NOW',
+    'HOME IS OUT THERE SOMEWHERE',
     'YOU ARE THE PERSON',
     'YOU ARE THE DOG',
+    'GOOD DOG',
   ];
   for (const text of captions) {
     for (const ch of text) {
-      assert.ok(ch in GLYPHS, `missing glyph for '${ch}'`);
+      assert.ok(ch === ' ' || ch in GLYPHS, `missing glyph for '${ch}'`);
     }
   }
 });
 
 test('measureText and textPixels agree with the glyph data', () => {
   assert.equal(measureText(''), 0);
-  assert.equal(measureText('A'), GLYPH_W);
-  assert.equal(measureText('AB'), GLYPH_W * 2 + 1);
-  const lit = GLYPHS['I'].join('').split('').filter((b) => b === '1').length;
+  assert.equal(measureText('H'), glyphWidth('H'));
+  assert.equal(measureText('HI'), glyphWidth('H') + TRACKING + glyphWidth('I'));
+  const lit = GLYPHS['I'].join('').split('').filter((b) => b === 'X').length;
   assert.equal(textPixels('I').length, lit);
   // Lowercase maps onto the same glyphs.
   assert.deepEqual(textPixels('dog'), textPixels('DOG'));
 });
 
-test('treePixels is deterministic and stays near its anchor', () => {
+test('wrapText splits long captions and never exceeds the width', () => {
+  const text = 'IN THE BEGINNING THERE WAS ONLY THE DARK';
+  const lines = wrapText(text, 160);
+  assert.ok(lines.length >= 2, 'long line wraps');
+  for (const line of lines) {
+    assert.ok(measureText(line) <= 160, `'${line}' too wide`);
+  }
+  assert.equal(lines.join(' '), text, 'no words lost');
+  assert.deepEqual(wrapText('GOOD DOG', 300), ['GOOD DOG'], 'short lines stay whole');
+});
+
+test('treePixels is deterministic, block-aligned, and stays near its anchor', () => {
   const tree = { kind: 'tree', x: 0, y: 0, size: 40, variant: 'ember', detailSeed: 12345 };
   const a = treePixels(tree);
   const b = treePixels(tree);
   assert.deepEqual(a, b);
-  assert.ok(a.pixels.length > 100, 'a tree is a substantial pixel cloud');
+  assert.ok(a.pixels.length > 100, 'a tree is a substantial block cloud');
   const palette = new Set(Object.values(PALETTE));
   for (const p of a.pixels) {
     assert.ok(palette.has(p.c), `off-palette color ${p.c}`);
-    assert.ok(p.x >= a.minX && p.x <= a.maxX && p.y >= a.minY && p.y <= a.maxY);
+    assert.equal(Math.abs(p.x % 2), 0, 'blocks sit on even x (2x1 dither)');
+    assert.ok(p.x >= a.minX && p.x + BLOCK_W - 1 <= a.maxX);
+    assert.ok(p.y >= a.minY && p.y <= a.maxY);
   }
   assert.ok(a.minY < -tree.size * 0.5, 'canopy rises above the trunk base');
   assert.ok(a.maxY <= 4, 'litter stays near the ground line');
@@ -104,7 +207,7 @@ test('different detail seeds grow different trees', () => {
   assert.notDeepEqual(a.pixels, b.pixels);
 });
 
-test('bushes are squat pixel clouds', () => {
+test('bushes are squat block clouds', () => {
   const bush = { kind: 'bush', x: 0, y: 0, size: 10, variant: 'leafy', detailSeed: 77 };
   const geo = treePixels(bush);
   assert.ok(geo.pixels.length > 10);
