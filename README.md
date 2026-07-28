@@ -6,7 +6,7 @@ trees in a violet-black void, twinkling motes between them. Somewhere out there
 waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
 eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.2.0
+**Version:** 0.3.0
 
 ## Play
 
@@ -24,12 +24,15 @@ then open <http://localhost:8000>. Append `?seed=123` for a reproducible forest.
 
 | Key | Action |
 | --- | --- |
-| Arrows / WASD | Walk |
+| Tap / click | Walk to that spot (works on mobile and desktop) |
+| Arrows / WASD | Walk (keys override a tap target) |
 | Tab or C | Swap control between the person and the dog (once you've found them) |
 | Space or E | Throw the ball (as the person) — the dog fetches |
 
-You start alone; follow the whimpers to find the dog. After that, whichever
-character you aren't controlling follows along on its own.
+On touch devices, pixel SWAP and BALL buttons appear in the bottom corners
+(force them with `?touch=1`). You start alone; follow the whimpers to find the
+dog. After that, whichever character you aren't controlling follows along on
+its own.
 
 ## Architecture
 

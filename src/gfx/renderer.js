@@ -17,6 +17,24 @@ export const SCREEN_H = 200;
 export const RENDER_FPS = 15; // presentation cadence, matched to the reference
 
 const CAPTION_MAX_W = 280; // wrap captions to at most this many px
+const BUTTON_PAD = 3; // px of padding inside a touch button
+
+/**
+ * Touch-UI buttons for the current game state (pure geometry — the renderer
+ * draws them, main.js hit-tests them). Empty until the pair are together,
+ * since swap and fetch are locked while alone.
+ */
+export function uiButtons(game) {
+  if (!game.together) return [];
+  const h = GLYPH_H + BUTTON_PAD * 2;
+  const y = SCREEN_H - h - 4;
+  const swapW = measureText('SWAP') + BUTTON_PAD * 2;
+  const ballW = measureText('BALL') + BUTTON_PAD * 2;
+  return [
+    { id: 'swap', label: 'SWAP', x: 4, y, w: swapW, h },
+    { id: 'action', label: 'BALL', x: SCREEN_W - ballW - 4, y, w: ballW, h },
+  ];
+}
 
 export class Renderer {
   /**
@@ -40,6 +58,16 @@ export class Renderer {
     this.camX = 0;
     this.camY = 0;
     this.camInit = false;
+    this.showTouchUI = false; // main.js flips this on for coarse pointers
+    this.lastViewX = null; // view origin of the most recent frame
+    this.lastViewY = null;
+  }
+
+  /** Map a point on the 320x200 screen to world coordinates. */
+  screenToWorld(sx, sy) {
+    const viewX = this.lastViewX ?? this.camX - SCREEN_W / 2;
+    const viewY = this.lastViewY ?? this.camY - SCREEN_H / 2;
+    return { x: viewX + sx, y: viewY + sy };
   }
 
   /**
@@ -150,6 +178,8 @@ export class Renderer {
     const cam = this.updateCamera(game, dt);
     const viewX = cam.x - SCREEN_W / 2;
     const viewY = cam.y - SCREEN_H / 2;
+    this.lastViewX = viewX;
+    this.lastViewY = viewY;
 
     ctx.fillStyle = PALETTE.void;
     ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
@@ -168,6 +198,19 @@ export class Renderer {
         ctx.fillRect(x, y - 1, 1, 1);
         ctx.fillRect(x, y + 1, 1, 1);
       }
+    }
+
+    // Tap-to-move marker: a small marching cross where the walk will end.
+    if (game.moveTarget) {
+      const mx = Math.round(game.moveTarget.x - viewX);
+      const my = Math.round(game.moveTarget.y - viewY);
+      ctx.fillStyle = LEASH_COLORS[this.frame % LEASH_COLORS.length];
+      ctx.fillRect(mx - 2, my, 1, 1);
+      ctx.fillRect(mx + 2, my, 1, 1);
+      ctx.fillRect(mx, my - 2, 1, 1);
+      ctx.fillRect(mx, my + 2, 1, 1);
+      ctx.fillStyle = PALETTE.moonlight;
+      ctx.fillRect(mx, my, 1, 1);
     }
 
     // The leash runs under the characters but over the ground.
@@ -214,6 +257,20 @@ export class Renderer {
     if (game.caption) {
       const a = game.activeChar;
       this.drawCaption(game.caption.text, a.x - viewX, a.y - viewY);
+    }
+
+    // Touch buttons (coarse pointers only), above everything.
+    if (this.showTouchUI) {
+      for (const b of uiButtons(game)) {
+        ctx.fillStyle = PALETTE.fog;
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        ctx.fillStyle = PALETTE.smokeDeep;
+        ctx.fillRect(b.x, b.y, b.w, 1);
+        ctx.fillRect(b.x, b.y + b.h - 1, b.w, 1);
+        ctx.fillRect(b.x, b.y, 1, b.h);
+        ctx.fillRect(b.x + b.w - 1, b.y, 1, b.h);
+        this.drawText(b.label, b.x + b.w / 2, b.y + BUTTON_PAD, PALETTE.smoke);
+      }
     }
 
     this.sweepCache();

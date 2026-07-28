@@ -18,6 +18,8 @@ export const FETCH_TIMEOUT = 25; // seconds before a hopeless fetch resets
 export const MEET_RADIUS = 30; // px at which the person finds the dog
 export const HINT_PERIOD = 12; // seconds between whimper hints while alone
 export const AMBIENT_PERIOD = 26; // seconds between ambient lines when together
+export const TAP_ARRIVE = 3; // px at which a tap-move target counts as reached
+export const TAP_GIVE_UP = 2.5; // seconds without progress before abandoning a tap target
 
 const DOG_SPAWN_MIN = 170; // px from the person the lost dog waits
 const DOG_SPAWN_MAX = 240;
@@ -66,6 +68,10 @@ export class Game {
     this.fetch = 'idle'; // idle | thrown | returning
     this.fetchTime = 0; // how long the current fetch has been running
     this.nav = { stuck: 0, detour: 0, side: 1 }; // dog AI steering state
+    this.moveTarget = null; // { x, y } — tap/click-to-move destination
+    this.tapNav = { stuck: 0, detour: 0, side: 1 }; // steering state for tap-move
+    this.tapStall = 0; // time without progress toward the tap target
+    this.tapLastDist = Infinity;
     this.hintTimer = 0;
     this.ambientTimer = 0;
     this.ambientIndex = 0;
@@ -142,7 +148,22 @@ export class Game {
     if (!this.together) return;
     this.active = this.active === 'person' ? 'dog' : 'person';
     this.otherChar.following = false;
+    this.clearMoveTarget(); // the old target belonged to the other character
     this.announce([this.active === 'person' ? 'YOU ARE THE PERSON' : 'YOU ARE THE DOG']);
+  }
+
+  /** Tap/click-to-move: walk the active character to a world position. */
+  setMoveTarget(x, y) {
+    this.moveTarget = { x, y };
+    this.tapNav = { stuck: 0, detour: 0, side: 1 };
+    this.tapStall = 0;
+    this.tapLastDist = Infinity;
+  }
+
+  clearMoveTarget() {
+    this.moveTarget = null;
+    this.tapStall = 0;
+    this.tapLastDist = Infinity;
   }
 
   /** The person finds the friendly lost dog. */
@@ -189,10 +210,17 @@ export class Game {
     if (input.action && !this._prevAction && this.active === 'person') this.throwBall();
     this._prevAction = !!input.action;
 
-    // Player-controlled character.
+    // Player-controlled character: keys win over a tap target.
     const dirX = (input.right ? 1 : 0) - (input.left ? 1 : 0);
     const dirY = (input.down ? 1 : 0) - (input.up ? 1 : 0);
-    moveCharacter(this.activeChar, dirX, dirY, dt, this.world);
+    if (dirX !== 0 || dirY !== 0) {
+      this.clearMoveTarget();
+      moveCharacter(this.activeChar, dirX, dirY, dt, this.world);
+    } else if (this.moveTarget) {
+      this.updateTapMove(dt);
+    } else {
+      moveCharacter(this.activeChar, 0, 0, dt, this.world);
+    }
 
     if (this.together) {
       // The other one follows — unless the dog is mid-fetch, which takes priority.
@@ -223,6 +251,27 @@ export class Game {
     // Far-away chunks regenerate deterministically, so cache them only nearby.
     const c = this.activeChar;
     this.world.prune(Math.floor(c.x / CHUNK), Math.floor(c.y / CHUNK));
+  }
+
+  /** Walk toward the tap target; give up if a trunk makes it hopeless. */
+  updateTapMove(dt) {
+    const ch = this.activeChar;
+    const t = this.moveTarget;
+    const dist = Math.hypot(t.x - ch.x, t.y - ch.y);
+    if (dist <= TAP_ARRIVE) {
+      this.clearMoveTarget();
+      ch.walking = false;
+      return;
+    }
+    this.aiMoveToward(ch, t.x, t.y, dt, this.tapNav);
+    const after = Math.hypot(t.x - ch.x, t.y - ch.y);
+    if (this.tapLastDist - after < ch.speed * dt * 0.2) {
+      this.tapStall += dt;
+    } else {
+      this.tapStall = 0;
+    }
+    this.tapLastDist = after;
+    if (this.tapStall > TAP_GIVE_UP) this.clearMoveTarget(); // e.g. tapped a trunk
   }
 
   /** Alone in the dark: the lost dog waits; soft whimpers point the way. */
@@ -277,8 +326,7 @@ export class Game {
    * Straight-line chasing wedges on trunk corners (the slide component decays
    * to zero); progress tracking + a perpendicular detour breaks the wedge.
    */
-  aiMoveToward(ch, tx, ty, dt) {
-    const nav = this.nav;
+  aiMoveToward(ch, tx, ty, dt, nav = this.nav) {
     if (nav.detour > 0) {
       nav.detour -= dt;
       const dx = tx - ch.x;

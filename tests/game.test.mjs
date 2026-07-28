@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Game, CAPTION_TTL, FETCH_TIMEOUT, MEET_RADIUS, HINT_PERIOD } from '../src/core/game.js';
+import {
+  Game, CAPTION_TTL, FETCH_TIMEOUT, MEET_RADIUS, HINT_PERIOD, TAP_ARRIVE,
+} from '../src/core/game.js';
 import { trunkBox } from '../src/core/world.js';
 
 const STEP = 1 / 60;
@@ -293,6 +295,66 @@ test('the ball cannot fly into a trunk — it drops at the trunk face', () => {
     false,
     'ball never rests inside a trunk box',
   );
+});
+
+// --- Tap / click to move -----------------------------------------------------
+
+test('a tap target walks the active character there and arrives', () => {
+  const g = openGame();
+  const tx = g.person.x + 50;
+  const ty = g.person.y + 30;
+  g.setMoveTarget(tx, ty);
+  runSeconds(g, 5);
+  assert.equal(g.moveTarget, null, 'target cleared on arrival');
+  const dist = Math.hypot(g.person.x - tx, g.person.y - ty);
+  assert.ok(dist <= TAP_ARRIVE + 1, `arrived (${dist.toFixed(1)}px away)`);
+  assert.equal(g.person.walking, false, 'stops walking at the target');
+});
+
+test('keyboard input cancels a tap target', () => {
+  const g = openGame();
+  g.setMoveTarget(g.person.x + 100, g.person.y);
+  g.update(STEP, { down: true });
+  assert.equal(g.moveTarget, null);
+});
+
+test('swapping control clears the tap target', () => {
+  const g = openGame();
+  g.setMoveTarget(g.person.x + 100, g.person.y);
+  g.update(STEP, { swap: true });
+  assert.equal(g.moveTarget, null, 'the old target belonged to the person');
+});
+
+test('tap-move works while alone and can walk into the meeting', () => {
+  const g = new Game(1);
+  g.world.collides = () => false;
+  g.setMoveTarget(g.dog.x, g.dog.y); // tap directly on the waiting dog
+  runSeconds(g, 8);
+  assert.equal(g.together, true, 'walked all the way to the dog and met it');
+});
+
+test('tap moves the dog when the dog is active', () => {
+  const g = openGame();
+  g.update(STEP, { swap: true });
+  const tx = g.dog.x + 40;
+  const ty = g.dog.y - 25;
+  g.setMoveTarget(tx, ty);
+  runSeconds(g, 4);
+  assert.ok(Math.hypot(g.dog.x - tx, g.dog.y - ty) <= TAP_ARRIVE + 1, 'dog arrived');
+});
+
+test('a tap on a trunk is abandoned instead of wedging forever', () => {
+  const g = new Game(1, { story: false }); // real collision world
+  const tree = g.world.chunkAt(0, 0).trees.find((t) => t.kind === 'tree');
+  const b = trunkBox(tree);
+  g.person.x = b.x - 20;
+  g.person.y = b.y + 2;
+  g.setMoveTarget(b.x + b.w / 2, b.y + 2); // dead center of the trunk
+  runSeconds(g, 10);
+  assert.equal(g.moveTarget, null, 'gave up on the unreachable target');
+  const px = g.person.x;
+  g.update(STEP, { left: true });
+  assert.ok(g.person.x < px, 'keyboard control works normally afterward');
 });
 
 test('same seed, same forest — the game world is reproducible', () => {
