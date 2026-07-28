@@ -9,8 +9,9 @@ import { coordRng, pick } from './rng.js';
 
 export const CHUNK = 160; // px per chunk side
 
-// Canopy moods for the magical forest — mirrors the reference footage where
-// most trees burn red/orange with green highlights and a few are green-crowned.
+// Canopy moods for the neo-noir forest — the reference footage's mix,
+// re-themed: most trees burn violet/plum with magenta flecks ('ember') and a
+// few are smoke-crowned ('leafy').
 export const TREE_VARIANTS = ['ember', 'ember', 'ember', 'leafy', 'leafy'];
 
 const MIN_TREE_GAP = 34; // px between tree anchors within a chunk

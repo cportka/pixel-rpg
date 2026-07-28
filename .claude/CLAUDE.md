@@ -136,6 +136,7 @@ repo's configured identity, treats signatures as informational) and refreshes a 
   section points at.
 - **Version source of truth:** `package.json` `version`; `CHANGELOG.md` and the README
   `**Version:**` line must agree (enforced by `tests/run-tests.sh` + CI).
-- **Style reference:** graphics follow the owner's screen-recording reference — black void,
-  dithered ember/green trees, white pixel person + dog, retro white captions. Palette lives
-  in `src/gfx/palette.js`; keep new art within it.
+- **Style reference:** graphics follow the owner's screen-recording reference (structure,
+  sprites, ~15 fps cadence, marching dotted leash) re-themed **neo-noir smokey darks and
+  purples** — violet-black void, smoke/plum dithered trees, moonlit figures. Palette lives
+  in `src/gfx/palette.js`; keep new art within it. Story: `docs/STORY.md`.

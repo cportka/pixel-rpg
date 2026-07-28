@@ -1,8 +1,13 @@
-// Game state: who you control, the follow AI, captions, and fetch.
+// Game state: the story, who you control, the follow AI, captions, and fetch.
 //
 // Pure logic — no DOM, no canvas — so the whole simulation runs under
 // `node --test`. The renderer reads this state; input is passed in as a plain
 // object each update: { up, down, left, right, swap, action } (booleans).
+//
+// Story (docs/STORY.md): the game opens at the beginning of the universe with
+// only the person, alone in the lonely dark woods. Somewhere out there waits
+// a friendly lost dog. Finding it attaches the leash, unlocks swapping and
+// fetch, and begins the long walk home together.
 
 import { World, CHUNK } from './world.js';
 import { mulberry32 } from './rng.js';
@@ -10,6 +15,12 @@ import { PERSON, DOG, makeCharacter, moveCharacter, updateFollower, feetBox } fr
 
 export const CAPTION_TTL = 3.2; // seconds a caption stays up
 export const FETCH_TIMEOUT = 25; // seconds before a hopeless fetch resets
+export const MEET_RADIUS = 30; // px at which the person finds the dog
+export const HINT_PERIOD = 12; // seconds between whimper hints while alone
+export const AMBIENT_PERIOD = 26; // seconds between ambient lines when together
+
+const DOG_SPAWN_MIN = 170; // px from the person the lost dog waits
+const DOG_SPAWN_MAX = 240;
 
 const BALL_THROW_SPEED = 130; // px/s
 const BALL_DRAG = 140; // px/s^2
@@ -23,25 +34,71 @@ const STUCK_PROGRESS = 0.3; // fraction of full speed below which we count as st
 const STUCK_DELAY = 0.25; // seconds of no progress before detouring
 const DETOUR_TIME = 0.45; // seconds spent sidestepping
 
+const OPENING_LINES = [
+  'IN THE BEGINNING THERE WAS ONLY THE DARK',
+  'ONE SMALL PERSON, ALL ALONE IN THE WOODS',
+];
+const MEETING_LINES = ['A FRIENDLY LOST DOG!', 'TOGETHER WE WILL FIND HOME'];
+const AMBIENT_LINES = [
+  'FETCH IS OUR FAVORITE GAME!',
+  'THE WOODS FEEL WARMER NOW',
+  'HOME IS OUT THERE SOMEWHERE',
+];
+
 export class Game {
-  constructor(seed = 1) {
+  /**
+   * @param {number} seed world seed
+   * @param {{story?: boolean}} opts story: false starts past the opening —
+   *   dog already found and leashed (used by tests and quick demos).
+   */
+  constructor(seed = 1, { story = true } = {}) {
     this.world = new World(seed);
     this.rng = mulberry32(seed ^ 0x9e3779b9); // gameplay stream, separate from worldgen
     this.person = makeCharacter(PERSON, 0, 0);
-    this.dog = makeCharacter(DOG, -18, 8);
     this.active = 'person';
     this.time = 0;
 
     this.caption = null; // { text, t }
+    this.captionQueue = [];
+    this.captionSticky = false; // one-shot story lines resist being clobbered
     this.hearts = []; // { x, y, t }
     this.ball = null; // { x, y, vx, vy, carried }
     this.fetch = 'idle'; // idle | thrown | returning
     this.fetchTime = 0; // how long the current fetch has been running
     this.nav = { stuck: 0, detour: 0, side: 1 }; // dog AI steering state
+    this.hintTimer = 0;
+    this.ambientTimer = 0;
+    this.ambientIndex = 0;
     this._prevSwap = false;
     this._prevAction = false;
 
-    this.say('FETCH IS OUR FAVORITE GAME!');
+    if (story) {
+      this.together = false;
+      this.dog = makeCharacter(DOG, ...this.placeLostDog());
+      for (const line of OPENING_LINES) this.say(line);
+    } else {
+      this.together = true;
+      this.dog = makeCharacter(DOG, -18, 8);
+      this.say('FETCH IS OUR FAVORITE GAME!');
+    }
+  }
+
+  /**
+   * A collision-free spot for the lost dog, a walk away from the person —
+   * and outside the opening viewport, so "ALL ALONE IN THE WOODS" is true
+   * on frame one (the 170px spawn ring otherwise pokes into screen corners).
+   */
+  placeLostDog() {
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const angle = this.rng() * Math.PI * 2;
+      const dist = DOG_SPAWN_MIN + this.rng() * (DOG_SPAWN_MAX - DOG_SPAWN_MIN);
+      const x = Math.cos(angle) * dist;
+      const y = Math.sin(angle) * dist;
+      if (Math.abs(x) < 170 && y > -112 && y < 108) continue; // visible at start
+      const b = feetBox({ feetW: DOG.feetW, feetH: DOG.feetH, x, y }, x, y);
+      if (!this.world.collides(b.x, b.y, b.w, b.h)) return [x, y];
+    }
+    return [DOG_SPAWN_MAX, 0]; // forests are sparse; this is effectively unreachable
   }
 
   get activeChar() {
@@ -52,19 +109,57 @@ export class Game {
     return this.active === 'person' ? this.dog : this.person;
   }
 
+  /** The dotted leash shows whenever the pair walk together (not mid-fetch). */
+  leashActive() {
+    return this.together && this.fetch === 'idle';
+  }
+
+  /** Show a caption now, or queue it behind the one on screen. */
   say(text) {
-    this.caption = { text, t: CAPTION_TTL };
+    if (!this.caption) {
+      this.caption = { text, t: CAPTION_TTL };
+    } else if (this.captionQueue.length < 4) {
+      this.captionQueue.push(text);
+    }
+  }
+
+  /**
+   * Replace whatever is showing with a fresh sequence of lines — unless a
+   * one-shot story sequence is still playing, in which case the new lines
+   * queue politely behind it (routine lines must not eat story beats).
+   */
+  announce(lines) {
+    if (this.captionSticky) {
+      for (const line of lines) this.say(line);
+      return;
+    }
+    this.caption = null;
+    this.captionQueue = [];
+    for (const line of lines) this.say(line);
   }
 
   swapControl() {
+    if (!this.together) return;
     this.active = this.active === 'person' ? 'dog' : 'person';
     this.otherChar.following = false;
-    this.say(this.active === 'person' ? 'YOU ARE THE PERSON' : 'YOU ARE THE DOG');
+    this.announce([this.active === 'person' ? 'YOU ARE THE PERSON' : 'YOU ARE THE DOG']);
+  }
+
+  /** The person finds the friendly lost dog. */
+  meetDog() {
+    this.together = true;
+    this.dog.following = false;
+    this.announce(MEETING_LINES);
+    this.captionSticky = true; // this beat plays exactly once — protect it
+    this.ambientTimer = 0;
+    const mx = (this.person.x + this.dog.x) / 2;
+    const my = Math.min(this.person.y, this.dog.y) - 14;
+    this.hearts.push({ x: mx - 4, y: my, t: HEART_TTL }, { x: mx + 4, y: my - 3, t: HEART_TTL * 1.2 });
   }
 
   /** Person throws the pink ball in the direction they face. */
   throwBall() {
-    if (this.fetch !== 'idle') return;
+    if (!this.together || this.fetch !== 'idle') return;
     const p = this.person;
     let x = p.x + p.facing * 6;
     let y = p.y - 6;
@@ -82,7 +177,7 @@ export class Game {
     this.fetch = 'thrown';
     this.fetchTime = 0;
     this.nav = { stuck: 0, detour: 0, side: 1 };
-    this.say('FETCH IS OUR FAVORITE GAME!');
+    this.announce(['FETCH IS OUR FAVORITE GAME!']);
   }
 
   update(dt, input = {}) {
@@ -99,19 +194,28 @@ export class Game {
     const dirY = (input.down ? 1 : 0) - (input.up ? 1 : 0);
     moveCharacter(this.activeChar, dirX, dirY, dt, this.world);
 
-    // The other one follows — unless the dog is mid-fetch, which takes priority.
-    const dogBusy = this.fetch !== 'idle' && this.active === 'person';
-    if (!dogBusy) {
-      updateFollower(this.otherChar, this.activeChar, dt, this.world);
+    if (this.together) {
+      // The other one follows — unless the dog is mid-fetch, which takes priority.
+      const dogBusy = this.fetch !== 'idle' && this.active === 'person';
+      if (!dogBusy) {
+        updateFollower(this.otherChar, this.activeChar, dt, this.world);
+      }
+      this.updateBall(dt);
+      this.updateFetchAI(dt);
+      this.updateAmbient(dt);
+    } else {
+      this.updateAlone(dt);
     }
-
-    this.updateBall(dt);
-    this.updateFetchAI(dt);
 
     // Timers.
     if (this.caption) {
       this.caption.t -= dt;
-      if (this.caption.t <= 0) this.caption = null;
+      if (this.caption.t <= 0) {
+        this.caption = null;
+        const next = this.captionQueue.shift();
+        if (next) this.caption = { text: next, t: CAPTION_TTL };
+        else this.captionSticky = false; // the protected sequence has drained
+      }
     }
     for (const h of this.hearts) h.t -= dt;
     this.hearts = this.hearts.filter((h) => h.t > 0);
@@ -119,6 +223,32 @@ export class Game {
     // Far-away chunks regenerate deterministically, so cache them only nearby.
     const c = this.activeChar;
     this.world.prune(Math.floor(c.x / CHUNK), Math.floor(c.y / CHUNK));
+  }
+
+  /** Alone in the dark: the lost dog waits; soft whimpers point the way. */
+  updateAlone(dt) {
+    const dx = this.dog.x - this.person.x;
+    const dy = this.dog.y - this.person.y;
+    if (Math.hypot(dx, dy) <= MEET_RADIUS) {
+      this.meetDog();
+      return;
+    }
+    this.hintTimer += dt;
+    if (this.hintTimer >= HINT_PERIOD && !this.caption && this.captionQueue.length === 0) {
+      this.hintTimer = 0;
+      const compass = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'EAST' : 'WEST') : dy > 0 ? 'SOUTH' : 'NORTH';
+      this.say(`A SOFT WHIMPER DRIFTS FROM THE ${compass}`);
+    }
+  }
+
+  /** Occasional ambient story lines once the pair walk together. */
+  updateAmbient(dt) {
+    this.ambientTimer += dt;
+    if (this.ambientTimer >= AMBIENT_PERIOD && !this.caption && this.fetch === 'idle') {
+      this.ambientTimer = 0;
+      this.say(AMBIENT_LINES[this.ambientIndex % AMBIENT_LINES.length]);
+      this.ambientIndex++;
+    }
   }
 
   updateBall(dt) {
@@ -217,7 +347,7 @@ export class Game {
       if (Math.hypot(person.x - dog.x, person.y - dog.y) <= DELIVER_RADIUS) {
         this.ball = null;
         this.fetch = 'idle';
-        this.say('GOOD DOG');
+        this.announce(['GOOD DOG']);
         this.hearts.push({
           x: (person.x + dog.x) / 2,
           y: Math.min(person.y, dog.y) - 14,

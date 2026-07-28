@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.2.0] - 2026-07-28
+
+### Added
+- **Story, Act 0-2** (`docs/STORY.md` + `src/core/game.js`): the game now opens at the
+  beginning of the universe with only the person, alone in the lonely dark woods.
+  Whimper hints point toward a friendly lost dog waiting in a clearing; finding it
+  brings hearts, "TOGETHER WE WILL FIND HOME", and unlocks swapping and fetch.
+- **The leash**: a sagging dotted line of marching magenta/violet/blue dots ties the
+  pair together (slips off during fetch), straight from the reference footage.
+- Ambient story captions while walking together.
+
+### Changed
+- **Neo-noir re-theme**: smokey darks and purples — violet-black void, smoke-and-plum
+  dithered trees with magenta ember flecks, moonlit silver figures
+  (chrisportka.com-inspired palette in `src/gfx/palette.js`).
+- **Sprites redrawn from the reference**: taller, thinner person (9x18) with a
+  4-frame arm-swinging stride; detailed dog (13x9) with raised head, snout, ear,
+  and trotting legs.
+- **Cadence corrected**: presentation now runs at the reference's chunky ~15 fps
+  (simulation stays at 60 Hz) and the walk cycle advances at ~7.5 fps.
+- **Text improved**: new bold variable-width 8px pixel font (2px stems, narrow I)
+  copied from the reference; captions word-wrap and anchor above the active
+  character, clamped to the screen.
+- Trees now dither in 2x1 blocks like the reference footage.
+
 ## [0.1.0] - 2026-07-26
 
 ### Added
