@@ -9,6 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install dev dependencies (8bit-sfx parity test)
+        # Tolerated failure: the parity test skips with a note when the
+        # package isn't resolvable, mirroring the runner's toolchain skips.
+        run: npm install --no-audit --no-fund || echo "npm install failed; the sfx package parity test will skip"
       - name: Run tests
         run: |
           if [ -f tests/run-tests.sh ]; then

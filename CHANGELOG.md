@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.12.0] - 2026-07-30
+
+### Added
+- The game's sound set now ships in the [`8bit-sfx`](https://github.com/cportka/8bit-sfx)
+  npm package as its `pixelrpg` category — 24 WAVs rendered from this repo's `SOUNDS`
+  table by an exact port of the Web Audio engine semantics, each manifest entry carrying
+  the game's intended relative `gain`. `8bit-sfx` is now a dev dependency (pinned by
+  commit), and `tests/sfx-package.test.mjs` asserts the package and `EVENT_NAMES` stay in
+  exact parity — the test skips with a note when the package isn't installed. CI installs
+  dev dependencies before the suite. The in-game audio engine is unchanged: it keeps
+  live-synthesizing (which the wav files can't replicate fully — e.g. the `intensity`
+  modulation while the pipe's colors lean closer).
+
 ## [0.11.0] - 2026-07-30
 
 ### Added
