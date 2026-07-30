@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   Game, CAPTION_TTL, FETCH_TIMEOUT, MEET_RADIUS, HINT_PERIOD, TAP_ARRIVE,
 } from '../src/core/game.js';
+import { SCREEN_W, SCREEN_H } from '../src/core/screen.js';
 import { trunkBox } from '../src/core/world.js';
 
 const STEP = 1 / 60;
@@ -67,12 +68,16 @@ test('whimper hints point toward the waiting dog in all four directions', () => 
 });
 
 test('the lost dog never spawns inside the opening viewport', () => {
-  // Regression: the 170px spawn ring pokes into the 320x200 view's corners,
-  // putting the "lost" dog on screen under "ALL ALONE IN THE WOODS".
+  // Regression: the spawn ring must stay outside the view's corners, or the
+  // "lost" dog is on screen under "ALL ALONE IN THE WOODS" — whatever size
+  // the viewport is (it grew to 416x360 in v0.12).
   for (let seed = 1; seed <= 200; seed++) {
     const g = new Game(seed);
     // Opening camera sits at (0, -6); pad covers the 13x9 dog sprite.
-    const visible = Math.abs(g.dog.x) < 168 && g.dog.y > -110 && g.dog.y < 106;
+    const visible =
+      Math.abs(g.dog.x) < SCREEN_W / 2 + 8 &&
+      g.dog.y > -(SCREEN_H / 2 + 16) &&
+      g.dog.y < SCREEN_H / 2 + 8;
     assert.equal(visible, false, `seed ${seed}: dog visible at (${g.dog.x.toFixed(0)}, ${g.dog.y.toFixed(0)})`);
   }
 });
@@ -91,6 +96,8 @@ test('the meeting story beat survives an immediate throw or swap', () => {
   assert.equal(g.caption.text, 'A FRIENDLY LOST DOG!', 'story line not clobbered');
   runSeconds(g, CAPTION_TTL + 0.05);
   assert.equal(g.caption.text, 'TOGETHER WE WILL FIND HOME', 'second beat still plays');
+  runSeconds(g, CAPTION_TTL + 0.05);
+  assert.equal(g.caption.text, '+4 XP', 'the finder XP queues politely behind the story');
   runSeconds(g, CAPTION_TTL + 0.05);
   assert.equal(g.caption.text, 'FETCH IS OUR FAVORITE GAME!', 'routine line queued behind');
 });

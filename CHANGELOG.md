@@ -4,6 +4,56 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.12.0] - 2026-07-30
+
+### Added
+- **Levels and experience**: you start at **level 1** with **2 in every
+  stat** (a humbling −4 everywhere — fists deal 0, capacity is 60 lbs).
+  Every **10 XP** is a level and grants **2 stat points**, spent one +1 at
+  a time on the pausing level-up screen (same stat twice is allowed).
+  Finding the dog is worth **4 XP**; each zombie put down is **1 XP**.
+  Level and XP show in the HUD under HP and on the sheet, with a chime for
+  XP and a fanfare for levels.
+- **Icon-based inventory**: the character sheet is now a grid of 9×9
+  pictographs — six stat icons (fist, bulb, eye, bolt, heart, star) with
+  scores printed beneath, plus item icons for the bone, its meat, and the
+  pink ball. Clicking one (or arrows + Space) opens a little detail window
+  explaining the score, the modifier and its effect on your d20s, what
+  answers to that stat, or the item's numbers — plus its actions (PUNCH
+  SOMETHING, SWING THE BONE, GNAW OFF THE MEAT, THROW THE BALL, BACK).
+- Font gains `>`, `=`, and `/` glyphs for the new UI text.
+
+### Changed
+- **The viewport grew**: 320×200 → **416×360** world pixels at the same art
+  scale — the common 3× upscale is 1248×1080 device pixels (≥ the asked
+  1240×1080). The lost dog's spawn ring moved out (240–320px) so it stays
+  off the bigger opening screen.
+- **Mobile is horizontally locked**: on portrait touch devices the canvas
+  rotates 90° (CSS transform with pointer input mapped back through it),
+  and the Screen Orientation API is asked for a landscape lock where
+  permitted.
+- Stat rolls (3d6) are gone; growth now comes from leveling.
+- Caption wrap width follows the screen (was a stale 280px from the 320
+  era), and tiny windows downscale fractionally instead of silently
+  cropping the HUD.
+
+### Fixed (adversarial review)
+- A level-up menu opened by meeting the dog could be clobbered by a
+  same-tick encounter check, stranding the stat points; encounter sweeps
+  now never overwrite an open menu.
+- A lethal zombie bite delivered through a sheet-launched attack left the
+  re-arm cooldown on the detail window, so the fight force-reopened over
+  your unconscious body; the bite now stamps the zombie itself.
+- Closing any pause screen (sheet/detail/map/level-up) overwrote the single
+  encounter-cooldown slot, un-fleeing a fled zombie; pause screens no
+  longer claim the slot.
+- Touch SWAP/BALL buttons were drawn over full-frame pause screens, where
+  their upper halves fell through into the CLOSE row; they hide while any
+  menu is open.
+- The selected menu row's `- LABEL -` decoration could overflow the panel;
+  panels now size for it. The HUD no longer peeks a 1px sliver over
+  full-frame pause screens.
+
 ## [0.11.0] - 2026-07-30
 
 ### Added

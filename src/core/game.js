@@ -11,6 +11,7 @@
 
 import { World, CHUNK } from './world.js';
 import { regionAt, regionLandmarks } from './terrain.js';
+import { SCREEN_W, SCREEN_H } from './screen.js';
 import { mulberry32, hashCoords } from './rng.js';
 import { PERSON, DOG, makeCharacter, moveCharacter, updateFollower, feetBox } from './entities.js';
 
@@ -39,6 +40,11 @@ export const MEAT_WEIGHT = 2; // lbs — the meat still on it
 export const DRUNK_TIME = 600; // seconds the pipe's inebriation lasts (10 min)
 export const DRUNK_WIS_BONUS = 2; // wisdom flows easier while the colors lean in
 export const COLLAPSE_HP = 5; // where the dog's rescue leaves you
+export const START_STAT = 2; // everyone starts small; levels grow you
+export const XP_PER_LEVEL = 10; // flat: every level costs 10 XP
+export const LEVEL_POINTS = 2; // +1s to hand out per level, together or apart
+export const XP_DOG = 4; // finding the friendly lost dog
+export const XP_ZOMBIE = 1; // per zombie put back down
 
 // The remembered map (docs/RULES.md has none of this; memory keeps its own
 // rules). Regions near the person refresh; the rest fade over minutes.
@@ -47,8 +53,8 @@ export const MEM_FADED = 300; // s until only the barest outline remains
 const ENCOUNTER_RADIUS = 26; // px at which an encounter opens its menu
 const ENCOUNTER_REARM = 44; // walk this far away before it can re-open
 
-const DOG_SPAWN_MIN = 170; // px from the person the lost dog waits
-const DOG_SPAWN_MAX = 240;
+const DOG_SPAWN_MIN = 240; // px from the person the lost dog waits
+const DOG_SPAWN_MAX = 320; // (outside the 416x360 opening view, whimper range)
 
 const BALL_THROW_SPEED = 130; // px/s
 const BALL_DRAG = 140; // px/s^2
@@ -86,12 +92,13 @@ export class Game {
     this.active = 'person';
     this.time = 0;
 
-    // Ability scores, rolled 3d6 each at the beginning of the universe.
+    // Ability scores: everyone begins the universe at 2 across the board.
+    // Levels (XP_PER_LEVEL apart) hand out LEVEL_POINTS +1s each to grow.
     this.stats = {};
-    for (const a of ABILITIES) {
-      this.stats[a] =
-        3 + Math.floor(this.rng() * 6) + Math.floor(this.rng() * 6) + Math.floor(this.rng() * 6);
-    }
+    for (const a of ABILITIES) this.stats[a] = START_STAT;
+    this.level = 1;
+    this.xp = 0;
+    this.statPoints = 0; // unspent level-up +1s (the level menu collects them)
 
     this.caption = null; // { text, t }
     this.captionQueue = [];
@@ -138,6 +145,8 @@ export class Game {
 
     this._prevUp = false;
     this._prevDown = false;
+    this._prevLeft = false;
+    this._prevRight = false;
     this._prevSwap = false;
     this._prevAction = false;
     this._prevSheet = false;
@@ -165,7 +174,8 @@ export class Game {
       const dist = DOG_SPAWN_MIN + this.rng() * (DOG_SPAWN_MAX - DOG_SPAWN_MIN);
       const x = Math.cos(angle) * dist;
       const y = Math.sin(angle) * dist;
-      if (Math.abs(x) < 170 && y > -112 && y < 108) continue; // visible at start
+      // Visible at start? (Opening camera sits at (0, -6); pad for the sprite.)
+      if (Math.abs(x) < SCREEN_W / 2 + 8 && y > -(SCREEN_H / 2 + 16) && y < SCREEN_H / 2 + 8) continue;
       const b = feetBox({ feetW: DOG.feetW, feetH: DOG.feetH, x, y }, x, y);
       if (!this.world.collides(b.x, b.y, b.w, b.h)) return [x, y];
     }
@@ -337,6 +347,7 @@ export class Game {
     const mx = (this.person.x + this.dog.x) / 2;
     const my = Math.min(this.person.y, this.dog.y) - 14;
     this.hearts.push({ x: mx - 4, y: my, t: HEART_TTL }, { x: mx + 4, y: my - 3, t: HEART_TTL * 1.2 });
+    this.gainXp(XP_DOG); // finding a friend is most of the point
   }
 
   /** Person throws the pink ball in the direction they face. */
@@ -384,30 +395,67 @@ export class Game {
     }
   }
 
-  /** True while a world-pausing screen (inventory or map) is up. */
+  /** True while a world-pausing screen (inventory, detail, map, level) is up. */
   menuPaused() {
-    return !!this.choice && (this.choice.kind === 'sheet' || this.choice.kind === 'map');
+    return !!this.choice && ['sheet', 'detail', 'map', 'levelup'].includes(this.choice.kind);
+  }
+
+  /** Earn experience; every XP_PER_LEVEL of it is a level and 2 stat points. */
+  gainXp(n) {
+    this.xp += n;
+    this.say(`+${n} XP`);
+    this.emit('xp');
+    let leveled = false;
+    while (this.xp >= XP_PER_LEVEL) {
+      this.xp -= XP_PER_LEVEL;
+      this.level++;
+      this.statPoints += LEVEL_POINTS;
+      leveled = true;
+    }
+    if (leveled) {
+      this.emit('levelup');
+      this.triggerGlitch(0.5);
+      this.announce([`LEVEL ${this.level}!`, `CHOOSE ${this.statPoints} STAT POINTS`]);
+      if (!this.choice) this.openLevelUp();
+    }
+  }
+
+  /** The level-up menu: spend +1s one at a time (same stat twice is fine). */
+  openLevelUp() {
+    this.openChoice({
+      kind: 'levelup',
+      key: 'levelup',
+      x: this.person.x,
+      y: this.person.y,
+      title: `PICK +1 (${this.statPoints} LEFT)`,
+      options: ABILITIES.map((a) => ({
+        id: a,
+        label: `${a.toUpperCase()} ${this.stats[a]} > ${this.stats[a] + 1}`,
+      })),
+    });
   }
 
   update(dt, input = {}) {
-    // A choice menu freezes the walk: up/down select, action confirms.
-    // The inventory and map screens go further and pause the world outright —
-    // no time, no timers, no drunk countdown while you read.
+    // A choice menu freezes the walk: up/down (or left/right, for the icon
+    // grid) select, action confirms. Pause screens go further and stop the
+    // world outright — no time, no timers, no drunk countdown while you read.
     if (this.choice) {
       const paused = this.menuPaused();
       if (!paused) this.time += dt;
       const n = this.choice.options.length;
-      if (input.up && !this._prevUp) {
+      if ((input.up && !this._prevUp) || (input.left && !this._prevLeft)) {
         this.choiceIndex = (this.choiceIndex + n - 1) % n;
         this.emit('menu-move');
       }
-      if (input.down && !this._prevDown) {
+      if ((input.down && !this._prevDown) || (input.right && !this._prevRight)) {
         this.choiceIndex = (this.choiceIndex + 1) % n;
         this.emit('menu-move');
       }
       if (input.action && !this._prevAction) this.resolveChoice(this.choice.options[this.choiceIndex].id);
       this._prevUp = !!input.up;
       this._prevDown = !!input.down;
+      this._prevLeft = !!input.left;
+      this._prevRight = !!input.right;
       this._prevAction = !!input.action;
       this._prevSwap = !!input.swap;
       this._prevSheet = !!input.sheet;
@@ -429,6 +477,8 @@ export class Game {
     this._prevMap = !!input.map;
     this._prevUp = !!input.up;
     this._prevDown = !!input.down;
+    this._prevLeft = !!input.left;
+    this._prevRight = !!input.right;
     if (this.choice) return; // a pause screen opened this very tick — freeze now
 
     // Snapshot positions so footsteps can be paced by distance walked.
@@ -571,6 +621,7 @@ export class Game {
 
   /** Open encounter menus for whatever the person walks up to. */
   checkEncounters() {
+    if (this.choice) return; // never clobber an open menu (e.g. a level-up)
     if (this.active !== 'person') return; // the dog is unbothered by all of it
     const p = this.person;
     // Re-arm a recently closed menu only once you've actually walked away.
@@ -653,7 +704,11 @@ export class Game {
     if (!c) return;
     this.choice = null;
     this.choiceIndex = 0;
-    this.choiceCooldown = { key: c.key, x: c.x, y: c.y };
+    // Only world encounters claim the (single) re-arm cooldown slot; closing
+    // a pause screen must not wipe the cooldown of an encounter you fled.
+    if (!['sheet', 'detail', 'map', 'levelup'].includes(c.kind)) {
+      this.choiceCooldown = { key: c.key, x: c.x, y: c.y };
+    }
     this.emit('menu-confirm');
 
     if (c.kind === 'dumpster') {
@@ -697,10 +752,21 @@ export class Game {
       if (id === 'eat') this.eatBoneMeat();
       else this.announce(['YOU POCKET THE MEATY BONE']);
     } else if (c.kind === 'sheet') {
-      if (id === 'eat') this.eatBoneMeat();
-      else if (id === 'fists' || id === 'bone') this.attackFromSheet(id);
-      else if (id === 'ball') this.throwBall();
-      // close: nothing.
+      if (id !== 'close') this.openIconDetail(id);
+    } else if (c.kind === 'detail') {
+      if (id === 'back') this.openSheet();
+      else if (id === 'eat') this.eatBoneMeat();
+      else if (id === 'punch') this.attackFromSheet('fists');
+      else if (id === 'swing') this.attackFromSheet('bone');
+      else if (id === 'throw') this.throwBall();
+    } else if (c.kind === 'levelup') {
+      if (ABILITIES.includes(id) && this.statPoints > 0) {
+        this.stats[id]++;
+        this.statPoints--;
+        this.emit('heal');
+        if (this.statPoints > 0) this.openLevelUp();
+        else this.announce(['YOU FEEL SHARPER']);
+      }
     } else if (c.kind === 'map') {
       // close: the world resumes.
     } else if (c.kind === 'zombie') {
@@ -794,7 +860,8 @@ export class Game {
 
   /**
    * The action & inventory screen (I key, or double-click your character).
-   * Pauses the world; offers whatever you can do with what you carry.
+   * Pauses the world. Icon-based: six stat icons plus whatever you carry;
+   * picking one opens its little detail window (openIconDetail).
    */
   openSheet() {
     const person = this.active === 'person';
@@ -805,14 +872,89 @@ export class Game {
       y: this.person.y,
       title: 'YOU',
       options: [
-        ...(this.boneMeat ? [{ id: 'eat', label: 'GNAW THE BONE MEAT (+2 HP)' }] : []),
-        ...(person && this.hasBone ? [{ id: 'bone', label: 'SWING THE BONE' }] : []),
-        ...(person ? [{ id: 'fists', label: 'ATTACK WITH FISTS' }] : []),
+        ...ABILITIES.map((a) => ({ id: a, label: a.toUpperCase(), icon: a })),
+        ...(this.hasBone ? [{ id: 'bone', label: 'BONE', icon: 'bone' }] : []),
+        ...(this.boneMeat ? [{ id: 'meat', label: 'MEAT', icon: 'meat' }] : []),
         ...(person && this.together && this.fetch === 'idle'
-          ? [{ id: 'ball', label: 'THROW THE BALL' }]
+          ? [{ id: 'ball', label: 'BALL', icon: 'ball' }]
           : []),
         { id: 'close', label: 'CLOSE' },
       ],
+    });
+  }
+
+  /**
+   * A little window explaining an icon — the stat's score, modifier, and
+   * what answers to it, or an item's numbers — plus its actions.
+   */
+  openIconDetail(id) {
+    const person = this.active === 'person';
+    const fmt = (m) => (m >= 0 ? `+${m}` : `${m}`);
+    const statBody = (a) => [
+      `SCORE ${this.stats[a]}  MOD ${fmt(this.mod(a))}`,
+      `CHECKS ROLL D20${fmt(this.mod(a))}`,
+    ];
+    const DETAILS = {
+      str: {
+        title: 'STRENGTH',
+        body: [...statBody('str'), `FISTS DEAL ${this.fistDamage()} DMG`, `THE BONE DEALS ${this.boneDamage()}`],
+        options: person ? [{ id: 'punch', label: 'PUNCH SOMETHING' }] : [],
+      },
+      int: {
+        title: 'INTELLIGENCE',
+        body: [...statBody('int'), 'SEARCHING DUMPSTERS IS DC 10', 'ZOMBIES FIND IT DELICIOUS'],
+        options: [],
+      },
+      wis: {
+        title: 'WISDOM',
+        body: [
+          ...statBody('wis'),
+          'THE PIPE ANSWERS TO IT (DC 15)',
+          ...(this.drunk > 0 ? ['+2 WHILE THE COLORS LEAN IN'] : []),
+        ],
+        options: [],
+      },
+      dex: {
+        title: 'DEXTERITY',
+        body: [...statBody('dex'), 'NOTHING ASKS FOR IT YET', 'IT WAITS'],
+        options: [],
+      },
+      con: {
+        title: 'CONSTITUTION',
+        body: [...statBody('con'), 'CARRY: STR X 10 + CON X 20', `= ${this.carryCapacity()} LBS`],
+        options: [],
+      },
+      cha: {
+        title: 'CHARISMA',
+        body: [...statBody('cha'), 'GENIES ANSWER TO CHARM (DC 12)'],
+        options: [],
+      },
+      bone: {
+        title: 'THE BONE',
+        body: [`A GOOD CLUB: DC 9, ${this.boneDamage()} DMG`, `WEIGHS ${BONE_WEIGHT} LBS`],
+        options: person ? [{ id: 'swing', label: 'SWING THE BONE' }] : [],
+      },
+      meat: {
+        title: 'MEAT ON THE BONE',
+        body: ['GNAW FOR +2 HP. ONE SERVING', `WEIGHS ${MEAT_WEIGHT} LBS`],
+        options: [{ id: 'eat', label: 'GNAW OFF THE MEAT (+2 HP)' }],
+      },
+      ball: {
+        title: 'THE PINK BALL',
+        body: ['FETCH MENDS THE HEART (+1 HP)'],
+        options: [{ id: 'throw', label: 'THROW THE BALL' }],
+      },
+    };
+    const d = DETAILS[id];
+    if (!d) return;
+    this.openChoice({
+      kind: 'detail',
+      key: `detail:${id}`,
+      x: this.person.x,
+      y: this.person.y,
+      title: d.title,
+      body: d.body,
+      options: [...d.options, { id: 'back', label: 'BACK' }],
     });
   }
 
@@ -884,6 +1026,7 @@ export class Game {
           `${this.rollText(r)} - ${weapon ? 'BONK! THE BONE RINGS TRUE' : 'YOU LAND ONE'}`,
           'THE ZOMBIE CRUMBLES. THE FOREST EXHALES',
         ]);
+        this.gainXp(XP_ZOMBIE);
       } else {
         this.zombieHp.set(c.key, left);
         this.announce([`${this.rollText(r)} - ${weapon ? 'BONK! IT STAGGERS' : 'YOU LAND ONE. IT STAGGERS'}`]);
@@ -901,7 +1044,11 @@ export class Game {
     const lethal = this.hp <= ZOMBIE_BITE;
     this.damage(ZOMBIE_BITE);
     if (lethal) {
-      // Brains, partially eaten. The fight ends; the cooldown lets you crawl off.
+      // Brains, partially eaten. The fight ends; the cooldown lets you crawl
+      // off — stamped on the ZOMBIE explicitly, since a sheet-launched attack
+      // otherwise leaves the slot on the detail window and the fight would
+      // force-reopen over your unconscious body.
+      this.choiceCooldown = { key: c.key, x: c.x, y: c.y };
       this.stats.int = Math.max(1, this.stats.int - 1);
       this.announce([
         'IT TASTES A LITTLE OF YOUR BRAIN (-1 INT)',

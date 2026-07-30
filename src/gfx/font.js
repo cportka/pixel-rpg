@@ -469,6 +469,36 @@ export const GLYPHS = {
     'XX',
     '..',
   ],
+  '>': [
+    '.....',
+    'XX...',
+    '.XX..',
+    '..XX.',
+    '..XX.',
+    '.XX..',
+    'XX...',
+    '.....',
+  ],
+  '/': [
+    '....XX',
+    '....XX',
+    '...XX.',
+    '..XX..',
+    '..XX..',
+    '.XX...',
+    'XX....',
+    'XX....',
+  ],
+  '=': [
+    '.....',
+    '.....',
+    'XXXXX',
+    'XXXXX',
+    '.....',
+    'XXXXX',
+    'XXXXX',
+    '.....',
+  ],
 };
 
 /** Width of one glyph (variable-width font). Space and unknowns get SPACE_W. */
