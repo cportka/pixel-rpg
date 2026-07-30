@@ -74,4 +74,70 @@ export function catRowColor(row, frame) {
   return PSYCHE_CYCLE[(row + frame) % PSYCHE_CYCLE.length];
 }
 
+// An old lamp (10 wide x 6 tall), anchored at its base center.
+// 's' body, 'v' the knob, 'L' the spout.
+export const LAMP_SPRITE = [
+  '.....v....',
+  '....sss...',
+  'L..ssssss.',
+  'LLssssssss',
+  '.sssssss..',
+  '..sssss...',
+];
+
+export const LAMP_COLORS = {
+  s: PALETTE.smoke,
+  v: PALETTE.violet,
+  L: PALETTE.smoke,
+};
+
+// A pipe (10 wide x 5 tall): long stem, upturned bowl, a pinch of the
+// half-burnt green leaf on top. 'p' stem, 'P' bowl, 'g' the leaf.
+export const PIPE_SPRITE = [
+  '.......gg.',
+  '......PPPP',
+  '......PPPP',
+  'ppppppPPP.',
+  '......PP..',
+];
+
+export const PIPE_COLORS = {
+  p: PALETTE.smokeDeep,
+  P: PALETTE.plumDeep,
+  g: PALETTE.leaf,
+};
+
+/**
+ * The lamp's come-hither glint: a brief 4-point flash at the knob every
+ * couple of seconds. Empty most of the time. Offsets relative to the
+ * lamp's base center; the knob sits ~6px up.
+ */
+export function lampGlintPixels(time) {
+  if (Math.sin(time * 2.1) < 0.92) return [];
+  return [
+    { x: 0, y: -7, c: PALETTE.moonlight },
+    { x: -1, y: -7, c: PALETTE.violet },
+    { x: 1, y: -7, c: PALETTE.violet },
+    { x: 0, y: -8, c: PALETTE.violet },
+    { x: 0, y: -6, c: PALETTE.violet },
+  ];
+}
+
+/**
+ * Thin smoke wisps curling off the pipe bowl (only while the leaf lasts).
+ * Deterministic per time; offsets relative to the pipe's base center.
+ */
+export function pipeSmokePixels(time) {
+  const pixels = [];
+  for (let wisp = 0; wisp < 2; wisp++) {
+    const rise = (time * 2.2 + wisp * 1.4) % 4;
+    pixels.push({
+      x: 3 + Math.round(Math.sin(time * 2.5 + wisp * 2.1 + rise)),
+      y: -5 - Math.floor(rise),
+      c: PALETTE.smoke,
+    });
+  }
+  return pixels;
+}
+
 export { BLOCK_W };

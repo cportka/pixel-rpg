@@ -23,13 +23,12 @@ renderer.showTouchUI =
 // ?glitch=<seconds> forces a transition glitch at load (demos/screenshots).
 if (params.has('glitch')) game.triggerGlitch(Number(params.get('glitch')) || 3);
 
-// ?enc=dumpster|cat plants that encounter beside the spawn and opens its
-// menu right away (demos/testing).
-if (params.get('enc') === 'dumpster') {
-  game.world.chunkAt(0, 0).dumpsters.push({ x: 22, y: 4 });
-  game.checkEncounters();
-} else if (params.get('enc') === 'cat') {
-  game.world.chunkAt(0, 0).cats.push({ x: 22, y: 4, phase: 0 });
+// ?enc=dumpster|cat|lamp|pipe plants that encounter beside the spawn and
+// opens its menu right away (demos/testing).
+const enc = params.get('enc');
+if (enc === 'dumpster' || enc === 'cat' || enc === 'lamp' || enc === 'pipe') {
+  const field = { dumpster: 'dumpsters', cat: 'cats', lamp: 'lamps', pipe: 'pipes' }[enc];
+  game.world.chunkAt(0, 0)[field].push({ x: 22, y: 4, phase: 0 });
   game.checkEncounters();
 }
 

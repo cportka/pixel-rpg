@@ -15,6 +15,7 @@ export const PALETTE = {
   magenta: '#e33fd0', // neon magenta ember
   blue: '#5561ff', // cold electric blue
   pink: '#ff4fc8', // the fetch ball
+  leaf: '#6fae52', // the one green in the forest: the pipe's half-burnt leaf
 };
 
 // Sprite maps use single characters; '.' is transparent.
