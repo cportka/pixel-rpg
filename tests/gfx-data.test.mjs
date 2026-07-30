@@ -174,6 +174,23 @@ test('every caption the game can show can be typeset', () => {
     'YOU ARE THE PERSON',
     'YOU ARE THE DOG',
     'GOOD DOG',
+    'A DUMPSTER BURNS IN THE DARK',
+    'SEARCH THE DUMPSTER',
+    'PUT OUT THE FIRE (HOW?)',
+    'WALK AWAY',
+    'D20: 20 - YOU FIND A WARM BONE (+1 HP)',
+    'D20: 1 - THE FIRE BITES YOU (-1 HP)',
+    'D20: 15 - SOMEHOW YOU SMOTHER IT',
+    'D20: 7 - WITH WHAT? IT BURNS ON',
+    'A PSYCHEDELIC CAT REGARDS YOU',
+    'TALK TO HIM',
+    'PET HIM',
+    'GRAB HIM',
+    'THE CAT DISSOLVES INTO STATIC',
+    'THE CAT SCRATCHES YOU (-1 HP) AND VANISHES',
+    'YOU COLLAPSE. THE DOG WATCHES OVER YOU',
+    'YOU COLLAPSE. THE DARK IS PATIENT',
+    'HP 10',
   ];
   for (const text of captions) {
     for (const ch of text) {

@@ -97,6 +97,28 @@ export class World {
     return out;
   }
 
+  /** Burning dumpsters near the world-space rect. */
+  dumpstersInRect(x, y, w, h) {
+    const out = [];
+    for (const chunk of this.chunksInRect(x - CHUNK, y - CHUNK, w + 2 * CHUNK, h + 2 * CHUNK)) {
+      for (const d of chunk.dumpsters) {
+        if (d.x >= x - 16 && d.x <= x + w + 16 && d.y >= y - 8 && d.y <= y + h + 24) out.push(d);
+      }
+    }
+    return out;
+  }
+
+  /** Psychedelic cats near the world-space rect. */
+  catsInRect(x, y, w, h) {
+    const out = [];
+    for (const chunk of this.chunksInRect(x - CHUNK, y - CHUNK, w + 2 * CHUNK, h + 2 * CHUNK)) {
+      for (const c of chunk.cats) {
+        if (c.x >= x - 12 && c.x <= x + w + 12 && c.y >= y - 8 && c.y <= y + h + 12) out.push(c);
+      }
+    }
+    return out;
+  }
+
   /**
    * Does a feet-box (x, y, w, h — top-left corner, world px) collide with any
    * tree trunk? Bushes and canopies never block; walking behind trees is the point.
@@ -107,6 +129,10 @@ export class World {
         if (t.kind !== 'tree') continue;
         const b = trunkBox(t);
         if (x < b.x + b.w && x + w > b.x && y < b.y + b.h && y + h > b.y) return true;
+      }
+      for (const d of chunk.dumpsters) {
+        // A dumpster is solid at its base (16 wide, like the sprite).
+        if (x < d.x + 8 && x + w > d.x - 8 && y < d.y + 1 && y + h > d.y - 3) return true;
       }
     }
     return false;
@@ -192,5 +218,23 @@ export function generateChunk(seed, cx, cy) {
     }
   }
 
-  return { cx, cy, trees, sparkles, inflatables };
+  // Rare encounters. (Order matters: these rng draws come after everything
+  // above so earlier chunk content is unchanged for existing seeds.)
+  const dumpsters = [];
+  if (rng() < 0.02) {
+    dumpsters.push({
+      x: baseX + 20 + Math.floor(rng() * (CHUNK - 40)),
+      y: baseY + 20 + Math.floor(rng() * (CHUNK - 40)),
+    });
+  }
+  const cats = [];
+  if (rng() < 0.02) {
+    cats.push({
+      x: baseX + 20 + Math.floor(rng() * (CHUNK - 40)),
+      y: baseY + 20 + Math.floor(rng() * (CHUNK - 40)),
+      phase: rng() * Math.PI * 2,
+    });
+  }
+
+  return { cx, cy, trees, sparkles, inflatables, dumpsters, cats };
 }

@@ -72,3 +72,37 @@ export function starPixels(glow, size = 1) {
 export function starSize(sparkle) {
   return 1 + ((sparkle.tint + Math.floor(sparkle.phase * 2)) % 3);
 }
+
+// Symmetric rounding (Math.round biases toward +Infinity for -.5).
+const sround = (v) => (v < 0 ? -Math.round(-v) : Math.round(v));
+
+/**
+ * The tap-to-move destination marker: three small arrowheads spaced 120°
+ * apart, apexes pointing at the target, marching inward on a loop — a pixel
+ * take on the BG3 pulse. Returns [{x, y, tri, apex}] offsets from the
+ * target; tri (0..2) picks a color, apex marks each arrowhead's tip.
+ */
+export function targetMarkerPixels(time) {
+  const r = 7 - Math.floor((time * 10) % 5); // 7 → 3, then snaps out again
+  const dirs = [
+    [0, -1],
+    [-0.866, 0.5],
+    [0.866, 0.5],
+  ];
+  const out = [];
+  dirs.forEach(([dx, dy], tri) => {
+    const ax = sround(dx * r);
+    const ay = sround(dy * r);
+    const bx = sround(dx * (r + 2));
+    const by = sround(dy * (r + 2));
+    const px = sround(-dy);
+    const py = sround(dx);
+    out.push(
+      { x: ax, y: ay, tri, apex: true },
+      { x: bx, y: by, tri, apex: false },
+      { x: bx + px, y: by + py, tri, apex: false },
+      { x: bx - px, y: by - py, tri, apex: false },
+    );
+  });
+  return out;
+}

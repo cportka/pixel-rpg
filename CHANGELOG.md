@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.6.0] - 2026-07-30
+
+### Added
+- **Rare encounters with choice menus**: a burning dumpster (search it — d20
+  DC 10 for a warm bone (+1 HP) or a burn (-1 HP) — or try to put out the
+  fire, DC 15, with what exactly?) and a psychedelic cat who dissolves into
+  static if you talk to him and scratches you (-1 HP) before vanishing if you
+  try anything else. Menus: arrows + Space/E, or tap a row; walking away
+  re-arms an unresolved encounter once you leave.
+- **Simplified D&D rules** (`docs/RULES.md`): 10 HP, visible d20 rolls,
+  fetch heals +1, collapse at 0 HP brings you back at 5 under the dog's
+  watch. HP shows top-left, flushing magenta when low.
+- **BG3-style move marker**: the tap destination now pulses three arrowheads
+  converging on the target instead of a static cross.
+- `?enc=dumpster|cat` plants an encounter at spawn for demos.
+
 ## [0.5.0] - 2026-07-30
 
 ### Added

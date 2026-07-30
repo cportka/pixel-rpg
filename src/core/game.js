@@ -21,6 +21,14 @@ export const AMBIENT_PERIOD = 26; // seconds between ambient lines when together
 export const TAP_ARRIVE = 3; // px at which a tap-move target counts as reached
 export const TAP_GIVE_UP = 2.5; // seconds without progress before abandoning a tap target
 
+// Simplified D&D (docs/RULES.md): d20 checks against a DC, 10 HP to start.
+export const MAX_HP = 10;
+export const DC_SEARCH = 10; // rummaging a burning dumpster: easy-ish
+export const DC_SMOTHER = 15; // putting out a fire bare-handed: hard
+export const COLLAPSE_HP = 5; // where the dog's rescue leaves you
+const ENCOUNTER_RADIUS = 26; // px at which an encounter opens its menu
+const ENCOUNTER_REARM = 44; // walk this far away before it can re-open
+
 const DOG_SPAWN_MIN = 170; // px from the person the lost dog waits
 const DOG_SPAWN_MAX = 240;
 
@@ -78,6 +86,17 @@ export class Game {
     this.seenInflatables = false; // the encounter caption plays once
     this.inflatableCheck = 0;
     this.glitch = { t: 0, dur: 1, seed: 0 }; // transition glitch: remaining/total time + burst seed
+
+    // Simplified D&D state.
+    this.hp = MAX_HP;
+    this.choice = null; // active menu: { kind, key, x, y, title, options: [{id, label}] }
+    this.choiceIndex = 0;
+    this.choiceCooldown = null; // { key, x, y } — recently closed, re-arms at distance
+    this.encounterDone = new Set(); // encounter keys that resolved for good
+    this.dumpstersOut = new Set(); // dumpsters whose fire was smothered
+    this.encounterCheck = 0;
+    this._prevUp = false;
+    this._prevDown = false;
     this._prevSwap = false;
     this._prevAction = false;
 
@@ -145,6 +164,28 @@ export class Game {
     this.caption = null;
     this.captionQueue = [];
     for (const line of lines) this.say(line);
+  }
+
+  /** Roll a d20 from the gameplay rng stream. */
+  d20() {
+    return 1 + Math.floor(this.rng() * 20);
+  }
+
+  /** Lose HP; at 0 the dog drags you back from the brink. */
+  damage(n) {
+    this.hp = Math.max(0, this.hp - n);
+    this.triggerGlitch(0.3);
+    if (this.hp === 0) {
+      this.hp = COLLAPSE_HP;
+      this.triggerGlitch(0.6);
+      this.announce([
+        this.together ? 'YOU COLLAPSE. THE DOG WATCHES OVER YOU' : 'YOU COLLAPSE. THE DARK IS PATIENT',
+      ]);
+    }
+  }
+
+  heal(n) {
+    this.hp = Math.min(MAX_HP, this.hp + n);
   }
 
   /** Kick off a brief transition glitch (renderer reads this.glitch). */
@@ -216,14 +257,46 @@ export class Game {
     this.announce(['FETCH IS OUR FAVORITE GAME!']);
   }
 
+  /** Advance the timers that keep running even while a menu is open. */
+  tickTimers(dt) {
+    if (this.caption) {
+      this.caption.t -= dt;
+      if (this.caption.t <= 0) {
+        this.caption = null;
+        const next = this.captionQueue.shift();
+        if (next) this.caption = { text: next, t: CAPTION_TTL };
+        else this.captionSticky = false; // the protected sequence has drained
+      }
+    }
+    for (const h of this.hearts) h.t -= dt;
+    this.hearts = this.hearts.filter((h) => h.t > 0);
+    if (this.glitch.t > 0) this.glitch.t = Math.max(0, this.glitch.t - dt);
+  }
+
   update(dt, input = {}) {
     this.time += dt;
+
+    // A choice menu freezes the walk: up/down select, action confirms.
+    if (this.choice) {
+      const n = this.choice.options.length;
+      if (input.up && !this._prevUp) this.choiceIndex = (this.choiceIndex + n - 1) % n;
+      if (input.down && !this._prevDown) this.choiceIndex = (this.choiceIndex + 1) % n;
+      if (input.action && !this._prevAction) this.resolveChoice(this.choice.options[this.choiceIndex].id);
+      this._prevUp = !!input.up;
+      this._prevDown = !!input.down;
+      this._prevAction = !!input.action;
+      this._prevSwap = !!input.swap;
+      this.tickTimers(dt);
+      return;
+    }
 
     // Edge-detect swap/action so a held key fires once.
     if (input.swap && !this._prevSwap) this.swapControl();
     this._prevSwap = !!input.swap;
     if (input.action && !this._prevAction && this.active === 'person') this.throwBall();
     this._prevAction = !!input.action;
+    this._prevUp = !!input.up;
+    this._prevDown = !!input.down;
 
     // Player-controlled character: keys win over a tap target.
     const dirX = (input.right ? 1 : 0) - (input.left ? 1 : 0);
@@ -250,19 +323,14 @@ export class Game {
       this.updateAlone(dt);
     }
 
-    // Timers.
-    if (this.caption) {
-      this.caption.t -= dt;
-      if (this.caption.t <= 0) {
-        this.caption = null;
-        const next = this.captionQueue.shift();
-        if (next) this.caption = { text: next, t: CAPTION_TTL };
-        else this.captionSticky = false; // the protected sequence has drained
-      }
+    this.tickTimers(dt);
+
+    // Rare encounters open their menus when the person wanders close.
+    this.encounterCheck += dt;
+    if (this.encounterCheck >= 0.3) {
+      this.encounterCheck = 0;
+      this.checkEncounters();
     }
-    for (const h of this.hearts) h.t -= dt;
-    this.hearts = this.hearts.filter((h) => h.t > 0);
-    if (this.glitch.t > 0) this.glitch.t = Math.max(0, this.glitch.t - dt);
 
     // Coming upon the dancing inflatables plays a one-shot caption.
     this.inflatableCheck += dt;
@@ -301,6 +369,104 @@ export class Game {
     }
     this.tapLastDist = after;
     if (this.tapStall > TAP_GIVE_UP) this.clearMoveTarget(); // e.g. tapped a trunk
+  }
+
+  /** Open encounter menus for dumpsters and cats the person walks up to. */
+  checkEncounters() {
+    if (this.active !== 'person') return; // the dog is unbothered by all of it
+    const p = this.person;
+    // Re-arm a recently closed menu only once you've actually walked away.
+    if (this.choiceCooldown) {
+      const cd = this.choiceCooldown;
+      if (Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) this.choiceCooldown = null;
+    }
+    const blocked = (key) => this.encounterDone.has(key) || this.choiceCooldown?.key === key;
+
+    for (const d of this.world.dumpstersInRect(p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2)) {
+      const key = `d:${d.x},${d.y}`;
+      if (blocked(key)) continue;
+      this.choice = {
+        kind: 'dumpster',
+        key,
+        x: d.x,
+        y: d.y,
+        title: 'A DUMPSTER BURNS IN THE DARK',
+        options: [
+          { id: 'search', label: 'SEARCH THE DUMPSTER' },
+          { id: 'putout', label: 'PUT OUT THE FIRE (HOW?)' },
+          { id: 'walkaway', label: 'WALK AWAY' },
+        ],
+      };
+      this.choiceIndex = 0;
+      this.clearMoveTarget();
+      this.triggerGlitch(0.25);
+      return;
+    }
+
+    for (const c of this.world.catsInRect(p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2)) {
+      const key = `c:${c.x},${c.y}`;
+      if (blocked(key)) continue;
+      this.choice = {
+        kind: 'cat',
+        key,
+        x: c.x,
+        y: c.y,
+        title: 'A PSYCHEDELIC CAT REGARDS YOU',
+        options: [
+          { id: 'talk', label: 'TALK TO HIM' },
+          { id: 'pet', label: 'PET HIM' },
+          { id: 'grab', label: 'GRAB HIM' },
+        ],
+      };
+      this.choiceIndex = 0;
+      this.clearMoveTarget();
+      this.triggerGlitch(0.25);
+      return;
+    }
+  }
+
+  /** Resolve the open menu (docs/RULES.md has the numbers). */
+  resolveChoice(id) {
+    const c = this.choice;
+    if (!c) return;
+    this.choice = null;
+    this.choiceIndex = 0;
+    this.choiceCooldown = { key: c.key, x: c.x, y: c.y };
+
+    if (c.kind === 'dumpster') {
+      if (id === 'search') {
+        this.encounterDone.add(c.key);
+        const roll = this.d20();
+        if (roll >= DC_SEARCH) {
+          this.heal(1);
+          this.hearts.push({ x: c.x, y: c.y - 16, t: 1.6 });
+          this.announce([`D20: ${roll} - YOU FIND A WARM BONE (+1 HP)`]);
+        } else {
+          this.announce([`D20: ${roll} - THE FIRE BITES YOU (-1 HP)`]);
+          this.damage(1);
+        }
+      } else if (id === 'putout') {
+        const roll = this.d20();
+        if (roll >= DC_SMOTHER) {
+          this.dumpstersOut.add(c.key);
+          this.encounterDone.add(c.key);
+          this.triggerGlitch(0.4);
+          this.announce([`D20: ${roll} - SOMEHOW YOU SMOTHER IT`]);
+        } else {
+          this.announce([`D20: ${roll} - WITH WHAT? IT BURNS ON`]);
+        }
+      }
+      // walkaway: nothing — the cooldown lets you leave in peace.
+    } else if (c.kind === 'cat') {
+      this.encounterDone.add(c.key); // however this goes, the cat is gone
+      this.triggerGlitch(0.4);
+      if (id === 'talk') {
+        this.announce(['THE CAT DISSOLVES INTO STATIC']);
+      } else {
+        this.announce(['THE CAT SCRATCHES YOU (-1 HP) AND VANISHES']);
+        this.damage(1);
+      }
+    }
   }
 
   /** Alone in the dark: the lost dog waits; soft whimpers point the way. */
@@ -426,6 +592,7 @@ export class Game {
         this.ball = null;
         this.fetch = 'idle';
         this.triggerGlitch(0.25);
+        this.heal(1); // a good game of fetch mends the heart (docs/RULES.md)
         this.announce(['GOOD DOG']);
         this.hearts.push({
           x: (person.x + dog.x) / 2,

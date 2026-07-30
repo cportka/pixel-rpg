@@ -2,7 +2,7 @@
 // game state and drawing without needing a DOM.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons } from '../src/gfx/renderer.js';
+import { Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons, choicePanel } from '../src/gfx/renderer.js';
 import { WALK_CYCLE_FPS } from '../src/gfx/sprites.js';
 import { Game } from '../src/core/game.js';
 
@@ -130,6 +130,34 @@ test('an active glitch adds band self-blits to the frame', () => {
     glitchPerFrame > cleanPerFrame,
     `glitch frame blits extra bands (${glitchPerFrame} vs ${cleanPerFrame})`,
   );
+});
+
+test('choicePanel geometry: null when closed, on-screen rows when open', () => {
+  const g = new Game(1, { story: false });
+  assert.equal(choicePanel(g), null);
+  g.choice = {
+    kind: 'dumpster',
+    key: 'd:0,0',
+    x: 0,
+    y: 0,
+    title: 'A DUMPSTER BURNS IN THE DARK',
+    options: [
+      { id: 'search', label: 'SEARCH THE DUMPSTER' },
+      { id: 'putout', label: 'PUT OUT THE FIRE (HOW?)' },
+      { id: 'walkaway', label: 'WALK AWAY' },
+    ],
+  };
+  const panel = choicePanel(g);
+  assert.equal(panel.rows.length, 3);
+  assert.ok(panel.x >= 0 && panel.y >= 0 && panel.x + panel.w <= SCREEN_W && panel.y + panel.h <= SCREEN_H);
+  for (const row of panel.rows) {
+    assert.ok(row.y >= panel.y && row.y + row.h <= panel.y + panel.h + 2, 'rows inside the panel');
+  }
+  // Renders without throwing, with the menu and HP HUD up.
+  const canvas = fakeCanvas();
+  const r = makeRenderer(canvas);
+  r.render(g);
+  assert.ok(canvas.ctx.ops.fillRect > 100);
 });
 
 test('drawLeash paints a run of marching dots between the pair', () => {
