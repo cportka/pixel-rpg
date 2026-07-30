@@ -1,6 +1,6 @@
 {
   "name": "pixel-rpg",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "A pixelated RPG — a person and their dog wander a procedurally generated magical forest.",
   "type": "module",
   "scripts": {
@@ -8,5 +8,8 @@
     "start": "python3 -m http.server 8000"
   },
   "license": "MIT",
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "8bit-sfx": "github:cportka/8bit-sfx#973149a0312417a689b686dd54977d5aa78d7175"
+  }
 }
