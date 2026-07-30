@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.9.0] - 2026-07-30
+
+### Added
+- **Six abilities**: STR, INT, WIS, DEX, CON, CHA — each rolled 3d6 from the
+  seeded gameplay dice at the beginning of the universe (same seed, same
+  person). Checks are now `d20 + modifier` (`floor((score − 10) / 2)`) with
+  the modifier shown in the roll caption (`D20: 14+2 - ...`), and every
+  encounter check is ability-tagged: dumpster search INT, fire-smothering
+  STR, lamp-rubbing CHA, the pipe WIS, zombie-punching STR.
+- **The character sheet**: press **I** (or the new ME touch button) for stats,
+  HP, the drunk countdown, and the bone — and to gnaw the saved meat.
+- **Pipe inebriation**: rolling the vision now also grants 10 minutes of
+  drunkenness — colors intensify (glowing stars, breathing screen bands,
+  magenta captions), sounds play louder, and WIS checks get +2. A countdown
+  shows top-left; the world settles back down when it runs out.
+- **The zombie** (rare): shambles in place with one magenta eye. Befriending
+  it earns a bite (−2 HP); fists are STR vs DC 12 for 2 damage; the bone is
+  STR vs DC 9 for 3 (BONK); running away is free. It has 4 HP. A bite that
+  drops you to 0 also samples your brain: −1 INT, never below 1.
+- **The meaty bone**: a successful dumpster search now pulls out a bone with
+  meat on it — gnaw it right away or save it (the sheet offers it later) for
+  **+2 HP**, and the stripped bone remains a club for zombie fights.
+- New chip sounds: the zombie groan, the bone BONK, gnawing, and a woozy
+  drunk sting; the audio engine gained an intensity control (clamped) that
+  main.js drives while drunk.
+
+### Changed
+- The dumpster search success replaces the old flat "+1 HP warm bone" with
+  the meaty-bone chain above.
+- `docs/RULES.md` rewritten around abilities, the bone, inebriation, and the
+  zombie; README controls table gains the I key and ME button.
+
 ## [0.8.0] - 2026-07-30
 
 ### Added

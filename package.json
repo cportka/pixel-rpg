@@ -1,6 +1,6 @@
 {
   "name": "pixel-rpg",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "A pixelated RPG — a person and their dog wander a procedurally generated magical forest.",
   "type": "module",
   "scripts": {

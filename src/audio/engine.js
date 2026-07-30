@@ -18,6 +18,7 @@ export class AudioPlayer {
     this.master = null;
     this.noiseBuf = null;
     this.muted = false;
+    this.intensity = 1; // >1 while the pipe's colors lean closer
   }
 
   /** Build (or wake) the context. Safe to call on every input event. */
@@ -56,7 +57,7 @@ export class AudioPlayer {
 
   playSegment(seg, at) {
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(seg.v, at);
+    gain.gain.setValueAtTime(Math.min(0.25, seg.v * this.intensity), at);
     gain.gain.exponentialRampToValueAtTime(0.001, at + seg.d);
     gain.connect(this.master);
 

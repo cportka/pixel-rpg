@@ -24,11 +24,11 @@ renderer.showTouchUI =
 // ?glitch=<seconds> forces a transition glitch at load (demos/screenshots).
 if (params.has('glitch')) game.triggerGlitch(Number(params.get('glitch')) || 3);
 
-// ?enc=dumpster|cat|lamp|pipe plants that encounter beside the spawn and
+// ?enc=dumpster|cat|lamp|pipe|zombie plants that encounter beside the spawn and
 // opens its menu right away (demos/testing).
 const enc = params.get('enc');
-if (enc === 'dumpster' || enc === 'cat' || enc === 'lamp' || enc === 'pipe') {
-  const field = { dumpster: 'dumpsters', cat: 'cats', lamp: 'lamps', pipe: 'pipes' }[enc];
+if (enc === 'dumpster' || enc === 'cat' || enc === 'lamp' || enc === 'pipe' || enc === 'zombie') {
+  const field = { dumpster: 'dumpsters', cat: 'cats', lamp: 'lamps', pipe: 'pipes', zombie: 'zombies' }[enc];
   game.world.chunkAt(0, 0)[field].push({ x: 22, y: 4, phase: 0 });
   game.checkEncounters();
 }
@@ -64,6 +64,7 @@ const KEYMAP = {
   ArrowRight: 'right', KeyD: 'right',
   Tab: 'swap', KeyC: 'swap',
   Space: 'action', KeyE: 'action',
+  KeyI: 'sheet',
 };
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyM' && !e.repeat) audio.muted = !audio.muted;
@@ -121,6 +122,7 @@ function inputState() {
     right: keys.has('right'),
     swap: keys.has('swap') || pressed.has('swap'),
     action: keys.has('action') || pressed.has('action'),
+    sheet: keys.has('sheet') || pressed.has('sheet'),
   };
 }
 
@@ -144,7 +146,8 @@ function frame(now) {
   }
   // Latched taps are cleared only once a step has actually consumed them.
   if (stepped) pressed.clear();
-  // Play whatever the simulation heard this frame.
+  // Play whatever the simulation heard this frame — louder while drunk.
+  audio.intensity = game.drunk > 0 ? 1.7 : 1;
   for (const name of game.events) audio.play(name);
   game.events.length = 0;
   if (renderAcc >= RENDER_STEP) {

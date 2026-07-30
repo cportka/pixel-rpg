@@ -21,13 +21,20 @@ export const AMBIENT_PERIOD = 26; // seconds between ambient lines when together
 export const TAP_ARRIVE = 3; // px at which a tap-move target counts as reached
 export const TAP_GIVE_UP = 2.5; // seconds without progress before abandoning a tap target
 
-// Simplified D&D (docs/RULES.md): d20 checks against a DC, 10 HP to start.
+// Simplified D&D (docs/RULES.md): ability checks (d20 + modifier) vs a DC.
 export const MAX_HP = 10;
-export const DC_SEARCH = 10; // rummaging a burning dumpster: easy-ish
-export const DC_SMOTHER = 15; // putting out a fire bare-handed: hard
-export const DC_GENIE = 12; // rubbing a genie out of an old lamp
-export const DC_VISION = 15; // the pipe: this good or better, the woods speak
+export const ABILITIES = ['str', 'int', 'wis', 'dex', 'con', 'cha'];
+export const DC_SEARCH = 10; // rummaging a burning dumpster: INT, easy-ish
+export const DC_SMOTHER = 15; // putting out a fire bare-handed: STR, hard
+export const DC_GENIE = 12; // charming a genie out of an old lamp: CHA
+export const DC_VISION = 15; // the pipe (WIS): this good or better, the woods speak
 export const DC_COUGH = 7; // the pipe: this bad or worse, you pay for it
+export const DC_FISTS = 12; // punching a zombie: STR
+export const DC_BONE = 9; // swinging the bone: STR, but it's a club
+export const ZOMBIE_HP = 4;
+export const ZOMBIE_BITE = 2;
+export const DRUNK_TIME = 600; // seconds the pipe's inebriation lasts (10 min)
+export const DRUNK_WIS_BONUS = 2; // wisdom flows easier while the colors lean in
 export const COLLAPSE_HP = 5; // where the dog's rescue leaves you
 const ENCOUNTER_RADIUS = 26; // px at which an encounter opens its menu
 const ENCOUNTER_REARM = 44; // walk this far away before it can re-open
@@ -71,6 +78,13 @@ export class Game {
     this.active = 'person';
     this.time = 0;
 
+    // Ability scores, rolled 3d6 each at the beginning of the universe.
+    this.stats = {};
+    for (const a of ABILITIES) {
+      this.stats[a] =
+        3 + Math.floor(this.rng() * 6) + Math.floor(this.rng() * 6) + Math.floor(this.rng() * 6);
+    }
+
     this.caption = null; // { text, t }
     this.captionQueue = [];
     this.captionSticky = false; // one-shot story lines resist being clobbered
@@ -98,6 +112,10 @@ export class Game {
 
     // Simplified D&D state.
     this.hp = MAX_HP;
+    this.drunk = 0; // seconds of pipe inebriation remaining
+    this.hasBone = false; // the dumpster bone doubles as a club
+    this.boneMeat = false; // ...and starts with meat on it (+2 HP when eaten)
+    this.zombieHp = new Map(); // per-zombie fight state, keyed like encounters
     this.choice = null; // active menu: { kind, key, x, y, title, options: [{id, label}] }
     this.choiceIndex = 0;
     this.choiceCooldown = null; // { key, x, y } — recently closed, re-arms at distance
@@ -108,6 +126,7 @@ export class Game {
     this._prevDown = false;
     this._prevSwap = false;
     this._prevAction = false;
+    this._prevSheet = false;
 
     if (story) {
       this.together = false;
@@ -190,6 +209,26 @@ export class Game {
   d20() {
     this.emit('roll');
     return 1 + Math.floor(this.rng() * 20);
+  }
+
+  /** D&D modifier for an ability — drunkenness sharpens wisdom, oddly. */
+  mod(ability) {
+    let m = Math.floor((this.stats[ability] - 10) / 2);
+    if (ability === 'wis' && this.drunk > 0) m += DRUNK_WIS_BONUS;
+    return m;
+  }
+
+  /** An ability check: d20 + modifier vs nothing in particular yet. */
+  check(ability) {
+    const roll = this.d20();
+    const mod = this.mod(ability);
+    return { roll, mod, total: roll + mod };
+  }
+
+  /** Caption-ready roll text: "D20: 14+2" (mod shown only when nonzero). */
+  rollText(c) {
+    const m = c.mod === 0 ? '' : c.mod > 0 ? `+${c.mod}` : `${c.mod}`;
+    return `D20: ${c.roll}${m}`;
   }
 
   /** Which compass way is home? (The genie knows.) */
@@ -304,6 +343,10 @@ export class Game {
     for (const h of this.hearts) h.t -= dt;
     this.hearts = this.hearts.filter((h) => h.t > 0);
     if (this.glitch.t > 0) this.glitch.t = Math.max(0, this.glitch.t - dt);
+    if (this.drunk > 0) {
+      this.drunk = Math.max(0, this.drunk - dt);
+      if (this.drunk === 0) this.say('THE WORLD SETTLES BACK DOWN');
+    }
   }
 
   update(dt, input = {}) {
@@ -325,15 +368,18 @@ export class Game {
       this._prevDown = !!input.down;
       this._prevAction = !!input.action;
       this._prevSwap = !!input.swap;
+      this._prevSheet = !!input.sheet;
       this.tickTimers(dt);
       return;
     }
 
-    // Edge-detect swap/action so a held key fires once.
+    // Edge-detect swap/action/sheet so a held key fires once.
     if (input.swap && !this._prevSwap) this.swapControl();
     this._prevSwap = !!input.swap;
     if (input.action && !this._prevAction && this.active === 'person') this.throwBall();
     this._prevAction = !!input.action;
+    if (input.sheet && !this._prevSheet) this.openSheet();
+    this._prevSheet = !!input.sheet;
     this._prevUp = !!input.up;
     this._prevDown = !!input.down;
 
@@ -505,6 +551,15 @@ export class Game {
         return;
       }
     }
+
+    // Zombies get their own path: options depend on the bone, and they groan.
+    for (const z of near('zombiesInRect')) {
+      const key = `z:${z.x},${z.y}`;
+      if (blocked(key)) continue;
+      this.emit('zombie');
+      this.openChoice(this.zombieMenu(key, z.x, z.y));
+      return;
+    }
   }
 
   /** Resolve the open menu (docs/RULES.md has the numbers). */
@@ -519,28 +574,48 @@ export class Game {
     if (c.kind === 'dumpster') {
       if (id === 'search') {
         this.encounterDone.add(c.key);
-        const roll = this.d20();
-        if (roll >= DC_SEARCH) {
-          this.heal(1);
+        const r = this.check('int');
+        if (r.total >= DC_SEARCH) {
+          this.hasBone = true;
+          this.boneMeat = true;
           this.emit('heal');
           this.hearts.push({ x: c.x, y: c.y - 16, t: 1.6 });
-          this.announce([`D20: ${roll} - YOU FIND A WARM BONE (+1 HP)`]);
+          this.announce([`${this.rollText(r)} - YOU PULL OUT A MEATY BONE`]);
+          this.openChoice({
+            kind: 'bone',
+            key: `${c.key}:bone`,
+            x: c.x,
+            y: c.y,
+            title: 'A MEATY BONE',
+            options: [
+              { id: 'eat', label: 'GNAW OFF THE MEAT (+2 HP)' },
+              { id: 'save', label: 'SAVE IT FOR LATER' },
+            ],
+          });
         } else {
-          this.announce([`D20: ${roll} - THE FIRE BITES YOU (-1 HP)`]);
+          this.announce([`${this.rollText(r)} - THE FIRE BITES YOU (-1 HP)`]);
           this.damage(1);
         }
       } else if (id === 'putout') {
-        const roll = this.d20();
-        if (roll >= DC_SMOTHER) {
+        const r = this.check('str');
+        if (r.total >= DC_SMOTHER) {
           this.dumpstersOut.add(c.key);
           this.encounterDone.add(c.key);
           this.triggerGlitch(0.4);
-          this.announce([`D20: ${roll} - SOMEHOW YOU SMOTHER IT`]);
+          this.announce([`${this.rollText(r)} - SOMEHOW YOU SMOTHER IT`]);
         } else {
-          this.announce([`D20: ${roll} - WITH WHAT? IT BURNS ON`]);
+          this.announce([`${this.rollText(r)} - WITH WHAT? IT BURNS ON`]);
         }
       }
       // walkaway: nothing — the cooldown lets you leave in peace.
+    } else if (c.kind === 'bone') {
+      if (id === 'eat') this.eatBoneMeat();
+      else this.announce(['YOU POCKET THE MEATY BONE']);
+    } else if (c.kind === 'sheet') {
+      if (id === 'eat') this.eatBoneMeat();
+      // close: nothing.
+    } else if (c.kind === 'zombie') {
+      this.resolveZombie(c, id);
     } else if (c.kind === 'cat') {
       this.encounterDone.add(c.key); // however this goes, the cat is gone
       this.triggerGlitch(0.4);
@@ -554,11 +629,12 @@ export class Game {
       }
     } else if (c.kind === 'lamp') {
       if (id === 'rub') {
-        const roll = this.d20();
+        const r = this.check('cha');
+        const roll = r.total;
         if (roll >= DC_GENIE) {
           this.emit('genie');
           this.triggerGlitch(0.5);
-          this.announce([`D20: ${roll} - A GENIE BILLOWS OUT IN VIOLET SMOKE`]);
+          this.announce([`${this.rollText(r)} - A GENIE BILLOWS OUT IN VIOLET SMOKE`]);
           // Chain straight into the wish menu (same key: resolving any wish
           // finishes the lamp).
           this.openChoice({
@@ -574,7 +650,7 @@ export class Game {
             ],
           });
         } else {
-          this.announce([`D20: ${roll} - ONLY DUST AND A FAINT COUGH INSIDE`]);
+          this.announce([`${this.rollText(r)} - ONLY DUST AND A FAINT COUGH INSIDE`]);
         }
       }
       // walkaway: the lamp keeps glinting.
@@ -594,25 +670,123 @@ export class Game {
     } else if (c.kind === 'pipe') {
       if (id === 'smoke') {
         this.encounterDone.add(c.key); // the leaf only had one bowl in it
-        const roll = this.d20();
-        if (roll >= DC_VISION) {
+        const r = this.check('wis');
+        if (r.total >= DC_VISION) {
+          this.drunk = DRUNK_TIME;
           this.emit('vision');
+          this.emit('drunk');
           this.triggerGlitch(1.2); // the long one
           this.announce([
-            `D20: ${roll} - THE STARS LEAN CLOSER`,
+            `${this.rollText(r)} - THE STARS LEAN CLOSER`,
             'A VISION: THE INFLATABLES DANCE AT THE CENTER OF ALL THINGS',
-            'THE PIPE IS SPENT',
+            'THE COLORS LEAN CLOSER TOO (DRUNK 10:00)',
           ]);
-        } else if (roll <= DC_COUGH) {
-          this.announce([`D20: ${roll} - YOU COUGH FOR A FULL MINUTE (-1 HP)`, 'THE PIPE IS SPENT']);
+        } else if (r.total <= DC_COUGH) {
+          this.announce([`${this.rollText(r)} - YOU COUGH FOR A FULL MINUTE (-1 HP)`, 'THE PIPE IS SPENT']);
           this.damage(1);
         } else {
-          this.announce([`D20: ${roll} - NOTHING. PROBABLY OAK LEAF`, 'THE PIPE IS SPENT']);
+          this.announce([`${this.rollText(r)} - NOTHING. PROBABLY OAK LEAF`, 'THE PIPE IS SPENT']);
         }
       } else if (id === 'sniff') {
         this.announce(['IT SMELLS LIKE REGRET AND LAWN CLIPPINGS']);
       }
       // walkaway: it keeps smoldering.
+    }
+  }
+
+  /** Gnaw the meat off the dumpster bone: +2 HP, the bone remains a club. */
+  eatBoneMeat() {
+    if (!this.boneMeat) return;
+    this.boneMeat = false;
+    this.heal(2);
+    this.emit('eat');
+    this.announce(['YOU GNAW OFF THE MEAT (+2 HP). THE BONE REMAINS']);
+  }
+
+  /** The character sheet, as a menu (I key or the ME touch button). */
+  openSheet() {
+    this.openChoice({
+      kind: 'sheet',
+      key: 'sheet',
+      x: this.person.x,
+      y: this.person.y,
+      title: 'YOU',
+      options: [
+        ...(this.boneMeat ? [{ id: 'eat', label: 'GNAW THE BONE MEAT (+2 HP)' }] : []),
+        { id: 'close', label: 'CLOSE' },
+      ],
+    });
+  }
+
+  /** The zombie fight menu (options depend on what you're carrying). */
+  zombieMenu(key, x, y) {
+    return {
+      kind: 'zombie',
+      key,
+      x,
+      y,
+      title: 'A ZOMBIE SHAMBLES IN PLACE',
+      options: [
+        { id: 'befriend', label: 'TRY TO BEFRIEND IT' },
+        { id: 'fists', label: 'ATTACK WITH FISTS' },
+        ...(this.hasBone ? [{ id: 'bone', label: 'SWING THE BONE' }] : []),
+        { id: 'run', label: 'RUN AWAY' },
+      ],
+    };
+  }
+
+  resolveZombie(c, id) {
+    if (id === 'run') return; // it is not fast. the cooldown covers your exit.
+    const hp = this.zombieHp.get(c.key) ?? ZOMBIE_HP;
+
+    if (id === 'befriend') {
+      this.announce(['THE ZOMBIE DOES NOT WANT FRIENDS']);
+      this.zombieBites(c);
+      return;
+    }
+
+    const weapon = id === 'bone' && this.hasBone;
+    const r = this.check('str');
+    const dc = weapon ? DC_BONE : DC_FISTS;
+    const dmg = weapon ? 3 : 2;
+    if (r.total >= dc) {
+      const left = hp - dmg;
+      if (weapon) this.emit('bonk');
+      if (left <= 0) {
+        this.encounterDone.add(c.key);
+        this.zombieHp.delete(c.key);
+        this.emit('vanish');
+        this.triggerGlitch(0.4);
+        this.announce([
+          `${this.rollText(r)} - ${weapon ? 'BONK! THE BONE RINGS TRUE' : 'YOU LAND ONE'}`,
+          'THE ZOMBIE CRUMBLES. THE FOREST EXHALES',
+        ]);
+      } else {
+        this.zombieHp.set(c.key, left);
+        this.announce([`${this.rollText(r)} - ${weapon ? 'BONK! IT STAGGERS' : 'YOU LAND ONE. IT STAGGERS'}`]);
+        this.openChoice(this.zombieMenu(c.key, c.x, c.y));
+      }
+    } else {
+      this.announce([`${this.rollText(r)} - YOU MISS`]);
+      this.zombieBites(c);
+    }
+  }
+
+  /** The zombie's answer to everything. Too weak, and it samples your brain. */
+  zombieBites(c) {
+    this.emit('zombie');
+    const lethal = this.hp <= ZOMBIE_BITE;
+    this.damage(ZOMBIE_BITE);
+    if (lethal) {
+      // Brains, partially eaten. The fight ends; the cooldown lets you crawl off.
+      this.stats.int = Math.max(1, this.stats.int - 1);
+      this.announce([
+        'IT TASTES A LITTLE OF YOUR BRAIN (-1 INT)',
+        this.together ? 'THE DOG DRAGS YOU AWAY' : 'YOU WAKE ALONE, AND LIGHTER',
+      ]);
+    } else {
+      this.say(`IT BITES (-${ZOMBIE_BITE} HP)`);
+      this.openChoice(this.zombieMenu(c.key, c.x, c.y));
     }
   }
 

@@ -110,6 +110,31 @@ test('muted or unresumed players stay silent, and resume() is idempotent', () =>
   player.play('not-a-sound'); // unknown names are ignored
 });
 
+test('drunk intensity plays louder but never past the safety clamp', () => {
+  const ctx = fakeContext();
+  const peaks = [];
+  const origCreateGain = ctx.createGain.bind(ctx);
+  ctx.createGain = () => {
+    const g = origCreateGain();
+    g.gain.setValueAtTime = (v) => peaks.push(v);
+    return g;
+  };
+  const player = new AudioPlayer(() => ctx);
+  player.resume();
+  player.play('damage');
+  const sober = Math.max(...peaks);
+  peaks.length = 0;
+  player.intensity = 1.7;
+  player.play('damage');
+  const drunk = Math.max(...peaks);
+  assert.ok(drunk > sober, 'the colors and sounds lean closer');
+  assert.ok(drunk <= 0.25, 'still inside the clamp');
+  peaks.length = 0;
+  player.intensity = 100;
+  player.play('damage');
+  assert.ok(Math.max(...peaks) <= 0.25, 'the clamp is absolute');
+});
+
 test('the noise buffer is deterministic and built once', () => {
   const player = new AudioPlayer(fakeContext);
   player.resume();

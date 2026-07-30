@@ -107,6 +107,37 @@ export const PIPE_COLORS = {
   g: PALETTE.leaf,
 };
 
+// A zombie (9 wide x 16 tall): arms out, mid-shamble, one magenta eye.
+// 'Z' rotten flesh (the leaf green), 'e' the eye.
+export const ZOMBIE_SPRITE = [
+  '.ZZZ.....',
+  '.ZeZ.....',
+  '.ZZZ.....',
+  '..Z......',
+  '.ZZZZ....',
+  '.ZZZZZZZZ',
+  '.ZZZZZZZZ',
+  '.ZZZZ....',
+  '.ZZZZ....',
+  '..ZZZ....',
+  '..ZZZ....',
+  '..Z.Z....',
+  '..Z.Z....',
+  '..Z.ZZ...',
+  '.ZZ..Z...',
+  '.ZZ..ZZ..',
+];
+
+export const ZOMBIE_COLORS = {
+  Z: PALETTE.leaf,
+  e: PALETTE.magenta,
+};
+
+/** The zombie's shamble: a 1px sway that lurches rather than glides. */
+export function zombieSway(time, phase) {
+  return Math.sin(time * 1.7 + phase) > 0.2 ? 1 : 0;
+}
+
 /**
  * The lamp's come-hither glint: a brief 4-point flash at the knob every
  * couple of seconds. Empty most of the time. Offsets relative to the

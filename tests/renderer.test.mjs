@@ -74,19 +74,21 @@ test('captions anchored at screen corners stay fully on screen', () => {
   }
 });
 
-test('touch buttons exist only when together, on screen, not overlapping', () => {
+test('touch buttons: ME always; SWAP and BALL only when together', () => {
   const alone = new Game(1);
-  assert.deepEqual(uiButtons(alone), [], 'no buttons while alone');
+  assert.deepEqual(uiButtons(alone).map((b) => b.id), ['sheet'], 'only ME while alone');
   const together = new Game(1, { story: false });
   const buttons = uiButtons(together);
-  assert.equal(buttons.length, 2);
+  assert.equal(buttons.length, 3);
   const ids = buttons.map((b) => b.id).sort();
-  assert.deepEqual(ids, ['action', 'swap']);
+  assert.deepEqual(ids, ['action', 'sheet', 'swap']);
   for (const b of buttons) {
     assert.ok(b.x >= 0 && b.y >= 0 && b.x + b.w <= SCREEN_W && b.y + b.h <= SCREEN_H, `${b.id} on screen`);
   }
-  const [l, r] = [...buttons].sort((a, b) => a.x - b.x);
-  assert.ok(l.x + l.w < r.x, 'buttons do not overlap');
+  const sorted = [...buttons].sort((a, b) => a.x - b.x);
+  for (let i = 1; i < sorted.length; i++) {
+    assert.ok(sorted[i - 1].x + sorted[i - 1].w < sorted[i].x, 'buttons do not overlap');
+  }
 });
 
 test('screenToWorld maps the screen center to the camera position', () => {
