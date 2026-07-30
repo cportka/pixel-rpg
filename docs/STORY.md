@@ -63,7 +63,12 @@ Ambient lines while walking together:
 Home exists somewhere in the infinite forest — a warm-lit clearing seeded far
 from the origin. Ideas, in intended order:
 
-1. **The Ember Trail** — occasional warmer-tinted sparkles drift in home's
+1. **The Dancing Inflatables** *(implemented in v0.4.0)* — somewhere deep in
+   the woods, a clearing where tube-dancers wave forever in magenta and
+   violet. They mean nothing. They explain nothing. The captions say so:
+   "THE INFLATABLES DANCE. NO ONE KNOWS WHY". The pair can stay as long as
+   they like.
+2. **The Ember Trail** — occasional warmer-tinted sparkles drift in home's
    direction; following them is navigation without a map.
 2. **Campfires** — rare clearings with a small fire: a save point / rest beat.
    Captions there slow down and get personal ("THE DOG SLEEPS. YOU WATCH THE

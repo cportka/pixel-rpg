@@ -79,19 +79,28 @@ export function treePixels(tree) {
     }
   }
 
-  // Canopy: scattered blocks in an ellipse over the trunk top, denser inward.
+  // Canopy: stacked jagged tiers — an angular pine silhouette. Each tier
+  // widens linearly to a hard shelf, then the next tier resets narrow; the
+  // rim rows jitter so the edge stays torn rather than geometric-clean.
   const mix = CANOPY_MIX[tree.variant] ?? CANOPY_MIX.ember;
-  const rx = Math.max(5, Math.round(H * 0.42));
-  const ry = Math.max(4, Math.round(H * 0.3));
-  const cy = -trunkH - Math.round(ry * 0.5);
-  const n = Math.round(rx * ry * 1.6);
-  for (let i = 0; i < n; i++) {
-    const a = rng() * Math.PI * 2;
-    const r = Math.sqrt(rng()); // area-uniform, then thinned near the rim
-    if (r > 0.55 && rng() < (r - 0.55) * 1.6) continue;
-    const x = snap(Math.cos(a) * r * rx);
-    const y = cy + Math.round(Math.sin(a) * r * ry);
-    pixels.push({ x, y, c: pick(rng, mix) });
+  const canopyH = Math.max(8, Math.round(H * 0.55));
+  const topY = -trunkH - canopyH;
+  const canopyHalf = Math.max(4, Math.round(H * 0.4));
+  const tiers = 2 + Math.floor(rng() * 2);
+  const tierRows = Math.ceil(canopyH / tiers);
+  for (let row = 0; row < canopyH; row++) {
+    const tier = Math.floor(row / tierRows);
+    const frac = ((row % tierRows) + 1) / tierRows;
+    let half = Math.round((canopyHalf * (tier + 1)) / tiers) * frac;
+    if (rng() < 0.4) half += rng() < 0.5 ? -2 : 2; // jagged edge
+    half = Math.max(2, Math.round(half));
+    const y = topY + row;
+    for (let x = -snap(half); x <= half; x += BLOCK_W) {
+      // Rim blocks always land so the angles read crisply; the fill dithers.
+      if (Math.abs(x) >= half - 1 || rng() < 0.72) {
+        pixels.push({ x, y, c: pick(rng, mix) });
+      }
+    }
   }
 
   // A few bare branch arms poking out of the canopy.
@@ -120,20 +129,21 @@ export function treePixels(tree) {
 }
 
 function bushPixels(bush, rng) {
+  // Angular bushes: a jagged diamond instead of a soft blob.
   const pixels = [];
   const mix = CANOPY_MIX[bush.variant] ?? CANOPY_MIX.ember;
   const rx = Math.max(3, Math.round(bush.size * 0.7));
-  const ry = Math.max(2, Math.round(bush.size * 0.38));
-  const n = Math.round(rx * ry * 1.8);
-  for (let i = 0; i < n; i++) {
-    const a = rng() * Math.PI * 2;
-    const r = Math.sqrt(rng());
-    if (r > 0.6 && rng() < (r - 0.6) * 1.8) continue;
-    pixels.push({
-      x: snap(Math.cos(a) * r * rx),
-      y: -ry + Math.round(Math.sin(a) * r * ry),
-      c: pick(rng, mix),
-    });
+  const ry = Math.max(2, Math.round(bush.size * 0.4));
+  for (let row = 0; row <= ry * 2; row++) {
+    let half = Math.round(rx * (1 - Math.abs(row - ry) / (ry + 0.0001)));
+    if (rng() < 0.35) half += rng() < 0.5 ? -2 : 2;
+    if (half < 1) continue;
+    const y = -ry * 2 + row;
+    for (let x = -snap(half); x <= half; x += BLOCK_W) {
+      if (Math.abs(x) >= half - 1 || rng() < 0.7) {
+        pixels.push({ x, y, c: pick(rng, mix) });
+      }
+    }
   }
   return withBounds(pixels);
 }

@@ -96,3 +96,45 @@ test('sparklesInRect only returns sparkles inside the rect', () => {
     assert.ok(s.x >= 0 && s.x <= CHUNK && s.y >= 0 && s.y <= CHUNK);
   }
 });
+
+test('inflatable groves are rare, well-formed, and stay in their chunk', () => {
+  let groves = 0;
+  let dancers = 0;
+  const N = 40;
+  for (let cx = 0; cx < N; cx++) {
+    for (let cy = 0; cy < N; cy++) {
+      const chunk = generateChunk(21, cx, cy);
+      if (chunk.inflatables.length === 0) continue;
+      groves++;
+      dancers += chunk.inflatables.length;
+      for (const f of chunk.inflatables) {
+        assert.ok(f.x >= cx * CHUNK && f.x < (cx + 1) * CHUNK, 'x in chunk');
+        assert.ok(f.y >= cy * CHUNK && f.y < (cy + 1) * CHUNK, 'y in chunk');
+        assert.ok(f.h >= 22 && f.h <= 32, 'tube height sane');
+        assert.ok(f.tint >= 0 && f.tint < 4);
+        assert.ok(f.speed > 0);
+      }
+      assert.ok(chunk.inflatables.length >= 2 && chunk.inflatables.length <= 4, 'groves come in groups');
+    }
+  }
+  assert.ok(groves > 0, 'the forest does contain inflatables somewhere');
+  assert.ok(groves < N * N * 0.1, `they stay rare (${groves}/${N * N} chunks)`);
+  assert.ok(dancers >= groves * 2);
+});
+
+test('inflatablesInRect finds a grove near the rect', () => {
+  const w = new World(21);
+  let found = null;
+  outer: for (let cx = 0; cx < 40; cx++) {
+    for (let cy = 0; cy < 40; cy++) {
+      const chunk = w.chunkAt(cx, cy);
+      if (chunk.inflatables.length > 0) {
+        found = chunk.inflatables[0];
+        break outer;
+      }
+    }
+  }
+  assert.ok(found, 'expected a grove within 1600 chunks');
+  const hits = w.inflatablesInRect(found.x - 10, found.y - 10, 20, 20);
+  assert.ok(hits.some((f) => f.x === found.x && f.y === found.y));
+});

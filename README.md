@@ -1,12 +1,13 @@
 # pixel-rpg
 
 A pixelated neo-noir RPG. At the beginning of the universe there is only the
-dark and one small person, wandering the lonely woods — smoke-and-plum dithered
-trees in a violet-black void, twinkling motes between them. Somewhere out there
+dark and one small person, wandering the lonely woods — angular smoke-and-plum
+trees in a violet-black void, twinkling motes between them, and stranger
+things dancing where the woods grow deep. Somewhere out there
 waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
 eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.3.0
+**Version:** 0.4.0
 
 ## Play
 

@@ -357,6 +357,23 @@ test('a tap on a trunk is abandoned instead of wedging forever', () => {
   assert.ok(g.person.x < px, 'keyboard control works normally afterward');
 });
 
+test('coming upon the dancing inflatables plays a one-shot caption', () => {
+  const g = openGame();
+  runSeconds(g, CAPTION_TTL + 0.1); // let the greeting clear
+  // Plant a dancer within encounter range of the person.
+  g.world.chunkAt(0, 0).inflatables.push({
+    x: g.person.x + 60, y: g.person.y, h: 24, tint: 0, phase: 0, speed: 3,
+  });
+  runSeconds(g, 1);
+  assert.equal(g.seenInflatables, true);
+  assert.equal(g.caption.text, 'THE INFLATABLES DANCE. NO ONE KNOWS WHY');
+  // One-shot: after it expires it never replays, even standing right there.
+  runSeconds(g, CAPTION_TTL + 0.2);
+  assert.equal(g.caption, null);
+  runSeconds(g, 2);
+  assert.equal(g.caption, null, 'the encounter line does not repeat');
+});
+
 test('same seed, same forest — the game world is reproducible', () => {
   const a = new Game(1337);
   const b = new Game(1337);

@@ -10,6 +10,7 @@
 import { PALETTE, SPRITE_COLORS, SPARKLE_TINTS, LEASH_COLORS } from './palette.js';
 import { PERSON_FRAMES, DOG_FRAMES, BALL_SPRITE, HEART_SPRITE, walkFrame, spriteSize } from './sprites.js';
 import { treePixels, BLOCK_W, BLOCK_H } from './trees.js';
+import { inflatablePixels } from './inflatables.js';
 import { textPixels, measureText, wrapText, GLYPH_H, LINE_GAP } from './font.js';
 
 export const SCREEN_W = 320;
@@ -224,6 +225,20 @@ export class Renderer {
         draw: () => {
           const s = this.treeSprite(tree);
           ctx.drawImage(s.canvas, Math.round(tree.x - viewX) + s.offX, Math.round(tree.y - viewY) + s.offY);
+        },
+      });
+    }
+    for (const f of game.world.inflatablesInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      drawables.push({
+        y: f.y,
+        draw: () => {
+          const geo = inflatablePixels(f, game.time);
+          const bx = Math.round(f.x - viewX);
+          const by = Math.round(f.y - viewY);
+          for (const p of geo.pixels) {
+            ctx.fillStyle = p.c;
+            ctx.fillRect(bx + p.x, by + p.y, BLOCK_W, BLOCK_H);
+          }
         },
       });
     }
