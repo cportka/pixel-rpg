@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.11.0] - 2026-07-30
+
+### Added
+- **Terrains** (`src/core/terrain.js`): a lazy biome layer above the chunk
+  grid. Every 640px region is dealt one of five biomes from the seed —
+  **grasslands** (open, tufted), **oak woods** (the classic sparse forest),
+  **dense redwood stands** (taller, packed trees), **lakes** (elliptical,
+  impassable water), and **mountains** (rock mounds, and a **cave mouth**
+  per region, something glinting inside). **Rivers** meander down every
+  fifth region column, crossed by plank **bridges** at least once per
+  region; **mysterious cabins** stand in some forest and grass regions,
+  window lit magenta, door never seen open. Water and rock block movement;
+  nothing generates in the water; everything is generated lazily on
+  approach and identical on every return. The 2x2 regions around the origin
+  are always the home oak woods — dry, walkable, and (because oak keeps the
+  exact pre-terrain generation sequence) laid out just as older seeds
+  remember them.
+- **The memory HUD**: a top-right minimap of the nearby regions *as the
+  person remembers them* — sharp (dense dither + landmark marks: river,
+  bridge, cabin, cave) for ~90 seconds, thinning to biome-tint dither over
+  five minutes, then only four corner pips: the barest outline, never fully
+  forgotten. Clicking the HUD (or pressing **P**) pauses the game on the
+  **map screen** — everything ever remembered, faded by age, you at the
+  center.
+
+### Changed
+- Chunks outside oak regions generate with biome-specific densities, so
+  non-home terrain rerolls relative to v0.10 worlds (the home woods are
+  unchanged).
+- `World.collides` now also blocks on water (bridges exempt), rocks,
+  cabins, and cave rock faces.
+
 ## [0.10.0] - 2026-07-30
 
 ### Added

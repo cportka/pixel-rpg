@@ -6,6 +6,7 @@
 // chunks can be generated lazily in any order. Chunks are cached in a Map.
 
 import { coordRng, pick } from './rng.js';
+import { biomeAt, isWater, regionInfo, REGION } from './terrain.js';
 
 export const CHUNK = 160; // px per chunk side
 
@@ -133,9 +134,30 @@ export class World {
     return this.featuresInRect('zombies', x, y, w, h, 14);
   }
 
+  /** Mountain rocks near the world-space rect. */
+  rocksInRect(x, y, w, h) {
+    return this.featuresInRect('rocks', x, y, w, h, 20);
+  }
+
+  /** Mysterious cabins near the world-space rect. */
+  cabinsInRect(x, y, w, h) {
+    return this.featuresInRect('cabins', x, y, w, h, 24);
+  }
+
+  /** Cave mouths near the world-space rect. */
+  cavesInRect(x, y, w, h) {
+    return this.featuresInRect('caves', x, y, w, h, 20);
+  }
+
+  /** Grass tufts within the world-space rect (ground decoration). */
+  tuftsInRect(x, y, w, h) {
+    return this.featuresInRect('tufts', x, y, w, h, 4);
+  }
+
   /**
-   * Does a feet-box (x, y, w, h — top-left corner, world px) collide with any
-   * tree trunk? Bushes and canopies never block; walking behind trees is the point.
+   * Does a feet-box (x, y, w, h — top-left corner, world px) collide with a
+   * tree trunk, a structure, a rock, or water? Bushes and canopies never
+   * block; walking behind trees is the point. Bridges read as dry land.
    */
   collides(x, y, w, h) {
     for (const chunk of this.chunksInRect(x - CHUNK, y - CHUNK, w + 2 * CHUNK, h + 2 * CHUNK)) {
@@ -148,6 +170,25 @@ export class World {
         // A dumpster is solid at its base (16 wide, like the sprite).
         if (x < d.x + 8 && x + w > d.x - 8 && y < d.y + 1 && y + h > d.y - 3) return true;
       }
+      for (const r of chunk.rocks) {
+        const half = Math.max(3, Math.round(r.size * 0.35));
+        if (x < r.x + half && x + w > r.x - half && y < r.y + 1 && y + h > r.y - 4) return true;
+      }
+      for (const c of chunk.cabins) {
+        if (x < c.x + 10 && x + w > c.x - 10 && y < c.y + 1 && y + h > c.y - 6) return true;
+      }
+      for (const c of chunk.caves) {
+        // The rock face is solid except the mouth itself (center 6px).
+        if (x < c.x + 9 && x + w > c.x - 9 && y < c.y + 1 && y + h > c.y - 5) {
+          if (!(x + w / 2 > c.x - 3 && x + w / 2 < c.x + 3 && y + h > c.y - 2)) return true;
+        }
+      }
+    }
+    // Water: sample the box corners and center (feet boxes are a few px).
+    for (const [px, py] of [
+      [x, y], [x + w, y], [x, y + h], [x + w, y + h], [x + w / 2, y + h / 2],
+    ]) {
+      if (isWater(this.seed, px, py)) return true;
     }
     return false;
   }
@@ -159,14 +200,27 @@ export function trunkBox(tree) {
   return { x: tree.x - half, y: tree.y - 3, w: half * 2, h: 4 };
 }
 
+// Per-biome generation parameters. Oak is EXACTLY the pre-terrain sequence
+// (same draws in the same order), so home-woods chunks — and every oak region
+// — keep the layouts older seeds grew.
+const BIOME_GEN = {
+  grass: { trees: (r) => (r() < 0.3 ? 1 : 0), size: [24, 14], gap: 34, bushes: (r) => Math.floor(r() * 3), tufts: [8, 7] },
+  oak: { trees: (r) => 1 + Math.floor(r() * 3), size: [32, 20], gap: 34, bushes: (r) => Math.floor(r() * 3), tufts: [2, 3] },
+  lake: { trees: (r) => Math.floor(r() * 2), size: [32, 16], gap: 34, bushes: (r) => Math.floor(r() * 2), tufts: [3, 3] },
+  redwood: { trees: (r) => 3 + Math.floor(r() * 4), size: [50, 28], gap: 26, bushes: (r) => Math.floor(r() * 2), tufts: [0, 0] },
+  mountain: { trees: (r) => (r() < 0.4 ? 1 : 0), size: [26, 14], gap: 34, bushes: (r) => (r() < 0.5 ? 1 : 0), tufts: [0, 0], rocks: [2, 4] },
+};
+
 /** Pure chunk generator — same (seed, cx, cy) always returns identical content. */
 export function generateChunk(seed, cx, cy) {
   const rng = coordRng(seed, cx, cy);
   const baseX = cx * CHUNK;
   const baseY = cy * CHUNK;
+  const biome = biomeAt(seed, Math.floor((cx * CHUNK) / REGION), Math.floor((cy * CHUNK) / REGION));
+  const gen = BIOME_GEN[biome];
 
   const trees = [];
-  const nTrees = 1 + Math.floor(rng() * 3); // sparse like the reference
+  const nTrees = gen.trees(rng);
   for (let i = 0; i < nTrees; i++) {
     let x = 0;
     let y = 0;
@@ -174,20 +228,20 @@ export function generateChunk(seed, cx, cy) {
     for (let attempt = 0; attempt < 6 && !ok; attempt++) {
       x = baseX + Math.floor(rng() * CHUNK);
       y = baseY + Math.floor(rng() * CHUNK);
-      ok = trees.every((t) => Math.hypot(t.x - x, t.y - y) >= MIN_TREE_GAP);
+      ok = trees.every((t) => Math.hypot(t.x - x, t.y - y) >= gen.gap);
     }
     if (!ok) continue;
     trees.push({
       kind: 'tree',
       x,
       y, // anchor = trunk base center
-      size: 32 + Math.floor(rng() * 20), // overall height in px
+      size: gen.size[0] + Math.floor(rng() * gen.size[1]),
       variant: pick(rng, TREE_VARIANTS),
       detailSeed: Math.floor(rng() * 0xffffffff) >>> 0,
     });
   }
 
-  const nBushes = Math.floor(rng() * 3);
+  const nBushes = gen.bushes(rng);
   for (let i = 0; i < nBushes; i++) {
     trees.push({
       kind: 'bush',
@@ -272,5 +326,56 @@ export function generateChunk(seed, cx, cy) {
     });
   }
 
-  return { cx, cy, trees, sparkles, inflatables, dumpsters, cats, lamps, pipes, zombies };
+  // Terrain-era additions, drawn AFTER every legacy draw so oak chunks keep
+  // their pre-terrain layouts. Rocks pile up in the mountains; grass tufts
+  // soften the grasslands and oak floors.
+  const rocks = [];
+  if (gen.rocks) {
+    const n = gen.rocks[0] + Math.floor(rng() * gen.rocks[1]);
+    for (let i = 0; i < n; i++) {
+      rocks.push({
+        x: baseX + 10 + Math.floor(rng() * (CHUNK - 20)),
+        y: baseY + 10 + Math.floor(rng() * (CHUNK - 20)),
+        size: 10 + Math.floor(rng() * 12),
+        detailSeed: Math.floor(rng() * 0xffffffff) >>> 0,
+      });
+    }
+  }
+  const tufts = [];
+  const nTufts = gen.tufts[0] + (gen.tufts[1] ? Math.floor(rng() * gen.tufts[1]) : 0);
+  for (let i = 0; i < nTufts; i++) {
+    tufts.push({
+      x: baseX + Math.floor(rng() * CHUNK),
+      y: baseY + Math.floor(rng() * CHUNK),
+    });
+  }
+
+  // Region landmarks that happen to stand in this chunk (no rng draws —
+  // they're fixed per region, discovered as their chunk loads).
+  const info = regionInfo(seed, Math.floor((cx * CHUNK) / REGION), Math.floor((cy * CHUNK) / REGION));
+  const inChunk = (p) =>
+    p && Math.floor(p.x / CHUNK) === cx && Math.floor(p.y / CHUNK) === cy;
+  const cabins = inChunk(info.cabin) ? [{ x: info.cabin.x, y: info.cabin.y }] : [];
+  const caves = inChunk(info.cave) ? [{ x: info.cave.x, y: info.cave.y }] : [];
+
+  // Nothing grows or lurks in the water (filtered after generation so the
+  // rng sequence — and thus dry-land layouts — never shift).
+  const dry = (f) => !isWater(seed, f.x, f.y);
+  return {
+    cx,
+    cy,
+    biome,
+    trees: trees.filter(dry),
+    sparkles,
+    inflatables: inflatables.filter(dry),
+    dumpsters: dumpsters.filter(dry),
+    cats: cats.filter(dry),
+    lamps: lamps.filter(dry),
+    pipes: pipes.filter(dry),
+    zombies: zombies.filter(dry),
+    rocks: rocks.filter(dry),
+    tufts: tufts.filter(dry),
+    cabins,
+    caves,
+  };
 }

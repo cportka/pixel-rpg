@@ -7,7 +7,7 @@ things dancing where the woods grow deep. Somewhere out there
 waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
 eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.10.0
+**Version:** 0.11.0
 
 ## Play
 
@@ -30,6 +30,7 @@ then open <http://localhost:8000>. Append `?seed=123` for a reproducible forest.
 | Tab or C | Swap control between the person and the dog (once you've found them) |
 | Space or E | Throw the ball (as the person) — the dog fetches |
 | Double-click your character (or I) | Pause: the action & inventory screen |
+| Click the HUD minimap (or P) | Pause: the map — everything you remember |
 | M | Mute / unmute the 8-bit sound (`?mute=1` starts muted) |
 
 On touch devices, pixel SWAP and BALL buttons appear in the bottom corners
@@ -42,7 +43,18 @@ choice menu: arrows/tap to pick, Space/E or tap to confirm. The simplified
 D&D ruleset — 10 HP, six 3d6-rolled abilities (STR/INT/WIS/DEX/CON/CHA),
 d20 + modifier checks, STR-scaled damage, carry weight (STR×10 + CON×20 lbs),
 a meaty bone that doubles as a club, ten-minute pipe
-inebriation, and collapse-and-rescue — lives in `docs/RULES.md`. Everything makes a soft 8-bit sound: footsteps pace with the
+inebriation, and collapse-and-rescue — lives in `docs/RULES.md`.
+
+The forest is no longer all forest: a lazy terrain layer deals every region
+(640px square) a biome — grasslands, sparse oak woods, dense redwood stands,
+lakes, and rocky mountains with cave mouths — threaded by meandering rivers
+you cross on plank bridges, with the occasional mysterious cabin whose window
+is lit and whose door has never been seen open. Everything is generated on
+approach from the seed alone and remembered by the game once it exists. The
+person remembers it too, imperfectly: a HUD minimap (top-right) shows the
+nearby regions as you last saw them, sharp for a minute or two, dithering
+away over minutes until only the barest outline remains — Zelda-overworld
+style, but sparser. The full remembered map is the map pause screen. Everything makes a soft 8-bit sound: footsteps pace with the
 stride, captions blip like retro dialog, dice rattle, the genie gets an
 arpeggio (audio starts on your first tap or keypress, per browser rules).
 
@@ -53,8 +65,12 @@ integer-upscaled with `image-rendering: pixelated`.
 
 - `src/core/` — pure simulation, no DOM (fully covered by `node --test`):
   - `rng.js` — seeded PRNG + coordinate hashing; one world seed derives everything.
+  - `terrain.js` — the biome layer: regions, rivers, lakes, bridges, and
+    landmark placement, all pure functions of the seed (water is analytic —
+    no storage).
   - `world.js` — infinite chunked forest; each chunk (trees, bushes, sparkles) is
-    a pure function of `(seed, cx, cy)`, generated lazily and cached.
+    a pure function of `(seed, cx, cy)`, generated lazily and cached, with
+    densities set by its region's biome.
   - `entities.js` — characters, per-axis collision against tree trunks
     (feet-box, so you can walk behind canopies), follow AI with hysteresis.
   - `game.js` — the story (alone → a friend → home), control swapping,

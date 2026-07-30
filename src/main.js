@@ -1,7 +1,7 @@
 // Browser entry point: canvas setup, integer upscaling, input, and the loop.
 
 import { Game } from './core/game.js';
-import { Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons, choicePanel } from './gfx/renderer.js';
+import { Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons, choicePanel, hudRect } from './gfx/renderer.js';
 import { AudioPlayer } from './audio/engine.js';
 
 const canvas = document.getElementById('screen');
@@ -65,6 +65,7 @@ const KEYMAP = {
   Tab: 'swap', KeyC: 'swap',
   Space: 'action', KeyE: 'action',
   KeyI: 'sheet',
+  KeyP: 'map',
 };
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyM' && !e.repeat) audio.muted = !audio.muted;
@@ -113,6 +114,12 @@ canvas.addEventListener('pointerdown', (e) => {
       }
     }
   }
+  // A tap on the HUD minimap opens the full map screen.
+  const hud = hudRect();
+  if (sx >= hud.x && sx < hud.x + hud.w && sy >= hud.y && sy < hud.y + hud.h) {
+    game.openMap();
+    return;
+  }
   const w = renderer.screenToWorld(sx, sy);
   // Did the tap land on the character you're controlling? (Anchored at the
   // feet; the sprite body rises ~16px above them.)
@@ -141,6 +148,7 @@ function inputState() {
     swap: keys.has('swap') || pressed.has('swap'),
     action: keys.has('action') || pressed.has('action'),
     sheet: keys.has('sheet') || pressed.has('sheet'),
+    map: keys.has('map') || pressed.has('map'),
   };
 }
 

@@ -111,6 +111,16 @@ world glitches hard, and you come back at **5 HP**:
 
 (If you somehow manage it before finding the dog: `THE DARK IS PATIENT`.)
 
+## What you remember
+
+There is no minimap of the world — only of your memory of it. Regions you
+walk through are remembered sharply (biome, rivers, bridges, cabins, caves)
+for a minute or two, then the details dither away, and after about five
+minutes only the barest outline remains. The HUD shows the nearby regions;
+clicking it (or pressing **P**) pauses the game on the full remembered map.
+Nothing is ever forgotten completely. Nothing is ever remembered completely
+either.
+
 ## Encounters
 
 Walking up to an encounter opens a choice menu — arrows/tap to pick,

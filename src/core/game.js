@@ -10,6 +10,7 @@
 // fetch, and begins the long walk home together.
 
 import { World, CHUNK } from './world.js';
+import { regionAt, regionLandmarks } from './terrain.js';
 import { mulberry32, hashCoords } from './rng.js';
 import { PERSON, DOG, makeCharacter, moveCharacter, updateFollower, feetBox } from './entities.js';
 
@@ -38,6 +39,11 @@ export const MEAT_WEIGHT = 2; // lbs — the meat still on it
 export const DRUNK_TIME = 600; // seconds the pipe's inebriation lasts (10 min)
 export const DRUNK_WIS_BONUS = 2; // wisdom flows easier while the colors lean in
 export const COLLAPSE_HP = 5; // where the dog's rescue leaves you
+
+// The remembered map (docs/RULES.md has none of this; memory keeps its own
+// rules). Regions near the person refresh; the rest fade over minutes.
+export const MEM_FRESH = 90; // s a memory stays sharp (landmarks and all)
+export const MEM_FADED = 300; // s until only the barest outline remains
 const ENCOUNTER_RADIUS = 26; // px at which an encounter opens its menu
 const ENCOUNTER_REARM = 44; // walk this far away before it can re-open
 
@@ -124,11 +130,18 @@ export class Game {
     this.encounterDone = new Set(); // encounter keys that resolved for good
     this.dumpstersOut = new Set(); // dumpsters whose fire was smothered
     this.encounterCheck = 0;
+
+    // What the person remembers of the world: region key → landmarks +
+    // when they last saw it. Never forgotten outright — only faded.
+    this.memory = new Map();
+    this.memoryCheck = 0;
+
     this._prevUp = false;
     this._prevDown = false;
     this._prevSwap = false;
     this._prevAction = false;
     this._prevSheet = false;
+    this._prevMap = false;
 
     if (story) {
       this.together = false;
@@ -371,12 +384,17 @@ export class Game {
     }
   }
 
+  /** True while a world-pausing screen (inventory or map) is up. */
+  menuPaused() {
+    return !!this.choice && (this.choice.kind === 'sheet' || this.choice.kind === 'map');
+  }
+
   update(dt, input = {}) {
     // A choice menu freezes the walk: up/down select, action confirms.
-    // The inventory sheet goes further and pauses the world outright —
+    // The inventory and map screens go further and pause the world outright —
     // no time, no timers, no drunk countdown while you read.
     if (this.choice) {
-      const paused = this.choice.kind === 'sheet';
+      const paused = this.menuPaused();
       if (!paused) this.time += dt;
       const n = this.choice.options.length;
       if (input.up && !this._prevUp) {
@@ -393,22 +411,25 @@ export class Game {
       this._prevAction = !!input.action;
       this._prevSwap = !!input.swap;
       this._prevSheet = !!input.sheet;
+      this._prevMap = !!input.map;
       if (!paused) this.tickTimers(dt);
       return;
     }
 
     this.time += dt;
 
-    // Edge-detect swap/action/sheet so a held key fires once.
+    // Edge-detect swap/action/sheet/map so a held key fires once.
     if (input.swap && !this._prevSwap) this.swapControl();
     this._prevSwap = !!input.swap;
     if (input.action && !this._prevAction && this.active === 'person') this.throwBall();
     this._prevAction = !!input.action;
     if (input.sheet && !this._prevSheet) this.openSheet();
     this._prevSheet = !!input.sheet;
+    if (input.map && !this._prevMap) this.openMap();
+    this._prevMap = !!input.map;
     this._prevUp = !!input.up;
     this._prevDown = !!input.down;
-    if (this.choice) return; // the sheet opened this very tick — freeze now
+    if (this.choice) return; // a pause screen opened this very tick — freeze now
 
     // Snapshot positions so footsteps can be paced by distance walked.
     const prevPX = this.person.x;
@@ -476,9 +497,46 @@ export class Game {
       }
     }
 
+    // The person quietly memorizes the regions around them.
+    this.memoryCheck += dt;
+    if (this.memoryCheck >= 0.5) {
+      this.memoryCheck = 0;
+      this.updateMemory();
+    }
+
     // Far-away chunks regenerate deterministically, so cache them only nearby.
     const c = this.activeChar;
     this.world.prune(Math.floor(c.x / CHUNK), Math.floor(c.y / CHUNK));
+  }
+
+  /** Refresh the person's memory of the regions in sight (3x3 around them). */
+  updateMemory() {
+    const { rx, ry } = regionAt(this.person.x, this.person.y);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const key = `${rx + dx},${ry + dy}`;
+        const marks = regionLandmarks(this.world.seed, rx + dx, ry + dy);
+        this.memory.set(key, { rx: rx + dx, ry: ry + dy, ...marks, seenAt: this.time });
+      }
+    }
+  }
+
+  /** How well a memory entry is remembered right now. */
+  memoryLevel(entry) {
+    const age = this.time - entry.seenAt;
+    return age < MEM_FRESH ? 'fresh' : age < MEM_FADED ? 'faded' : 'outline';
+  }
+
+  /** The map screen: everything the person remembers, faded by time. Pauses. */
+  openMap() {
+    this.openChoice({
+      kind: 'map',
+      key: 'map',
+      x: this.person.x,
+      y: this.person.y,
+      title: 'WHAT YOU REMEMBER',
+      options: [{ id: 'close', label: 'CLOSE' }],
+    });
   }
 
   /** Walk toward the tap target; give up if a trunk makes it hopeless. */
@@ -643,6 +701,8 @@ export class Game {
       else if (id === 'fists' || id === 'bone') this.attackFromSheet(id);
       else if (id === 'ball') this.throwBall();
       // close: nothing.
+    } else if (c.kind === 'map') {
+      // close: the world resumes.
     } else if (c.kind === 'zombie') {
       this.resolveZombie(c, id);
     } else if (c.kind === 'cat') {
