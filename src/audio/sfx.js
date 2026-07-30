@@ -96,6 +96,26 @@ export const SOUNDS = {
     { type: 'tone', wave: 'square', f0: 1200, f1: 2400, d: 0.07, v: 0.07 },
     { type: 'tone', wave: 'square', f0: 800, f1: 1600, d: 0.07, v: 0.06, t: 0.05 },
   ],
+
+  // The undead and the equipment for dealing with them.
+  zombie: [
+    { type: 'tone', wave: 'sawtooth', f0: 95, f1: 62, d: 0.45, v: 0.1 },
+    { type: 'noise', f0: 300, f1: 180, d: 0.3, v: 0.04, t: 0.1 },
+  ],
+  bonk: [
+    { type: 'noise', f0: 320, f1: 130, d: 0.09, v: 0.12 },
+    { type: 'tone', wave: 'triangle', f0: 150, f1: 110, d: 0.08, v: 0.1, t: 0.02 },
+  ],
+  eat: [
+    { type: 'noise', f0: 700, f1: 400, d: 0.06, v: 0.08 },
+    { type: 'noise', f0: 600, f1: 350, d: 0.07, v: 0.08, t: 0.12 },
+    { type: 'tone', wave: 'triangle', f0: 523, f1: 659, d: 0.09, v: 0.07, t: 0.24 },
+  ],
+  drunk: [
+    { type: 'tone', wave: 'triangle', f0: 440, f1: 392, d: 0.2, v: 0.09 },
+    { type: 'tone', wave: 'triangle', f0: 392, f1: 466, d: 0.3, v: 0.09, t: 0.2 },
+    { type: 'tone', wave: 'triangle', f0: 466, f1: 415, d: 0.35, v: 0.08, t: 0.5 },
+  ],
 };
 
 /** Every event name the game can emit. main.js plays these 1:1. */

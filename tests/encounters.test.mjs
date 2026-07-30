@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  Game, MAX_HP, COLLAPSE_HP, DC_SEARCH, DC_SMOTHER, DC_GENIE, DC_VISION, DC_COUGH,
+  Game, MAX_HP, COLLAPSE_HP, ABILITIES,
+  DC_SEARCH, DC_SMOTHER, DC_GENIE, DC_VISION, DC_COUGH, DRUNK_TIME,
 } from '../src/core/game.js';
 import { World, generateChunk, CHUNK } from '../src/core/world.js';
 import {
@@ -21,10 +22,15 @@ function runSeconds(g, seconds, input = IDLE) {
 
 const KIND_FIELDS = { dumpster: 'dumpsters', cat: 'cats', lamp: 'lamps', pipe: 'pipes' };
 
-/** A together game on an open field with one planted encounter next door. */
+/**
+ * A together game on an open field with one planted encounter next door.
+ * Stats are flattened to 10 (modifier 0) so the rng-stubbed roll thresholds
+ * and exact "D20: n" captions below stay seed-independent.
+ */
 function encounterGame(kind, x = 40, y = 0) {
   const g = new Game(1, { story: false });
   g.world.collides = () => false;
+  for (const a of ABILITIES) g.stats[a] = 10;
   runSeconds(g, 3.5); // let the greeting caption clear
   g.world.chunkAt(0, 0)[KIND_FIELDS[kind]].push({ x, y, phase: 0 });
   return g;
@@ -167,15 +173,36 @@ test('menu navigation: up/down are edge-triggered, action confirms', () => {
   assert.equal(g.choice, null, 'action resolves the menu');
 });
 
-test('search success: d20 shown, +1 HP, dumpster spent', () => {
+test('search success: d20 shown, a meaty bone, and a gnaw-or-save menu', () => {
   const g = encounterGame('dumpster');
   const choice = walkUntilChoice(g);
-  g.hp = 5;
   g.rng = () => 0.99; // roll 20
   g.resolveChoice('search');
-  assert.equal(g.hp, 6);
-  assert.equal(g.caption.text, `D20: 20 - YOU FIND A WARM BONE (+1 HP)`);
+  assert.equal(g.caption.text, 'D20: 20 - YOU PULL OUT A MEATY BONE');
+  assert.ok(g.hasBone && g.boneMeat, 'the bone is yours, meat and all');
   assert.ok(g.encounterDone.has(choice.key), 'no second search');
+  assert.ok(g.choice, 'the bone menu chained open');
+  assert.equal(g.choice.kind, 'bone');
+  assert.equal(g.choice.options.length, 2);
+  g.hp = 5;
+  g.resolveChoice('eat');
+  assert.equal(g.hp, 7, 'gnawing the meat heals +2');
+  assert.equal(g.boneMeat, false);
+  assert.ok(g.hasBone, 'the bone remains a club');
+  assert.equal(g.caption.text, 'YOU GNAW OFF THE MEAT (+2 HP). THE BONE REMAINS');
+});
+
+test('saving the bone keeps the meat for later', () => {
+  const g = encounterGame('dumpster');
+  walkUntilChoice(g);
+  g.hp = 5;
+  g.rng = () => 0.99;
+  g.resolveChoice('search');
+  g.resolveChoice('save');
+  assert.equal(g.caption.text, 'YOU POCKET THE MEATY BONE');
+  assert.ok(g.hasBone && g.boneMeat, 'meat intact');
+  assert.equal(g.hp, 5, 'no healing until you gnaw it');
+  assert.equal(g.choice, null);
 });
 
 test('search failure burns you', () => {
@@ -309,7 +336,7 @@ test('wishing for more wishes gets you nothing at all', () => {
 
 // --- The pipe ---------------------------------------------------------------
 
-test('smoking the pipe, high roll: a vision and a long glitch', () => {
+test('smoking the pipe, high roll: a vision, a long glitch, ten drunk minutes', () => {
   const g = encounterGame('pipe');
   const choice = walkUntilChoice(g);
   assert.equal(choice.title, 'A PIPE OF HALF-BURNT GREEN LEAF');
@@ -317,7 +344,8 @@ test('smoking the pipe, high roll: a vision and a long glitch', () => {
   g.resolveChoice('smoke');
   assert.match(g.caption.text, /^D20: 20 - THE STARS LEAN CLOSER/);
   assert.ok(g.captionQueue.includes('A VISION: THE INFLATABLES DANCE AT THE CENTER OF ALL THINGS'));
-  assert.ok(g.captionQueue.includes('THE PIPE IS SPENT'));
+  assert.ok(g.captionQueue.includes('THE COLORS LEAN CLOSER TOO (DRUNK 10:00)'));
+  assert.equal(g.drunk, DRUNK_TIME, 'ten minutes of inebriation');
   assert.ok(g.glitch.dur >= 1, 'the long psychedelic glitch');
   assert.ok(g.encounterDone.has(choice.key), 'one bowl only');
 });
@@ -330,6 +358,7 @@ test('smoking the pipe, low roll: a coughing fit (-1 HP)', () => {
   g.resolveChoice('smoke');
   assert.equal(g.hp, 5);
   assert.match(g.caption.text, /^D20: 1 - YOU COUGH FOR A FULL MINUTE/);
+  assert.equal(g.drunk, 0, 'no inebriation from a coughing fit');
 });
 
 test('smoking the pipe, middle roll: probably oak leaf', () => {
@@ -340,6 +369,8 @@ test('smoking the pipe, middle roll: probably oak leaf', () => {
   g.resolveChoice('smoke');
   assert.equal(g.hp, 6, 'harmless');
   assert.match(g.caption.text, /^D20: 11 - NOTHING. PROBABLY OAK LEAF/);
+  assert.ok(g.captionQueue.includes('THE PIPE IS SPENT'));
+  assert.equal(g.drunk, 0, 'oak leaf does nothing');
   assert.ok(DC_COUGH < DC_VISION, 'the bands are ordered');
 });
 

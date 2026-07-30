@@ -128,6 +128,11 @@ export class World {
     return this.featuresInRect('pipes', x, y, w, h, 12);
   }
 
+  /** Zombies near the world-space rect. */
+  zombiesInRect(x, y, w, h) {
+    return this.featuresInRect('zombies', x, y, w, h, 14);
+  }
+
   /**
    * Does a feet-box (x, y, w, h — top-left corner, world px) collide with any
    * tree trunk? Bushes and canopies never block; walking behind trees is the point.
@@ -258,6 +263,14 @@ export function generateChunk(seed, cx, cy) {
       y: baseY + 20 + Math.floor(rng() * (CHUNK - 40)),
     });
   }
+  const zombies = [];
+  if (rng() < 0.015) {
+    zombies.push({
+      x: baseX + 20 + Math.floor(rng() * (CHUNK - 40)),
+      y: baseY + 20 + Math.floor(rng() * (CHUNK - 40)),
+      phase: rng() * Math.PI * 2, // sway offset
+    });
+  }
 
-  return { cx, cy, trees, sparkles, inflatables, dumpsters, cats, lamps, pipes };
+  return { cx, cy, trees, sparkles, inflatables, dumpsters, cats, lamps, pipes, zombies };
 }

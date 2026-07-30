@@ -15,7 +15,9 @@ import { glitchFrame, starPixels, starSize, targetMarkerPixels } from './effects
 import {
   DUMPSTER_SPRITE, DUMPSTER_COLORS, CAT_SPRITE, firePixels, catRowColor,
   LAMP_SPRITE, LAMP_COLORS, PIPE_SPRITE, PIPE_COLORS, lampGlintPixels, pipeSmokePixels,
+  ZOMBIE_SPRITE, ZOMBIE_COLORS, zombieSway,
 } from './encounters.js';
+import { MAX_HP } from '../core/game.js';
 import { textPixels, measureText, wrapText, GLYPH_H, LINE_GAP } from './font.js';
 
 export const SCREEN_W = 320;
@@ -29,16 +31,36 @@ const BUTTON_PAD = 3; // px of padding inside a touch button
  * Geometry for the open choice menu (pure — the renderer draws it, main.js
  * hit-tests taps against its rows). Null when no menu is open.
  */
+const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+
+/** The character sheet's body lines (shown inside the sheet menu). */
+export function sheetLines(game) {
+  const s = game.stats;
+  const wis = game.drunk > 0 ? `${s.wis} (+2)` : `${s.wis}`;
+  const lines = [
+    `STR ${s.str}  DEX ${s.dex}`,
+    `INT ${s.int}  CON ${s.con}`,
+    `WIS ${wis}  CHA ${s.cha}`,
+    `HP ${game.hp} OF ${MAX_HP}`,
+  ];
+  if (game.drunk > 0) lines.push(`DRUNK ${mmss(game.drunk)}`);
+  if (game.hasBone) lines.push(game.boneMeat ? 'BONE (MEATY)' : 'BONE (A GOOD CLUB)');
+  return lines;
+}
+
 export function choicePanel(game) {
   if (!game.choice) return null;
   const opts = game.choice.options;
+  const body = game.choice.kind === 'sheet' ? sheetLines(game) : [];
   const rowH = GLYPH_H + 4;
+  const bodyH = body.length * (GLYPH_H + LINE_GAP);
   const contentW = Math.max(
     measureText(game.choice.title),
     ...opts.map((o) => measureText(o.label) + 10),
+    ...body.map((b) => measureText(b)),
   );
   const w = Math.min(SCREEN_W - 8, contentW + 12);
-  const h = rowH * (opts.length + 1) + 10;
+  const h = rowH * (opts.length + 1) + bodyH + 10;
   const x = Math.round((SCREEN_W - w) / 2);
   const y = SCREEN_H - h - 22;
   const rows = opts.map((o, i) => ({
@@ -46,11 +68,11 @@ export function choicePanel(game) {
     id: o.id,
     label: o.label,
     x: x + 4,
-    y: y + 6 + rowH * (i + 1),
+    y: y + 6 + bodyH + rowH * (i + 1),
     w: w - 8,
     h: rowH,
   }));
-  return { x, y, w, h, title: game.choice.title, rows };
+  return { x, y, w, h, title: game.choice.title, body, rows };
 }
 
 /**
@@ -59,15 +81,19 @@ export function choicePanel(game) {
  * since swap and fetch are locked while alone.
  */
 export function uiButtons(game) {
-  if (!game.together) return [];
   const h = GLYPH_H + BUTTON_PAD * 2;
   const y = SCREEN_H - h - 4;
-  const swapW = measureText('SWAP') + BUTTON_PAD * 2;
-  const ballW = measureText('BALL') + BUTTON_PAD * 2;
-  return [
-    { id: 'swap', label: 'SWAP', x: 4, y, w: swapW, h },
-    { id: 'action', label: 'BALL', x: SCREEN_W - ballW - 4, y, w: ballW, h },
-  ];
+  const meW = measureText('ME') + BUTTON_PAD * 2;
+  const buttons = [{ id: 'sheet', label: 'ME', x: Math.round((SCREEN_W - meW) / 2), y, w: meW, h }];
+  if (game.together) {
+    const swapW = measureText('SWAP') + BUTTON_PAD * 2;
+    const ballW = measureText('BALL') + BUTTON_PAD * 2;
+    buttons.push(
+      { id: 'swap', label: 'SWAP', x: 4, y, w: swapW, h },
+      { id: 'action', label: 'BALL', x: SCREEN_W - ballW - 4, y, w: ballW, h },
+    );
+  }
+  return buttons;
 }
 
 export class Renderer {
@@ -192,7 +218,7 @@ export class Renderer {
   }
 
   /** Wrapped caption anchored above a character, clamped to the screen. */
-  drawCaption(text, anchorScreenX, anchorScreenY) {
+  drawCaption(text, anchorScreenX, anchorScreenY, color = PALETTE.moonlight) {
     const lines = wrapText(text, CAPTION_MAX_W);
     const lineH = GLYPH_H + LINE_GAP;
     let top = Math.round(anchorScreenY) - 22 - lines.length * lineH;
@@ -201,7 +227,7 @@ export class Renderer {
       const w = measureText(line);
       let cx = Math.round(anchorScreenX);
       cx = Math.max(2 + w / 2, Math.min(cx, SCREEN_W - 2 - w / 2));
-      this.drawText(line, cx, top + i * lineH);
+      this.drawText(line, cx, top + i * lineH, color);
     });
   }
 
@@ -220,7 +246,8 @@ export class Renderer {
 
     // Angular stars twinkling in the dark — sharp 4-point spikes at the peak.
     for (const s of game.world.sparklesInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
-      const glow = Math.sin(game.time * s.rate * 2 + s.phase);
+      let glow = Math.sin(game.time * s.rate * 2 + s.phase);
+      if (game.drunk > 0) glow = Math.max(glow, 0.7); // every star leans closer
       const pts = starPixels(glow, starSize(s));
       if (pts.length === 0) continue;
       const x = Math.round(s.x - viewX);
@@ -337,6 +364,17 @@ export class Renderer {
         },
       });
     }
+    for (const z of game.world.zombiesInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      if (game.encounterDone.has(`z:${z.x},${z.y}`)) continue; // crumbled
+      drawables.push({
+        y: z.y,
+        draw: () => {
+          const zx = Math.round(z.x - viewX) - 4 + zombieSway(game.time, z.phase);
+          const zy = Math.round(z.y - viewY) - ZOMBIE_SPRITE.length;
+          drawSpriteWithColors(ZOMBIE_SPRITE, ZOMBIE_COLORS, zx, zy);
+        },
+      });
+    }
     for (const f of game.world.inflatablesInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
       drawables.push({
         y: f.y,
@@ -380,12 +418,21 @@ export class Renderer {
     // Caption above whoever you're playing, like the reference footage.
     if (game.caption) {
       const a = game.activeChar;
-      this.drawCaption(game.caption.text, a.x - viewX, a.y - viewY);
+      this.drawCaption(
+        game.caption.text,
+        a.x - viewX,
+        a.y - viewY,
+        game.drunk > 0 ? PALETTE.magenta : PALETTE.moonlight,
+      );
     }
 
     // HP, top-left, dim smoke — flushing magenta when you're hurting.
     const hpText = `HP ${game.hp}`;
     this.drawText(hpText, 4 + measureText(hpText) / 2, 3, game.hp <= 3 ? PALETTE.magenta : PALETTE.smoke);
+    if (game.drunk > 0) {
+      const dText = `DRUNK ${mmss(game.drunk)}`;
+      this.drawText(dText, 4 + measureText(dText) / 2, 13, PALETTE.magenta);
+    }
 
     // The open choice menu, front and center.
     const panel = choicePanel(game);
@@ -398,6 +445,9 @@ export class Renderer {
       ctx.fillRect(panel.x, panel.y, 1, panel.h);
       ctx.fillRect(panel.x + panel.w - 1, panel.y, 1, panel.h);
       this.drawText(panel.title, SCREEN_W / 2, panel.y + 5, PALETTE.moonlight);
+      panel.body.forEach((line, i) => {
+        this.drawText(line, SCREEN_W / 2, panel.y + 6 + (GLYPH_H + 4) + i * (GLYPH_H + LINE_GAP), PALETTE.smoke);
+      });
       for (const row of panel.rows) {
         const selected = row.index === game.choiceIndex;
         const label = selected ? `- ${row.label} -` : row.label;
@@ -430,6 +480,15 @@ export class Renderer {
       for (const n of fx.noise) {
         ctx.fillStyle = n.c;
         ctx.fillRect(n.x, n.y, n.w, n.h);
+      }
+    }
+
+    // Inebriation: the whole frame breathes sideways, slow and rhythmic.
+    if (game.drunk > 0) {
+      for (let i = 0; i < 3; i++) {
+        const by = Math.floor(((Math.sin(game.time * 0.7 + i * 2.1) + 1) / 2) * (SCREEN_H - 8));
+        const dx = Math.round(Math.sin(game.time * 1.3 + i * 1.7) * 3);
+        if (dx !== 0) ctx.drawImage(this.canvas, 0, by, SCREEN_W, 6, dx, by, SCREEN_W, 6);
       }
     }
 
