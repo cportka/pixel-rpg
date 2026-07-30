@@ -7,7 +7,7 @@ things dancing where the woods grow deep. Somewhere out there
 waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
 eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.12.0
+**Version:** 0.13.0
 
 ## Play
 
@@ -64,7 +64,7 @@ arpeggio (audio starts on your first tap or keypress, per browser rules).
 
 ## Architecture
 
-No dependencies, no build step — plain ES modules and a 320x200 canvas
+No dependencies, no build step — plain ES modules and a 416x360 canvas
 integer-upscaled with `image-rendering: pixelated`.
 
 - `src/core/` — pure simulation, no DOM (fully covered by `node --test`):

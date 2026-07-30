@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
-## [0.12.0] - 2026-07-30
+## [0.13.0] - 2026-07-30
 
 ### Added
 - **Levels and experience**: you start at **level 1** with **2 in every
@@ -53,6 +53,25 @@ Every change bumps the version and adds an entry below.
 - The selected menu row's `- LABEL -` decoration could overflow the panel;
   panels now size for it. The HUD no longer peeks a 1px sliver over
   full-frame pause screens.
+
+### Notes
+- The new `xp` and `levelup` chip sounds are not yet in the published
+  `8bit-sfx` set; `tests/sfx-package.test.mjs` carries them in an explicit
+  `PENDING_PORT` list (parity stays exact for everything else) and fails
+  the moment the pinned package ships them, prompting the list's removal.
+
+## [0.12.0] - 2026-07-30
+
+### Added
+- The game's sound set now ships in the [`8bit-sfx`](https://github.com/cportka/8bit-sfx)
+  npm package as its `pixelrpg` category — 24 WAVs rendered from this repo's `SOUNDS`
+  table by an exact port of the Web Audio engine semantics, each manifest entry carrying
+  the game's intended relative `gain`. `8bit-sfx` is now a dev dependency (pinned by
+  commit), and `tests/sfx-package.test.mjs` asserts the package and `EVENT_NAMES` stay in
+  exact parity — the test skips with a note when the package isn't installed. CI installs
+  dev dependencies before the suite. The in-game audio engine is unchanged: it keeps
+  live-synthesizing (which the wav files can't replicate fully — e.g. the `intensity`
+  modulation while the pipe's colors lean closer).
 
 ## [0.11.0] - 2026-07-30
 
