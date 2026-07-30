@@ -8,6 +8,7 @@ import {
   GLYPHS, GLYPH_H, TRACKING, SPACE_W, glyphWidth, measureText, textPixels, wrapText,
 } from '../src/gfx/font.js';
 import { treePixels, BLOCK_W } from '../src/gfx/trees.js';
+import { inflatablePixels, INFLATABLE_TINTS } from '../src/gfx/inflatables.js';
 
 const HEX = /^#[0-9a-f]{6}$/;
 
@@ -41,10 +42,28 @@ test('all sprite maps are rectangular and use palette keys', () => {
 test('sprites match the reference proportions', () => {
   const person = spriteSize(PERSON_FRAMES.stand);
   assert.ok(person.h >= 16, `person is tall (${person.h}px)`);
-  assert.ok(person.w <= 10, 'person is thin');
+  assert.ok(person.w <= 12, 'person is thin');
   const dog = spriteSize(DOG_FRAMES.stand);
   assert.ok(dog.w >= 12, 'dog is long');
   assert.ok(dog.h < person.h, 'dog is shorter than the person');
+});
+
+test('the stride B-frames are exact mirrors of the A-frames', () => {
+  for (const pose of ['contact', 'down', 'pass']) {
+    const a = PERSON_FRAMES[`${pose}A`];
+    const b = PERSON_FRAMES[`${pose}B`];
+    assert.deepEqual(
+      b,
+      a.map((row) => [...row].reverse().join('')),
+      `${pose}B mirrors ${pose}A`,
+    );
+  }
+});
+
+test('the person stride uses six distinct frames', () => {
+  const seen = new Set();
+  for (let t = 0; t < 6 / 7.5; t += 1 / 60) seen.add(walkFrame(PERSON_FRAMES, true, t));
+  assert.equal(seen.size, 6, 'contact/down/pass on both legs');
 });
 
 test('every character frame is one connected silhouette (no severed pixels)', () => {
@@ -148,6 +167,7 @@ test('every caption the game can show can be typeset', () => {
     'A SOFT WHIMPER DRIFTS FROM THE WEST',
     'A FRIENDLY LOST DOG!',
     'TOGETHER WE WILL FIND HOME',
+    'THE INFLATABLES DANCE. NO ONE KNOWS WHY',
     'FETCH IS OUR FAVORITE GAME!',
     'THE WOODS FEEL WARMER NOW',
     'HOME IS OUT THERE SOMEWHERE',
@@ -212,4 +232,22 @@ test('bushes are squat block clouds', () => {
   const geo = treePixels(bush);
   assert.ok(geo.pixels.length > 10);
   assert.ok(geo.minY >= -20 && geo.maxY <= 2, 'bush hugs the ground');
+});
+
+test('inflatables are deterministic per moment and animate over time', () => {
+  const inf = { x: 0, y: 0, h: 26, tint: 1, phase: 0.5, speed: 4 };
+  assert.deepEqual(inflatablePixels(inf, 2.0), inflatablePixels(inf, 2.0));
+  const a = inflatablePixels(inf, 2.0);
+  const b = inflatablePixels(inf, 2.4);
+  assert.notDeepEqual(a.pixels, b.pixels, 'the dancer moves');
+  const palette = new Set([...Object.values(PALETTE)]);
+  for (const p of a.pixels) {
+    assert.ok(palette.has(p.c), `off-palette color ${p.c}`);
+    assert.equal(Math.abs(p.x % 2), 0, 'blocks sit on even x');
+    assert.ok(p.x >= a.minX && p.x + BLOCK_W - 1 <= a.maxX);
+    assert.ok(p.y >= a.minY && p.y <= a.maxY);
+  }
+  assert.equal(a.minY, -inf.h, 'the head crowns the tube');
+  assert.ok(a.pixels.length >= inf.h + 6, 'tube + head + both arms');
+  for (const tint of INFLATABLE_TINTS) assert.match(tint, /^#[0-9a-f]{6}$/);
 });

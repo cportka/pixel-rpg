@@ -1,102 +1,114 @@
 // Pixel sprites as string maps — one character per pixel, '.' transparent.
-// Keys into SPRITE_COLORS (see palette.js). Redrawn from the reference
-// footage: a tall thin person (~18px) with a visible arm swing, and a dog
-// with a raised head, snout, ear, and trotting legs. Both are moonlit
-// silhouettes; the dog is authored facing right and flipped at draw time.
+// Keys into SPRITE_COLORS (see palette.js). The person walks a 6-frame
+// stride: contact (legs split wide, arms counter-swung), down (body bobs a
+// pixel as the legs recoil), pass (tall, trailing knee lifted) — then the
+// mirrored half-cycle for the other leg. B-frames are derived by mirroring
+// the A-frames so the stride stays perfectly symmetric. The dog keeps its
+// 2-frame trot. Both are moonlit silhouettes; sprites are authored facing
+// right and flipped at draw time.
+
+const mirror = (map) => map.map((row) => [...row].reverse().join(''));
+
+const PERSON_STAND = [
+  '....XX.....',
+  '....XX.....',
+  '....XX.....',
+  '....XX.....',
+  '...XXXX....',
+  '..XXXXXX...',
+  '..XXXXXX...',
+  '..XXXXXX...',
+  '..XXXXXX...',
+  '...XXXX....',
+  '...XXXX....',
+  '...XXXX....',
+  '...XX.XX...',
+  '...XX.XX...',
+  '...XX.XX...',
+  '...XX.XX...',
+  '...XX.XX...',
+  '...XX.XX...',
+];
+
+// Contact: right leg planted far forward, left leg trailing, arms swung.
+const PERSON_CONTACT_A = [
+  '....XX.....',
+  '....XX.....',
+  '....XX.....',
+  '....XX.....',
+  '...XXXX....',
+  '..XXXXXX...',
+  '..XXXXX.X..',
+  '.X.XXXX.X..',
+  '.X.XXXX..X.',
+  '...XXXX....',
+  '...XXXX....',
+  '...XXXX....',
+  '...XX.XX...',
+  '..XX...XX..',
+  '.XX.....XX.',
+  '.XX.....XX.',
+  'XX.......XX',
+  'XX.......XX',
+];
+
+// Down: the body drops a pixel as the legs pull back under it.
+const PERSON_DOWN_A = [
+  '...........',
+  '....XX.....',
+  '....XX.....',
+  '....XX.....',
+  '....XX.....',
+  '...XXXX....',
+  '..XXXXXX...',
+  '..XXXXXX...',
+  '..XXXXX.X..',
+  '...XXXX....',
+  '...XXXX....',
+  '...XXXX....',
+  '...XXXX....',
+  '...XX.XX...',
+  '..XX..XX...',
+  '..XX...XX..',
+  '..XX...XX..',
+  '..XX...XX..',
+];
+
+// Pass: tall again, planted leg under the body, trailing knee lifted.
+const PERSON_PASS_A = [
+  '....XX.....',
+  '....XX.....',
+  '....XX.....',
+  '....XX.....',
+  '...XXXX....',
+  '..XXXXXX...',
+  '..XXXXXX...',
+  '..XXXXXX...',
+  '..XXXXXX...',
+  '...XXXX....',
+  '...XXXX....',
+  '...XXXX....',
+  '...XXXX....',
+  '..XX.XX....',
+  '.....XX....',
+  '.....XX....',
+  '.....XX....',
+  '.....XX....',
+];
 
 export const PERSON_FRAMES = {
-  // At rest: legs a hair apart, arms at the sides.
-  stand: [
-    '...XX....',
-    '...XX....',
-    '...XX....',
-    '...XX....',
-    '..XXXXX..',
-    '.XXXXXXX.',
-    '.X.XXX.X.',
-    '.X.XXX.X.',
-    '.X.XXX.X.',
-    '...XXX...',
-    '..XXXXX..',
-    '..XXXXX..',
-    '..XX.XX..',
-    '..XX.XX..',
-    '..XX.XX..',
-    '..XX.XX..',
-    '..XX.XX..',
-    '..XX.XX..',
-  ],
-  // Contact A: right leg + left arm forward (facing right).
-  walkA: [
-    '...XX....',
-    '...XX....',
-    '...XX....',
-    '...XX....',
-    '..XXXXX..',
-    '.XXXXXXX.',
-    '.X.XXX.X.',
-    '.X.XXX.X.',
-    '.X.XXX.X.',
-    '.X.XXX...',
-    '..XXXXX..',
-    '..XXXXX..',
-    '..XX.XX..',
-    '.XX...XX.',
-    '.XX...XX.',
-    'XX.....XX',
-    'XX.....XX',
-    'XX.....XX',
-  ],
-  // Passing: legs gathered under the body.
-  walkB: [
-    '...XX....',
-    '...XX....',
-    '...XX....',
-    '...XX....',
-    '..XXXXX..',
-    '.XXXXXXX.',
-    '.X.XXX.X.',
-    '.X.XXX.X.',
-    '.X.XXX.X.',
-    '...XXX...',
-    '..XXXXX..',
-    '..XXXXX..',
-    '...XXX...',
-    '...XXX...',
-    '...XXX...',
-    '...XXX...',
-    '...XXX...',
-    '...XXX...',
-  ],
-  // Contact B: the mirror stride.
-  walkC: [
-    '...XX....',
-    '...XX....',
-    '...XX....',
-    '...XX....',
-    '..XXXXX..',
-    '.XXXXXXX.',
-    '.X.XXX.X.',
-    '.X.XXX.X.',
-    '.X.XXX.X.',
-    '...XXX.X.',
-    '..XXXXX..',
-    '..XXXXX..',
-    '..XX.XX..',
-    '.XX...XX.',
-    '.XX...XX.',
-    'XX.....XX',
-    'XX.....XX',
-    'XX.....XX',
-  ],
+  stand: PERSON_STAND,
+  contactA: PERSON_CONTACT_A,
+  downA: PERSON_DOWN_A,
+  passA: PERSON_PASS_A,
+  contactB: mirror(PERSON_CONTACT_A),
+  downB: mirror(PERSON_DOWN_A),
+  passB: mirror(PERSON_PASS_A),
 };
 
-// Replace the palette key 'X' with 'W' (moonlight) in the maps above — the
-// frames are authored with X for legibility.
-for (const frames of [PERSON_FRAMES]) {
-  for (const key of Object.keys(frames)) {
-    frames[key] = frames[key].map((row) => row.replaceAll('X', 'W'));
-  }
+// Replace the authoring key 'X' with 'W' (moonlight) in the maps above.
+for (const key of Object.keys(PERSON_FRAMES)) {
+  PERSON_FRAMES[key] = PERSON_FRAMES[key].map((row) => row.replaceAll('X', 'W'));
 }
 
 export const DOG_FRAMES = {
@@ -166,7 +178,9 @@ export const WALK_CYCLE_FPS = 7.5;
 /** Walk cycle: pick a frame set's frame from an animation clock. */
 export function walkFrame(frames, walking, animTime) {
   if (!walking) return frames.stand;
-  const seq = [frames.walkA, frames.walkB, frames.walkC ?? frames.walkA, frames.walkB];
+  const seq = frames.contactA
+    ? [frames.contactA, frames.downA, frames.passA, frames.contactB, frames.downB, frames.passB]
+    : [frames.walkA, frames.walkB];
   return seq[Math.floor(animTime * WALK_CYCLE_FPS) % seq.length];
 }
 

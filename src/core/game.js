@@ -75,6 +75,8 @@ export class Game {
     this.hintTimer = 0;
     this.ambientTimer = 0;
     this.ambientIndex = 0;
+    this.seenInflatables = false; // the encounter caption plays once
+    this.inflatableCheck = 0;
     this._prevSwap = false;
     this._prevAction = false;
 
@@ -247,6 +249,18 @@ export class Game {
     }
     for (const h of this.hearts) h.t -= dt;
     this.hearts = this.hearts.filter((h) => h.t > 0);
+
+    // Coming upon the dancing inflatables plays a one-shot caption.
+    this.inflatableCheck += dt;
+    if (!this.seenInflatables && this.inflatableCheck >= 0.5) {
+      this.inflatableCheck = 0;
+      const a = this.activeChar;
+      if (this.world.inflatablesInRect(a.x - 70, a.y - 70, 140, 140).length > 0) {
+        this.seenInflatables = true;
+        this.announce(['THE INFLATABLES DANCE. NO ONE KNOWS WHY']);
+        this.captionSticky = true; // one-shot — protect it like the meeting
+      }
+    }
 
     // Far-away chunks regenerate deterministically, so cache them only nearby.
     const c = this.activeChar;

@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.4.0] - 2026-07-28
+
+### Added
+- **Dancing inflatables**: rare clearings (~1 in 40 chunks) where wacky waving
+  tube-dancers sway in magenta/violet/blue/pink — pure time-driven geometry
+  animated at the 15 fps cadence, y-sorted with the world. Finding them plays
+  a one-shot caption: "THE INFLATABLES DANCE. NO ONE KNOWS WHY".
+
+### Changed
+- **Angular trees**: canopies are now stacked jagged tiers (angular pine
+  silhouettes with crisp rims) and bushes are jagged diamonds, replacing the
+  soft elliptical scatter. Existing seeds keep their tree layout.
+- **A drastically better human stride**: 6-frame walk cycle — wide contact
+  split, a recoil frame with a 1px body bob, and a tall passing pose with a
+  lifted knee, with counter-swinging arms; B-frames are exact mirrors so the
+  stride stays symmetric.
+
 ## [0.3.0] - 2026-07-28
 
 ### Added
