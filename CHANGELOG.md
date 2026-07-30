@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.8.0] - 2026-07-30
+
+### Added
+- **8-bit sound effects for every interaction** (`src/audio/`): a Web Audio
+  chip-synth (square/triangle/saw tones + deterministic filtered noise, no
+  assets, no dependencies) plays a 20-sound table — soft distance-paced
+  footsteps for person and dog, dialog blips for captions and a drooping
+  whimper for the hints, menu open/move/confirm, the d20 rattle-and-ping,
+  damage/heal/collapse, swap, the full fetch trio (throw whoosh, pickup pop,
+  GOOD DOG arpeggio), the meeting fanfare, the inflatables' wobble, the
+  genie's rise, the pipe vision, and the cat's static vanish. The pure game
+  core emits named events; the frontend drains and plays them, so
+  `node --test` covers both the sound table and the emission points.
+- **M** toggles mute; `?mute=1` starts muted. Audio wakes on the first
+  tap/keypress per browser autoplay rules.
+
 ## [0.7.0] - 2026-07-30
 
 ### Added
