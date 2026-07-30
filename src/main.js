@@ -1,7 +1,7 @@
 // Browser entry point: canvas setup, integer upscaling, input, and the loop.
 
 import { Game } from './core/game.js';
-import { Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons } from './gfx/renderer.js';
+import { Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons, choicePanel } from './gfx/renderer.js';
 
 const canvas = document.getElementById('screen');
 canvas.width = SCREEN_W;
@@ -22,6 +22,16 @@ renderer.showTouchUI =
 
 // ?glitch=<seconds> forces a transition glitch at load (demos/screenshots).
 if (params.has('glitch')) game.triggerGlitch(Number(params.get('glitch')) || 3);
+
+// ?enc=dumpster|cat plants that encounter beside the spawn and opens its
+// menu right away (demos/testing).
+if (params.get('enc') === 'dumpster') {
+  game.world.chunkAt(0, 0).dumpsters.push({ x: 22, y: 4 });
+  game.checkEncounters();
+} else if (params.get('enc') === 'cat') {
+  game.world.chunkAt(0, 0).cats.push({ x: 22, y: 4, phase: 0 });
+  game.checkEncounters();
+}
 
 // Integer upscale to the largest multiple that fits the window — computed in
 // DEVICE pixels so fractional devicePixelRatio (125%/150% displays) still gets
@@ -70,6 +80,18 @@ canvas.addEventListener('pointerdown', (e) => {
   const rect = canvas.getBoundingClientRect();
   const sx = ((e.clientX - rect.left) / rect.width) * SCREEN_W;
   const sy = ((e.clientY - rect.top) / rect.height) * SCREEN_H;
+  // An open choice menu captures every tap: pick the row you touched.
+  const panel = choicePanel(game);
+  if (panel) {
+    for (const row of panel.rows) {
+      if (sx >= row.x && sx < row.x + row.w && sy >= row.y - 2 && sy < row.y + row.h) {
+        game.choiceIndex = row.index;
+        game.resolveChoice(row.id);
+        return;
+      }
+    }
+    return; // taps outside the panel do nothing while it's open
+  }
   if (renderer.showTouchUI) {
     for (const b of uiButtons(game)) {
       if (sx >= b.x && sx < b.x + b.w && sy >= b.y && sy < b.y + b.h) {

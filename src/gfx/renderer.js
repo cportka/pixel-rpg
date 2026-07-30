@@ -11,7 +11,10 @@ import { PALETTE, SPRITE_COLORS, SPARKLE_TINTS, LEASH_COLORS } from './palette.j
 import { PERSON_FRAMES, DOG_FRAMES, BALL_SPRITE, HEART_SPRITE, walkFrame, spriteSize } from './sprites.js';
 import { treePixels, BLOCK_W, BLOCK_H } from './trees.js';
 import { inflatablePixels } from './inflatables.js';
-import { glitchFrame, starPixels, starSize } from './effects.js';
+import { glitchFrame, starPixels, starSize, targetMarkerPixels } from './effects.js';
+import {
+  DUMPSTER_SPRITE, DUMPSTER_COLORS, CAT_SPRITE, firePixels, catRowColor,
+} from './encounters.js';
 import { textPixels, measureText, wrapText, GLYPH_H, LINE_GAP } from './font.js';
 
 export const SCREEN_W = 320;
@@ -20,6 +23,34 @@ export const RENDER_FPS = 15; // presentation cadence, matched to the reference
 
 const CAPTION_MAX_W = 280; // wrap captions to at most this many px
 const BUTTON_PAD = 3; // px of padding inside a touch button
+
+/**
+ * Geometry for the open choice menu (pure — the renderer draws it, main.js
+ * hit-tests taps against its rows). Null when no menu is open.
+ */
+export function choicePanel(game) {
+  if (!game.choice) return null;
+  const opts = game.choice.options;
+  const rowH = GLYPH_H + 4;
+  const contentW = Math.max(
+    measureText(game.choice.title),
+    ...opts.map((o) => measureText(o.label) + 10),
+  );
+  const w = Math.min(SCREEN_W - 8, contentW + 12);
+  const h = rowH * (opts.length + 1) + 10;
+  const x = Math.round((SCREEN_W - w) / 2);
+  const y = SCREEN_H - h - 22;
+  const rows = opts.map((o, i) => ({
+    index: i,
+    id: o.id,
+    label: o.label,
+    x: x + 4,
+    y: y + 6 + rowH * (i + 1),
+    w: w - 8,
+    h: rowH,
+  }));
+  return { x, y, w, h, title: game.choice.title, rows };
+}
 
 /**
  * Touch-UI buttons for the current game state (pure geometry — the renderer
@@ -197,17 +228,14 @@ export class Renderer {
       for (const p of pts) ctx.fillRect(x + p.x, y + p.y, 1, 1);
     }
 
-    // Tap-to-move marker: a small marching cross where the walk will end.
+    // Tap-to-move marker: three arrowheads pulsing in toward the target.
     if (game.moveTarget) {
       const mx = Math.round(game.moveTarget.x - viewX);
       const my = Math.round(game.moveTarget.y - viewY);
-      ctx.fillStyle = LEASH_COLORS[this.frame % LEASH_COLORS.length];
-      ctx.fillRect(mx - 2, my, 1, 1);
-      ctx.fillRect(mx + 2, my, 1, 1);
-      ctx.fillRect(mx, my - 2, 1, 1);
-      ctx.fillRect(mx, my + 2, 1, 1);
-      ctx.fillStyle = PALETTE.moonlight;
-      ctx.fillRect(mx, my, 1, 1);
+      for (const p of targetMarkerPixels(game.time)) {
+        ctx.fillStyle = p.apex ? PALETTE.moonlight : LEASH_COLORS[p.tri % LEASH_COLORS.length];
+        ctx.fillRect(mx + p.x, my + p.y, 1, 1);
+      }
     }
 
     // The leash runs under the characters but over the ground.
@@ -221,6 +249,48 @@ export class Renderer {
         draw: () => {
           const s = this.treeSprite(tree);
           ctx.drawImage(s.canvas, Math.round(tree.x - viewX) + s.offX, Math.round(tree.y - viewY) + s.offY);
+        },
+      });
+    }
+    for (const d of game.world.dumpstersInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      const key = `d:${d.x},${d.y}`;
+      drawables.push({
+        y: d.y,
+        draw: () => {
+          const bx = Math.round(d.x - viewX) - 8;
+          const by = Math.round(d.y - viewY) - DUMPSTER_SPRITE.length;
+          DUMPSTER_SPRITE.forEach((row, ry) => {
+            for (let rx = 0; rx < row.length; rx++) {
+              const ch = row[rx];
+              if (ch === '.') continue;
+              ctx.fillStyle = DUMPSTER_COLORS[ch];
+              ctx.fillRect(bx + rx, by + ry, 1, 1);
+            }
+          });
+          if (!game.dumpstersOut.has(key)) {
+            const cxp = Math.round(d.x - viewX);
+            const cyp = Math.round(d.y - viewY);
+            for (const p of firePixels(game.time)) {
+              ctx.fillStyle = p.c;
+              ctx.fillRect(cxp + p.x, cyp + p.y, BLOCK_W, BLOCK_H);
+            }
+          }
+        },
+      });
+    }
+    for (const c of game.world.catsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      if (game.encounterDone.has(`c:${c.x},${c.y}`)) continue; // the cat is gone
+      drawables.push({
+        y: c.y,
+        draw: () => {
+          const bx = Math.round(c.x - viewX) - 5;
+          const by = Math.round(c.y - viewY) - CAT_SPRITE.length;
+          CAT_SPRITE.forEach((row, ry) => {
+            ctx.fillStyle = catRowColor(ry, this.frame);
+            for (let rx = 0; rx < row.length; rx++) {
+              if (row[rx] !== '.') ctx.fillRect(bx + rx, by + ry, 1, 1);
+            }
+          });
         },
       });
     }
@@ -268,6 +338,28 @@ export class Renderer {
     if (game.caption) {
       const a = game.activeChar;
       this.drawCaption(game.caption.text, a.x - viewX, a.y - viewY);
+    }
+
+    // HP, top-left, dim smoke — flushing magenta when you're hurting.
+    const hpText = `HP ${game.hp}`;
+    this.drawText(hpText, 4 + measureText(hpText) / 2, 3, game.hp <= 3 ? PALETTE.magenta : PALETTE.smoke);
+
+    // The open choice menu, front and center.
+    const panel = choicePanel(game);
+    if (panel) {
+      ctx.fillStyle = PALETTE.fog;
+      ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
+      ctx.fillStyle = PALETTE.smokeDeep;
+      ctx.fillRect(panel.x, panel.y, panel.w, 1);
+      ctx.fillRect(panel.x, panel.y + panel.h - 1, panel.w, 1);
+      ctx.fillRect(panel.x, panel.y, 1, panel.h);
+      ctx.fillRect(panel.x + panel.w - 1, panel.y, 1, panel.h);
+      this.drawText(panel.title, SCREEN_W / 2, panel.y + 5, PALETTE.moonlight);
+      for (const row of panel.rows) {
+        const selected = row.index === game.choiceIndex;
+        const label = selected ? `- ${row.label} -` : row.label;
+        this.drawText(label, SCREEN_W / 2, row.y, selected ? PALETTE.moonlight : PALETTE.smoke);
+      }
     }
 
     // Touch buttons (coarse pointers only), above everything.
