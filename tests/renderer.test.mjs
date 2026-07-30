@@ -112,6 +112,26 @@ test('rendering with a tap marker and touch UI paints in bounds', () => {
   assert.ok(canvas.ctx.ops.fillRect > 100);
 });
 
+test('an active glitch adds band self-blits to the frame', () => {
+  const canvas = fakeCanvas();
+  const r = makeRenderer(canvas);
+  const g = new Game(42, { story: false });
+  // Steady state: two clean renders of the identical scene blit the same
+  // number of cached tree sprites.
+  r.render(g);
+  const afterFirst = canvas.ctx.ops.drawImage;
+  r.render(g);
+  const cleanPerFrame = canvas.ctx.ops.drawImage - afterFirst;
+  g.triggerGlitch();
+  const beforeGlitch = canvas.ctx.ops.drawImage;
+  r.render(g);
+  const glitchPerFrame = canvas.ctx.ops.drawImage - beforeGlitch;
+  assert.ok(
+    glitchPerFrame > cleanPerFrame,
+    `glitch frame blits extra bands (${glitchPerFrame} vs ${cleanPerFrame})`,
+  );
+});
+
 test('drawLeash paints a run of marching dots between the pair', () => {
   const canvas = fakeCanvas();
   const r = makeRenderer(canvas);

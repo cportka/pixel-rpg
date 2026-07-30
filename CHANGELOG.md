@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.5.0] - 2026-07-30
+
+### Added
+- **Transition glitches**: gameplay transitions (swapping bodies, meeting the
+  dog, throwing/catching/delivering the ball, finding the inflatables) flash
+  a brief burst of horizontal band-slips and stray magenta/blue noise blocks
+  over the frame — deterministic per burst, decaying over ~0.2-0.5s. Force
+  one for a demo with `?glitch=<seconds>`.
+
+### Changed
+- **Angular, dramatic stars**: the twinkling motes are now sharp 4-point
+  stars — long axis spikes that lengthen at peak glow (flashing moonlight
+  white) with a diagonal glint, in three sizes derived from existing sparkle
+  fields (world generation unchanged).
+
 ## [0.4.0] - 2026-07-28
 
 ### Added
