@@ -20,6 +20,9 @@ renderer.showTouchUI =
   params.get('touch') === '1' ||
   (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
 
+// ?glitch=<seconds> forces a transition glitch at load (demos/screenshots).
+if (params.has('glitch')) game.triggerGlitch(Number(params.get('glitch')) || 3);
+
 // Integer upscale to the largest multiple that fits the window — computed in
 // DEVICE pixels so fractional devicePixelRatio (125%/150% displays) still gets
 // uniform game pixels under image-rendering: pixelated.

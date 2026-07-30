@@ -77,6 +77,7 @@ export class Game {
     this.ambientIndex = 0;
     this.seenInflatables = false; // the encounter caption plays once
     this.inflatableCheck = 0;
+    this.glitch = { t: 0, dur: 1, seed: 0 }; // transition glitch: remaining/total time + burst seed
     this._prevSwap = false;
     this._prevAction = false;
 
@@ -146,11 +147,21 @@ export class Game {
     for (const line of lines) this.say(line);
   }
 
+  /** Kick off a brief transition glitch (renderer reads this.glitch). */
+  triggerGlitch(duration = 0.35) {
+    this.glitch = {
+      t: duration,
+      dur: duration,
+      seed: Math.floor(this.rng() * 0xffffffff) >>> 0,
+    };
+  }
+
   swapControl() {
     if (!this.together) return;
     this.active = this.active === 'person' ? 'dog' : 'person';
     this.otherChar.following = false;
     this.clearMoveTarget(); // the old target belonged to the other character
+    this.triggerGlitch();
     this.announce([this.active === 'person' ? 'YOU ARE THE PERSON' : 'YOU ARE THE DOG']);
   }
 
@@ -172,6 +183,7 @@ export class Game {
   meetDog() {
     this.together = true;
     this.dog.following = false;
+    this.triggerGlitch(0.5); // the big one — the universe changes shape here
     this.announce(MEETING_LINES);
     this.captionSticky = true; // this beat plays exactly once — protect it
     this.ambientTimer = 0;
@@ -200,6 +212,7 @@ export class Game {
     this.fetch = 'thrown';
     this.fetchTime = 0;
     this.nav = { stuck: 0, detour: 0, side: 1 };
+    this.triggerGlitch(0.25);
     this.announce(['FETCH IS OUR FAVORITE GAME!']);
   }
 
@@ -249,6 +262,7 @@ export class Game {
     }
     for (const h of this.hearts) h.t -= dt;
     this.hearts = this.hearts.filter((h) => h.t > 0);
+    if (this.glitch.t > 0) this.glitch.t = Math.max(0, this.glitch.t - dt);
 
     // Coming upon the dancing inflatables plays a one-shot caption.
     this.inflatableCheck += dt;
@@ -257,6 +271,7 @@ export class Game {
       const a = this.activeChar;
       if (this.world.inflatablesInRect(a.x - 70, a.y - 70, 140, 140).length > 0) {
         this.seenInflatables = true;
+        this.triggerGlitch(0.5);
         this.announce(['THE INFLATABLES DANCE. NO ONE KNOWS WHY']);
         this.captionSticky = true; // one-shot — protect it like the meeting
       }
@@ -401,6 +416,7 @@ export class Game {
         b.carried = true;
         this.fetch = 'returning';
         this.nav = { stuck: 0, detour: 0, side: 1 };
+        this.triggerGlitch(0.2);
       }
     } else if (this.fetch === 'returning') {
       b.x = dog.x + dog.facing * 6;
@@ -409,6 +425,7 @@ export class Game {
       if (Math.hypot(person.x - dog.x, person.y - dog.y) <= DELIVER_RADIUS) {
         this.ball = null;
         this.fetch = 'idle';
+        this.triggerGlitch(0.25);
         this.announce(['GOOD DOG']);
         this.hearts.push({
           x: (person.x + dog.x) / 2,

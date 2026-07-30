@@ -11,6 +11,7 @@ import { PALETTE, SPRITE_COLORS, SPARKLE_TINTS, LEASH_COLORS } from './palette.j
 import { PERSON_FRAMES, DOG_FRAMES, BALL_SPRITE, HEART_SPRITE, walkFrame, spriteSize } from './sprites.js';
 import { treePixels, BLOCK_W, BLOCK_H } from './trees.js';
 import { inflatablePixels } from './inflatables.js';
+import { glitchFrame, starPixels, starSize } from './effects.js';
 import { textPixels, measureText, wrapText, GLYPH_H, LINE_GAP } from './font.js';
 
 export const SCREEN_W = 320;
@@ -185,20 +186,15 @@ export class Renderer {
     ctx.fillStyle = PALETTE.void;
     ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
 
-    // Magical motes twinkling in the dark.
+    // Angular stars twinkling in the dark — sharp 4-point spikes at the peak.
     for (const s of game.world.sparklesInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
       const glow = Math.sin(game.time * s.rate * 2 + s.phase);
-      if (glow < 0.1) continue;
+      const pts = starPixels(glow, starSize(s));
+      if (pts.length === 0) continue;
       const x = Math.round(s.x - viewX);
       const y = Math.round(s.y - viewY);
-      ctx.fillStyle = SPARKLE_TINTS[s.tint % SPARKLE_TINTS.length];
-      ctx.fillRect(x, y, 1, 1);
-      if (glow > 0.9) {
-        ctx.fillRect(x - 1, y, 1, 1);
-        ctx.fillRect(x + 1, y, 1, 1);
-        ctx.fillRect(x, y - 1, 1, 1);
-        ctx.fillRect(x, y + 1, 1, 1);
-      }
+      ctx.fillStyle = glow >= 0.9 ? PALETTE.moonlight : SPARKLE_TINTS[s.tint % SPARKLE_TINTS.length];
+      for (const p of pts) ctx.fillRect(x + p.x, y + p.y, 1, 1);
     }
 
     // Tap-to-move marker: a small marching cross where the walk will end.
@@ -285,6 +281,20 @@ export class Renderer {
         ctx.fillRect(b.x, b.y, 1, b.h);
         ctx.fillRect(b.x + b.w - 1, b.y, 1, b.h);
         this.drawText(b.label, b.x + b.w / 2, b.y + BUTTON_PAD, PALETTE.smoke);
+      }
+    }
+
+    // Transition glitch: slip horizontal bands of the finished frame and
+    // scatter a few noise blocks — the signal skips for a beat.
+    if (game.glitch && game.glitch.t > 0) {
+      const intensity = Math.min(1, game.glitch.t / game.glitch.dur);
+      const fx = glitchFrame(game.glitch.seed, this.frame, intensity, SCREEN_W, SCREEN_H);
+      for (const b of fx.bands) {
+        ctx.drawImage(this.canvas, 0, b.y, SCREEN_W, b.h, b.dx, b.y, SCREEN_W, b.h);
+      }
+      for (const n of fx.noise) {
+        ctx.fillStyle = n.c;
+        ctx.fillRect(n.x, n.y, n.w, n.h);
       }
     }
 
