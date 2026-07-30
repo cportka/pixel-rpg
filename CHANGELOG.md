@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.7.0] - 2026-07-30
+
+### Added
+- **The genie lamp** (rare): RUB THE LAMP rolls d20 vs DC 12 — success billows
+  a genie out in violet smoke and chains straight into a wish menu: WISH FOR
+  HEALTH (full HP), WISH FOR HOME (the genie points toward the seed-fixed home
+  direction — Act 3 groundwork now stored on every game), or WISH FOR MORE
+  WISHES (the genie rolls his eyes and vanishes). One wish, then lamp and
+  genie are gone. The lamp glints periodically so it catches the eye.
+- **The pipe of half-burnt green leaf** (rare): SMOKE IT rolls three bands —
+  15+ a psychedelic vision (the longest glitch in the game, plus lore), 8-14
+  probably oak leaf, 7 or under a coughing fit (-1 HP). One bowl only. SNIFF
+  IT is free and tells you what you already suspected. The leaf introduces the
+  palette's single green accent, and the bowl trails animated smoke wisps
+  until spent.
+
 ## [0.6.0] - 2026-07-30
 
 ### Added

@@ -14,6 +14,7 @@ import { inflatablePixels } from './inflatables.js';
 import { glitchFrame, starPixels, starSize, targetMarkerPixels } from './effects.js';
 import {
   DUMPSTER_SPRITE, DUMPSTER_COLORS, CAT_SPRITE, firePixels, catRowColor,
+  LAMP_SPRITE, LAMP_COLORS, PIPE_SPRITE, PIPE_COLORS, lampGlintPixels, pipeSmokePixels,
 } from './encounters.js';
 import { textPixels, measureText, wrapText, GLYPH_H, LINE_GAP } from './font.js';
 
@@ -291,6 +292,48 @@ export class Renderer {
               if (row[rx] !== '.') ctx.fillRect(bx + rx, by + ry, 1, 1);
             }
           });
+        },
+      });
+    }
+    const drawSpriteWithColors = (sprite, colors, bx, by) => {
+      sprite.forEach((row, ry) => {
+        for (let rx = 0; rx < row.length; rx++) {
+          const ch = row[rx];
+          if (ch === '.') continue;
+          ctx.fillStyle = colors[ch];
+          ctx.fillRect(bx + rx, by + ry, 1, 1);
+        }
+      });
+    };
+    for (const l of game.world.lampsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      if (game.encounterDone.has(`l:${l.x},${l.y}`)) continue; // wished away
+      drawables.push({
+        y: l.y,
+        draw: () => {
+          const lx = Math.round(l.x - viewX);
+          const ly = Math.round(l.y - viewY);
+          drawSpriteWithColors(LAMP_SPRITE, LAMP_COLORS, lx - 5, ly - LAMP_SPRITE.length);
+          for (const p of lampGlintPixels(game.time)) {
+            ctx.fillStyle = p.c;
+            ctx.fillRect(lx + p.x, ly + p.y, 1, 1);
+          }
+        },
+      });
+    }
+    for (const pi of game.world.pipesInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      const spent = game.encounterDone.has(`p:${pi.x},${pi.y}`);
+      drawables.push({
+        y: pi.y,
+        draw: () => {
+          const px = Math.round(pi.x - viewX);
+          const py = Math.round(pi.y - viewY);
+          drawSpriteWithColors(PIPE_SPRITE, PIPE_COLORS, px - 5, py - PIPE_SPRITE.length);
+          if (!spent) {
+            for (const p of pipeSmokePixels(game.time)) {
+              ctx.fillStyle = p.c;
+              ctx.fillRect(px + p.x, py + p.y, 1, 1);
+            }
+          }
         },
       });
     }

@@ -97,26 +97,35 @@ export class World {
     return out;
   }
 
-  /** Burning dumpsters near the world-space rect. */
-  dumpstersInRect(x, y, w, h) {
+  /** Features from a per-chunk list whose anchor is near the rect. */
+  featuresInRect(field, x, y, w, h, pad = 16) {
     const out = [];
     for (const chunk of this.chunksInRect(x - CHUNK, y - CHUNK, w + 2 * CHUNK, h + 2 * CHUNK)) {
-      for (const d of chunk.dumpsters) {
-        if (d.x >= x - 16 && d.x <= x + w + 16 && d.y >= y - 8 && d.y <= y + h + 24) out.push(d);
+      for (const f of chunk[field]) {
+        if (f.x >= x - pad && f.x <= x + w + pad && f.y >= y - pad && f.y <= y + h + pad * 2) out.push(f);
       }
     }
     return out;
   }
 
+  /** Burning dumpsters near the world-space rect. */
+  dumpstersInRect(x, y, w, h) {
+    return this.featuresInRect('dumpsters', x, y, w, h, 16);
+  }
+
   /** Psychedelic cats near the world-space rect. */
   catsInRect(x, y, w, h) {
-    const out = [];
-    for (const chunk of this.chunksInRect(x - CHUNK, y - CHUNK, w + 2 * CHUNK, h + 2 * CHUNK)) {
-      for (const c of chunk.cats) {
-        if (c.x >= x - 12 && c.x <= x + w + 12 && c.y >= y - 8 && c.y <= y + h + 12) out.push(c);
-      }
-    }
-    return out;
+    return this.featuresInRect('cats', x, y, w, h, 12);
+  }
+
+  /** Old lamps near the world-space rect. */
+  lampsInRect(x, y, w, h) {
+    return this.featuresInRect('lamps', x, y, w, h, 12);
+  }
+
+  /** Half-burnt pipes near the world-space rect. */
+  pipesInRect(x, y, w, h) {
+    return this.featuresInRect('pipes', x, y, w, h, 12);
   }
 
   /**
@@ -235,6 +244,20 @@ export function generateChunk(seed, cx, cy) {
       phase: rng() * Math.PI * 2,
     });
   }
+  const lamps = [];
+  if (rng() < 0.015) {
+    lamps.push({
+      x: baseX + 20 + Math.floor(rng() * (CHUNK - 40)),
+      y: baseY + 20 + Math.floor(rng() * (CHUNK - 40)),
+    });
+  }
+  const pipes = [];
+  if (rng() < 0.015) {
+    pipes.push({
+      x: baseX + 20 + Math.floor(rng() * (CHUNK - 40)),
+      y: baseY + 20 + Math.floor(rng() * (CHUNK - 40)),
+    });
+  }
 
-  return { cx, cy, trees, sparkles, inflatables, dumpsters, cats };
+  return { cx, cy, trees, sparkles, inflatables, dumpsters, cats, lamps, pipes };
 }

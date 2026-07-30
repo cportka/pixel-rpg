@@ -1,9 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Game, MAX_HP, COLLAPSE_HP, DC_SEARCH, DC_SMOTHER } from '../src/core/game.js';
+import {
+  Game, MAX_HP, COLLAPSE_HP, DC_SEARCH, DC_SMOTHER, DC_GENIE, DC_VISION, DC_COUGH,
+} from '../src/core/game.js';
 import { World, generateChunk, CHUNK } from '../src/core/world.js';
 import {
   DUMPSTER_SPRITE, DUMPSTER_COLORS, CAT_SPRITE, PSYCHE_CYCLE, firePixels, catRowColor,
+  LAMP_SPRITE, LAMP_COLORS, PIPE_SPRITE, PIPE_COLORS, lampGlintPixels, pipeSmokePixels,
 } from '../src/gfx/encounters.js';
 import { targetMarkerPixels } from '../src/gfx/effects.js';
 import { PALETTE } from '../src/gfx/palette.js';
@@ -16,13 +19,14 @@ function runSeconds(g, seconds, input = IDLE) {
   for (let i = 0; i < steps; i++) g.update(STEP, input);
 }
 
+const KIND_FIELDS = { dumpster: 'dumpsters', cat: 'cats', lamp: 'lamps', pipe: 'pipes' };
+
 /** A together game on an open field with one planted encounter next door. */
 function encounterGame(kind, x = 40, y = 0) {
   const g = new Game(1, { story: false });
   g.world.collides = () => false;
   runSeconds(g, 3.5); // let the greeting caption clear
-  if (kind === 'dumpster') g.world.chunkAt(0, 0).dumpsters.push({ x, y });
-  if (kind === 'cat') g.world.chunkAt(0, 0).cats.push({ x, y, phase: 0 });
+  g.world.chunkAt(0, 0)[KIND_FIELDS[kind]].push({ x, y, phase: 0 });
   return g;
 }
 
@@ -235,6 +239,156 @@ test('the psychedelic cat: anything else earns a scratch (-1 HP)', () => {
     runSeconds(g, 1.5);
     assert.equal(g.choice, null, 'a vanished cat never reopens the menu');
   }
+});
+
+// --- The genie lamp ---------------------------------------------------------
+
+test('a failed rub finds only dust, and the lamp can be tried again', () => {
+  const g = encounterGame('lamp');
+  const choice = walkUntilChoice(g);
+  assert.equal(choice.title, 'AN OLD LAMP GLINTS IN THE LITTER');
+  g.rng = () => 0; // roll 1 < DC_GENIE
+  g.resolveChoice('rub');
+  assert.equal(g.choice, null, 'no genie this time');
+  assert.match(g.caption.text, /^D20: 1 - ONLY DUST/);
+  assert.equal(g.encounterDone.has(choice.key), false, 'lamp not spent');
+});
+
+test('a good rub summons the genie: chained wish menu on the same key', () => {
+  const g = encounterGame('lamp');
+  const choice = walkUntilChoice(g);
+  g.rng = () => 0.99; // roll 20 >= DC_GENIE
+  g.resolveChoice('rub');
+  assert.ok(g.choice, 'the wish menu opened immediately');
+  assert.equal(g.choice.kind, 'genie');
+  assert.equal(g.choice.key, choice.key);
+  assert.equal(g.choice.title, 'THE GENIE OFFERS ONE WISH');
+  assert.equal(g.choice.options.length, 3);
+  assert.match(g.caption.text, /A GENIE BILLOWS OUT IN VIOLET SMOKE/);
+  assert.ok(DC_GENIE >= 10 && DC_GENIE < DC_SMOTHER, 'genie sits between the dumpster DCs');
+});
+
+test('wishing for health restores full HP and spends the lamp', () => {
+  const g = encounterGame('lamp');
+  const choice = walkUntilChoice(g);
+  g.hp = 2;
+  g.rng = () => 0.99;
+  g.resolveChoice('rub');
+  g.resolveChoice('health');
+  assert.equal(g.hp, MAX_HP);
+  assert.equal(g.caption.text, 'YOUR WOUNDS UNWIND (FULL HP)');
+  assert.ok(g.encounterDone.has(choice.key), 'lamp gone for good');
+  runSeconds(g, 1.5);
+  assert.equal(g.choice, null, 'no menu over a spent lamp');
+});
+
+test('wishing for home reveals the seed-fixed home direction', () => {
+  const g = encounterGame('lamp');
+  walkUntilChoice(g);
+  g.rng = () => 0.99;
+  g.resolveChoice('rub');
+  g.resolveChoice('home');
+  const dir = g.homeCompass();
+  assert.ok(['NORTH', 'SOUTH', 'EAST', 'WEST'].includes(dir));
+  assert.equal(g.caption.text, `THE GENIE POINTS. HOME IS FAR TO THE ${dir}`);
+  const g2 = new Game(1, { story: false });
+  assert.equal(g2.homeCompass(), dir, 'home direction is fixed per seed');
+});
+
+test('wishing for more wishes gets you nothing at all', () => {
+  const g = encounterGame('lamp');
+  const choice = walkUntilChoice(g);
+  g.hp = 4;
+  g.rng = () => 0.99;
+  g.resolveChoice('rub');
+  g.resolveChoice('wishes');
+  assert.equal(g.hp, 4, 'nothing gained');
+  assert.equal(g.caption.text, 'THE GENIE ROLLS HIS EYES AND VANISHES');
+  assert.ok(g.encounterDone.has(choice.key), 'and the lamp is gone anyway');
+});
+
+// --- The pipe ---------------------------------------------------------------
+
+test('smoking the pipe, high roll: a vision and a long glitch', () => {
+  const g = encounterGame('pipe');
+  const choice = walkUntilChoice(g);
+  assert.equal(choice.title, 'A PIPE OF HALF-BURNT GREEN LEAF');
+  g.rng = () => 0.99; // roll 20 >= DC_VISION
+  g.resolveChoice('smoke');
+  assert.match(g.caption.text, /^D20: 20 - THE STARS LEAN CLOSER/);
+  assert.ok(g.captionQueue.includes('A VISION: THE INFLATABLES DANCE AT THE CENTER OF ALL THINGS'));
+  assert.ok(g.captionQueue.includes('THE PIPE IS SPENT'));
+  assert.ok(g.glitch.dur >= 1, 'the long psychedelic glitch');
+  assert.ok(g.encounterDone.has(choice.key), 'one bowl only');
+});
+
+test('smoking the pipe, low roll: a coughing fit (-1 HP)', () => {
+  const g = encounterGame('pipe');
+  walkUntilChoice(g);
+  g.hp = 6;
+  g.rng = () => 0; // roll 1 <= DC_COUGH
+  g.resolveChoice('smoke');
+  assert.equal(g.hp, 5);
+  assert.match(g.caption.text, /^D20: 1 - YOU COUGH FOR A FULL MINUTE/);
+});
+
+test('smoking the pipe, middle roll: probably oak leaf', () => {
+  const g = encounterGame('pipe');
+  walkUntilChoice(g);
+  g.hp = 6;
+  g.rng = () => 0.5; // roll 11 — between the bands
+  g.resolveChoice('smoke');
+  assert.equal(g.hp, 6, 'harmless');
+  assert.match(g.caption.text, /^D20: 11 - NOTHING. PROBABLY OAK LEAF/);
+  assert.ok(DC_COUGH < DC_VISION, 'the bands are ordered');
+});
+
+test('sniffing is harmless and does not spend the pipe', () => {
+  const g = encounterGame('pipe');
+  const choice = walkUntilChoice(g);
+  g.hp = 6;
+  g.resolveChoice('sniff');
+  assert.equal(g.hp, 6);
+  assert.equal(g.caption.text, 'IT SMELLS LIKE REGRET AND LAWN CLIPPINGS');
+  assert.equal(g.encounterDone.has(choice.key), false);
+});
+
+test('lamp and pipe art: sprites well-formed, glint and wisps animate', () => {
+  for (const [sprite, colors] of [[LAMP_SPRITE, LAMP_COLORS], [PIPE_SPRITE, PIPE_COLORS]]) {
+    for (const row of sprite) {
+      assert.equal(row.length, sprite[0].length);
+      for (const ch of row) assert.ok(ch === '.' || ch in colors, `unknown '${ch}'`);
+    }
+  }
+  assert.deepEqual(pipeSmokePixels(1.1), pipeSmokePixels(1.1));
+  assert.notDeepEqual(pipeSmokePixels(1.1), pipeSmokePixels(1.6), 'wisps drift');
+  let flashes = 0;
+  for (let t = 0; t < 6; t += 0.05) if (lampGlintPixels(t).length > 0) flashes++;
+  assert.ok(flashes > 0, 'the lamp glints sometimes');
+  assert.ok(flashes < 40, '...but only sometimes');
+});
+
+test('lamps and pipes generate rarely and inside their chunks', () => {
+  let lamps = 0;
+  let pipes = 0;
+  const N = 40;
+  for (let cx = 0; cx < N; cx++) {
+    for (let cy = 0; cy < N; cy++) {
+      const chunk = generateChunk(33, cx, cy);
+      for (const l of chunk.lamps) {
+        lamps++;
+        assert.ok(l.x >= cx * CHUNK && l.x < (cx + 1) * CHUNK);
+        assert.ok(l.y >= cy * CHUNK && l.y < (cy + 1) * CHUNK);
+      }
+      for (const p of chunk.pipes) {
+        pipes++;
+        assert.ok(p.x >= cx * CHUNK && p.x < (cx + 1) * CHUNK);
+        assert.ok(p.y >= cy * CHUNK && p.y < (cy + 1) * CHUNK);
+      }
+    }
+  }
+  assert.ok(lamps > 0 && pipes > 0, 'both exist somewhere');
+  assert.ok(lamps < N * N * 0.05 && pipes < N * N * 0.05, 'both stay rare');
 });
 
 test('the dog walks past encounters unbothered', () => {

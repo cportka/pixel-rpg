@@ -7,7 +7,7 @@ things dancing where the woods grow deep. Somewhere out there
 waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
 eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.6.0
+**Version:** 0.7.0
 
 ## Play
 
@@ -33,7 +33,8 @@ then open <http://localhost:8000>. Append `?seed=123` for a reproducible forest.
 On touch devices, pixel SWAP and BALL buttons appear in the bottom corners
 (force them with `?touch=1`). You start alone; follow the whimpers to find the
 dog. After that, whichever character you aren't controlling follows along on
-its own. Rare encounters (a burning dumpster, a psychedelic cat) open a
+its own. Rare encounters (a burning dumpster, a psychedelic cat, a genie lamp,
+a suspicious pipe) open a
 choice menu: arrows/tap to pick, Space/E or tap to confirm. The simplified
 D&D ruleset — 10 HP, d20 checks, collapse-and-rescue — lives in
 `docs/RULES.md`.

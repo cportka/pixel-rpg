@@ -18,16 +18,24 @@ tabletop style: `D20: 14 - ...`.
 | --- | --- | --- | --- |
 | Search the burning dumpster | 10 | A warm bone: **+1 HP**, hearts | The fire bites: **−1 HP** |
 | Put out the fire (how?) | 15 | Somehow you smother it — the fire goes out for good | "WITH WHAT?" — nothing happens; you can try again |
+| Rub the old lamp | 12 | A genie billows out and offers **one wish** | Only dust; try again |
+| Smoke the pipe | 15+ | A vision. The stars lean closer. No mechanical effect, maximum effect | — |
+| Smoke the pipe | 8–14 | Nothing. Probably oak leaf | — |
+| Smoke the pipe | ≤7 | A coughing fit: **−1 HP** | — |
 
 ## Damage
 
 - **Fire** (failed dumpster search): −1 HP.
 - **Cat scratch** (doing anything but talking to the psychedelic cat): −1 HP.
+- **The pipe** (rolling ≤7): −1 HP and a full minute of coughing.
 
 ## Healing
 
 - **GOOD DOG** — every completed game of fetch: +1 HP.
 - **The warm bone** — a lucky dumpster search: +1 HP.
+- **WISH FOR HEALTH** — the genie restores you to full. One wish. Choose well;
+  WISH FOR MORE WISHES has been tried, and the genie has seen it all before.
+  WISH FOR HOME buys the one thing money can't: directions.
 
 ## Collapse
 

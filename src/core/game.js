@@ -10,7 +10,7 @@
 // fetch, and begins the long walk home together.
 
 import { World, CHUNK } from './world.js';
-import { mulberry32 } from './rng.js';
+import { mulberry32, hashCoords } from './rng.js';
 import { PERSON, DOG, makeCharacter, moveCharacter, updateFollower, feetBox } from './entities.js';
 
 export const CAPTION_TTL = 3.2; // seconds a caption stays up
@@ -25,6 +25,9 @@ export const TAP_GIVE_UP = 2.5; // seconds without progress before abandoning a 
 export const MAX_HP = 10;
 export const DC_SEARCH = 10; // rummaging a burning dumpster: easy-ish
 export const DC_SMOTHER = 15; // putting out a fire bare-handed: hard
+export const DC_GENIE = 12; // rubbing a genie out of an old lamp
+export const DC_VISION = 15; // the pipe: this good or better, the woods speak
+export const DC_COUGH = 7; // the pipe: this bad or worse, you pay for it
 export const COLLAPSE_HP = 5; // where the dog's rescue leaves you
 const ENCOUNTER_RADIUS = 26; // px at which an encounter opens its menu
 const ENCOUNTER_REARM = 44; // walk this far away before it can re-open
@@ -86,6 +89,10 @@ export class Game {
     this.seenInflatables = false; // the encounter caption plays once
     this.inflatableCheck = 0;
     this.glitch = { t: 0, dur: 1, seed: 0 }; // transition glitch: remaining/total time + burst seed
+
+    // Home exists, somewhere far — a fixed direction per seed (Act 3
+    // groundwork; today only the genie will tell you about it).
+    this.homeAngle = (hashCoords(seed >>> 0, 999, 999) / 0x100000000) * Math.PI * 2;
 
     // Simplified D&D state.
     this.hp = MAX_HP;
@@ -169,6 +176,13 @@ export class Game {
   /** Roll a d20 from the gameplay rng stream. */
   d20() {
     return 1 + Math.floor(this.rng() * 20);
+  }
+
+  /** Which compass way is home? (The genie knows.) */
+  homeCompass() {
+    const dx = Math.cos(this.homeAngle);
+    const dy = Math.sin(this.homeAngle);
+    return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'EAST' : 'WEST') : dy > 0 ? 'SOUTH' : 'NORTH';
   }
 
   /** Lose HP; at 0 the dog drags you back from the brink. */
@@ -371,7 +385,15 @@ export class Game {
     if (this.tapStall > TAP_GIVE_UP) this.clearMoveTarget(); // e.g. tapped a trunk
   }
 
-  /** Open encounter menus for dumpsters and cats the person walks up to. */
+  /** Freeze the walk and put a menu up (also used by chained menus). */
+  openChoice(choice) {
+    this.choice = choice;
+    this.choiceIndex = 0;
+    this.clearMoveTarget();
+    this.triggerGlitch(0.25);
+  }
+
+  /** Open encounter menus for whatever the person walks up to. */
   checkEncounters() {
     if (this.active !== 'person') return; // the dog is unbothered by all of it
     const p = this.person;
@@ -381,47 +403,62 @@ export class Game {
       if (Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) this.choiceCooldown = null;
     }
     const blocked = (key) => this.encounterDone.has(key) || this.choiceCooldown?.key === key;
+    const near = (method) =>
+      this.world[method](p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2);
 
-    for (const d of this.world.dumpstersInRect(p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2)) {
-      const key = `d:${d.x},${d.y}`;
-      if (blocked(key)) continue;
-      this.choice = {
+    const KINDS = [
+      {
+        method: 'dumpstersInRect',
+        prefix: 'd',
         kind: 'dumpster',
-        key,
-        x: d.x,
-        y: d.y,
         title: 'A DUMPSTER BURNS IN THE DARK',
         options: [
           { id: 'search', label: 'SEARCH THE DUMPSTER' },
           { id: 'putout', label: 'PUT OUT THE FIRE (HOW?)' },
           { id: 'walkaway', label: 'WALK AWAY' },
         ],
-      };
-      this.choiceIndex = 0;
-      this.clearMoveTarget();
-      this.triggerGlitch(0.25);
-      return;
-    }
-
-    for (const c of this.world.catsInRect(p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2)) {
-      const key = `c:${c.x},${c.y}`;
-      if (blocked(key)) continue;
-      this.choice = {
+      },
+      {
+        method: 'catsInRect',
+        prefix: 'c',
         kind: 'cat',
-        key,
-        x: c.x,
-        y: c.y,
         title: 'A PSYCHEDELIC CAT REGARDS YOU',
         options: [
           { id: 'talk', label: 'TALK TO HIM' },
           { id: 'pet', label: 'PET HIM' },
           { id: 'grab', label: 'GRAB HIM' },
         ],
-      };
-      this.choiceIndex = 0;
-      this.clearMoveTarget();
-      this.triggerGlitch(0.25);
-      return;
+      },
+      {
+        method: 'lampsInRect',
+        prefix: 'l',
+        kind: 'lamp',
+        title: 'AN OLD LAMP GLINTS IN THE LITTER',
+        options: [
+          { id: 'rub', label: 'RUB THE LAMP' },
+          { id: 'walkaway', label: 'LEAVE IT BE' },
+        ],
+      },
+      {
+        method: 'pipesInRect',
+        prefix: 'p',
+        kind: 'pipe',
+        title: 'A PIPE OF HALF-BURNT GREEN LEAF',
+        options: [
+          { id: 'smoke', label: 'SMOKE THE PIPE' },
+          { id: 'sniff', label: 'SNIFF IT' },
+          { id: 'walkaway', label: 'LEAVE IT BE' },
+        ],
+      },
+    ];
+
+    for (const spec of KINDS) {
+      for (const f of near(spec.method)) {
+        const key = `${spec.prefix}:${f.x},${f.y}`;
+        if (blocked(key)) continue;
+        this.openChoice({ kind: spec.kind, key, x: f.x, y: f.y, title: spec.title, options: spec.options });
+        return;
+      }
     }
   }
 
@@ -466,6 +503,64 @@ export class Game {
         this.announce(['THE CAT SCRATCHES YOU (-1 HP) AND VANISHES']);
         this.damage(1);
       }
+    } else if (c.kind === 'lamp') {
+      if (id === 'rub') {
+        const roll = this.d20();
+        if (roll >= DC_GENIE) {
+          this.triggerGlitch(0.5);
+          this.announce([`D20: ${roll} - A GENIE BILLOWS OUT IN VIOLET SMOKE`]);
+          // Chain straight into the wish menu (same key: resolving any wish
+          // finishes the lamp).
+          this.openChoice({
+            kind: 'genie',
+            key: c.key,
+            x: c.x,
+            y: c.y,
+            title: 'THE GENIE OFFERS ONE WISH',
+            options: [
+              { id: 'health', label: 'WISH FOR HEALTH' },
+              { id: 'home', label: 'WISH FOR HOME' },
+              { id: 'wishes', label: 'WISH FOR MORE WISHES' },
+            ],
+          });
+        } else {
+          this.announce([`D20: ${roll} - ONLY DUST AND A FAINT COUGH INSIDE`]);
+        }
+      }
+      // walkaway: the lamp keeps glinting.
+    } else if (c.kind === 'genie') {
+      this.encounterDone.add(c.key); // one wish, then lamp and genie are gone
+      this.triggerGlitch(0.5);
+      if (id === 'health') {
+        this.hp = MAX_HP;
+        this.hearts.push({ x: c.x, y: c.y - 14, t: 1.6 });
+        this.announce(['YOUR WOUNDS UNWIND (FULL HP)']);
+      } else if (id === 'home') {
+        this.announce([`THE GENIE POINTS. HOME IS FAR TO THE ${this.homeCompass()}`]);
+      } else {
+        this.announce(['THE GENIE ROLLS HIS EYES AND VANISHES']);
+      }
+    } else if (c.kind === 'pipe') {
+      if (id === 'smoke') {
+        this.encounterDone.add(c.key); // the leaf only had one bowl in it
+        const roll = this.d20();
+        if (roll >= DC_VISION) {
+          this.triggerGlitch(1.2); // the long one
+          this.announce([
+            `D20: ${roll} - THE STARS LEAN CLOSER`,
+            'A VISION: THE INFLATABLES DANCE AT THE CENTER OF ALL THINGS',
+            'THE PIPE IS SPENT',
+          ]);
+        } else if (roll <= DC_COUGH) {
+          this.announce([`D20: ${roll} - YOU COUGH FOR A FULL MINUTE (-1 HP)`, 'THE PIPE IS SPENT']);
+          this.damage(1);
+        } else {
+          this.announce([`D20: ${roll} - NOTHING. PROBABLY OAK LEAF`, 'THE PIPE IS SPENT']);
+        }
+      } else if (id === 'sniff') {
+        this.announce(['IT SMELLS LIKE REGRET AND LAWN CLIPPINGS']);
+      }
+      // walkaway: it keeps smoldering.
     }
   }
 
