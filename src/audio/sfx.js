@@ -116,6 +116,19 @@ export const SOUNDS = {
     { type: 'tone', wave: 'triangle', f0: 392, f1: 466, d: 0.3, v: 0.09, t: 0.2 },
     { type: 'tone', wave: 'triangle', f0: 466, f1: 415, d: 0.35, v: 0.08, t: 0.5 },
   ],
+
+  // Growth.
+  xp: [
+    { type: 'tone', wave: 'square', f0: 1175, d: 0.05, v: 0.07 },
+    { type: 'tone', wave: 'square', f0: 1568, d: 0.08, v: 0.07, t: 0.05 },
+  ],
+  levelup: [
+    { type: 'tone', wave: 'triangle', f0: 523, d: 0.09, v: 0.11 },
+    { type: 'tone', wave: 'triangle', f0: 659, d: 0.09, v: 0.11, t: 0.09 },
+    { type: 'tone', wave: 'triangle', f0: 784, d: 0.09, v: 0.11, t: 0.18 },
+    { type: 'tone', wave: 'triangle', f0: 1047, d: 0.2, v: 0.12, t: 0.27 },
+    { type: 'noise', f0: 2500, f1: 3500, d: 0.15, v: 0.05, t: 0.3 },
+  ],
 };
 
 /** Every event name the game can emit. main.js plays these 1:1. */

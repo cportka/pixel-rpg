@@ -5,31 +5,50 @@ stats, one sheet (**double-click/double-tap your character**, or press **I**).
 
 ## The six stats
 
-At the beginning of the universe the person rolls **3d6** for each of
-**STR, INT, WIS, DEX, CON, CHA** — from the world's own seeded dice, so the
-same seed always rolls the same person. Scores map to modifiers the classic
-way: `mod = floor((score − 10) / 2)` — a 10 is +0, an 18 is +4, a 3 is −4.
+At the beginning of the universe the person has **2** in each of
+**STR, INT, WIS, DEX, CON, CHA**. Two. In everything. Scores map to
+modifiers the classic way — `mod = floor((score − 10) / 2)` — so you start
+at **−4 across the board**, punching for 0 damage and carrying 60 lbs.
+The forest does not care. Levels are how you make it care.
 
 Plus **HP**: the person starts with **10 HP** (the maximum). Current HP
 shows top-left; everything else is on the character sheet.
 
 The dog has no stats. The dog is fine. The dog is always fine.
 
+## Levels and experience
+
+You start at **level 1** with 0 XP. Every **10 XP** is a level, and every
+level hands you **2 stat points** — +1s you place anywhere, together on one
+stat or split across two, chosen one at a time on the level-up screen (it
+pauses the world; there is no walking away from self-improvement).
+
+| Deed | XP |
+| --- | --- |
+| Finding the friendly lost dog | **4** |
+| Putting a zombie back down | **1** |
+
+Current level and XP show top-left under your HP, and on the sheet.
+
 ## The action & inventory screen
 
 Double-click (or double-tap) your character — or press **I** — to **pause
-the game** and open the sheet: stats, HP, carry weight, the drunk countdown,
-and what you're hauling. It's also where you act with what you carry:
-attack with fists, swing the bone, throw the ball, or gnaw saved bone meat.
-Attacking reaches any zombie nearby; with nothing in range you strike only
-the dark, which does not mind. Time is frozen while it's open — the drunk
-countdown included.
+the game** and open the sheet. It is **icon-based**: six stat pictographs
+(score printed under each) plus an icon for everything you carry — the
+bone, the meat on it, the pink ball. Click an icon (arrows + Space work
+too) and a little window opens with the explanation: the score, the
+modifier and what it does to your d20s, what answers to that stat, or the
+item's numbers — along with its actions (PUNCH SOMETHING, SWING THE BONE,
+GNAW OFF THE MEAT, THROW THE BALL). Attacks reach any zombie nearby; with
+nothing in range you strike only the dark, which does not mind. Time is
+frozen while any of it is open — the drunk countdown included.
 
 ## Weight
 
-You can carry **STR × 10 + CON × 20 lbs**. The sheet shows your load
-(`WEIGHT 7 OF 300 LBS`). The bone weighs 5 lbs; the meat on it another 2.
-The forest travels light, for now — but the rule is watching.
+You can carry **STR × 10 + CON × 20 lbs** — a starting body manages
+**60 lbs** (the sheet reads `WEIGHT 7 OF 60 LBS` once you're hauling the
+meaty bone). The bone weighs 5 lbs; the meat on it another 2. The forest
+travels light, for now — but the rule is watching, and levels raise it.
 
 ## The one die: d20
 

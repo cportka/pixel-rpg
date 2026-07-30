@@ -7,7 +7,7 @@ things dancing where the woods grow deep. Somewhere out there
 waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
 eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.12.0
+**Version:** 0.13.0
 
 ## Play
 
@@ -40,10 +40,14 @@ dog. After that, whichever character you aren't controlling follows along on
 its own. Rare encounters (a burning dumpster, a psychedelic cat, a genie lamp,
 a suspicious pipe, a zombie who does not want friends) open a
 choice menu: arrows/tap to pick, Space/E or tap to confirm. The simplified
-D&D ruleset — 10 HP, six 3d6-rolled abilities (STR/INT/WIS/DEX/CON/CHA),
-d20 + modifier checks, STR-scaled damage, carry weight (STR×10 + CON×20 lbs),
-a meaty bone that doubles as a club, ten-minute pipe
-inebriation, and collapse-and-rescue — lives in `docs/RULES.md`.
+D&D ruleset — 10 HP, six abilities (STR/INT/WIS/DEX/CON/CHA) that all start
+at a humbling 2, levels every 10 XP granting two +1s (find the dog for 4 XP,
+drop zombies for 1 each), d20 + modifier checks, STR-scaled damage, carry
+weight (STR×10 + CON×20 lbs), an icon-based inventory whose icons open
+little explanation windows, a meaty bone that doubles as a club, ten-minute
+pipe inebriation, and collapse-and-rescue — lives in `docs/RULES.md`. The
+viewport is 416×360 world pixels (3× upscale = 1248×1080) at the same art
+scale, and on portrait phones the game locks itself horizontal.
 
 The forest is no longer all forest: a lazy terrain layer deals every region
 (640px square) a biome — grasslands, sparse oak woods, dense redwood stands,
@@ -60,7 +64,7 @@ arpeggio (audio starts on your first tap or keypress, per browser rules).
 
 ## Architecture
 
-No dependencies, no build step — plain ES modules and a 320x200 canvas
+No dependencies, no build step — plain ES modules and a 416x360 canvas
 integer-upscaled with `image-rendering: pixelated`.
 
 - `src/core/` — pure simulation, no DOM (fully covered by `node --test`):

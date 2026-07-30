@@ -36,14 +36,27 @@ if (enc === 'dumpster' || enc === 'cat' || enc === 'lamp' || enc === 'pipe' || e
 // Integer upscale to the largest multiple that fits the window — computed in
 // DEVICE pixels so fractional devicePixelRatio (125%/150% displays) still gets
 // uniform game pixels under image-rendering: pixelated.
+//
+// The game is horizontally locked on mobile: a portrait touch device gets the
+// canvas rotated 90° (CSS transform), sized against the swapped window axes,
+// with pointer input mapped back through the rotation. We also ask the
+// Screen Orientation API politely, where it's allowed to answer.
+let rotated = false;
 function fit() {
   const dpr = window.devicePixelRatio || 1;
-  const scale = Math.max(
-    1,
-    Math.floor(Math.min((innerWidth * dpr) / SCREEN_W, (innerHeight * dpr) / SCREEN_H)),
-  );
+  rotated =
+    typeof matchMedia === 'function' &&
+    matchMedia('(orientation: portrait) and (pointer: coarse)').matches;
+  const availW = (rotated ? innerHeight : innerWidth) * dpr;
+  const availH = (rotated ? innerWidth : innerHeight) * dpr;
+  // Integer scale for crisp pixels — but when even 1x overflows the window
+  // (short embeds, tiny tiles), downscale fractionally instead of silently
+  // cropping the HUD and CLOSE rows behind overflow:hidden.
+  const raw = Math.min(availW / SCREEN_W, availH / SCREEN_H);
+  const scale = raw >= 1 ? Math.floor(raw) : raw;
   canvas.style.width = `${(SCREEN_W * scale) / dpr}px`;
   canvas.style.height = `${(SCREEN_H * scale) / dpr}px`;
+  canvas.style.transform = rotated ? 'rotate(90deg)' : '';
 }
 addEventListener('resize', fit);
 fit();
@@ -52,7 +65,18 @@ fit();
 // rules); M toggles mute, ?mute=1 starts muted.
 const audio = new AudioPlayer();
 audio.muted = params.get('mute') === '1';
-addEventListener('pointerdown', () => audio.resume());
+addEventListener('pointerdown', () => {
+  audio.resume();
+  // Best-effort landscape lock (needs a gesture; often needs fullscreen —
+  // the CSS rotation above is the fallback that always works).
+  if (matchMedia('(pointer: coarse)').matches) {
+    try {
+      screen.orientation?.lock?.('landscape')?.catch?.(() => {});
+    } catch {
+      /* not allowed here — the rotated canvas covers it */
+    }
+  }
+});
 addEventListener('keydown', () => audio.resume());
 
 const keys = new Set();
@@ -91,12 +115,30 @@ let lastSelfTap = 0;
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   if (e.pointerType !== 'mouse') renderer.showTouchUI = true;
+  // getBoundingClientRect returns the rotated AABB on portrait mobile, so the
+  // axes swap: canvas-x runs down the screen, canvas-y runs right-to-left.
   const rect = canvas.getBoundingClientRect();
-  const sx = ((e.clientX - rect.left) / rect.width) * SCREEN_W;
-  const sy = ((e.clientY - rect.top) / rect.height) * SCREEN_H;
-  // An open choice menu captures every tap: pick the row you touched.
+  let sx;
+  let sy;
+  if (rotated) {
+    sx = ((e.clientY - rect.top) / rect.height) * SCREEN_W;
+    sy = ((rect.right - e.clientX) / rect.width) * SCREEN_H;
+  } else {
+    sx = ((e.clientX - rect.left) / rect.width) * SCREEN_W;
+    sy = ((e.clientY - rect.top) / rect.height) * SCREEN_H;
+  }
+  // An open choice menu captures every tap: pick the row or icon you touched.
   const panel = choicePanel(game);
   if (panel) {
+    if (panel.icons) {
+      for (const cell of panel.icons) {
+        if (sx >= cell.x && sx < cell.x + cell.w && sy >= cell.y && sy < cell.y + cell.h) {
+          game.choiceIndex = cell.index;
+          game.resolveChoice(cell.id);
+          return;
+        }
+      }
+    }
     for (const row of panel.rows) {
       if (sx >= row.x && sx < row.x + row.w && sy >= row.y - 2 && sy < row.y + row.h) {
         game.choiceIndex = row.index;

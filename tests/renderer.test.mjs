@@ -2,8 +2,11 @@
 // game state and drawing without needing a DOM.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons, choicePanel } from '../src/gfx/renderer.js';
+import {
+  Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons, choicePanel, CAPTION_MAX_W,
+} from '../src/gfx/renderer.js';
 import { WALK_CYCLE_FPS } from '../src/gfx/sprites.js';
+import { wrapText } from '../src/gfx/font.js';
 import { Game } from '../src/core/game.js';
 
 function fakeCanvas(w = SCREEN_W, h = SCREEN_H) {
@@ -72,6 +75,19 @@ test('captions anchored at screen corners stay fully on screen', () => {
         `pixel (${x},${y}) off screen for anchor (${ax},${ay})`);
     }
   }
+});
+
+test('the viewport is 416x360 — its common 3x upscale covers 1240x1080', () => {
+  assert.equal(SCREEN_W, 416);
+  assert.equal(SCREEN_H, 360);
+  assert.ok(SCREEN_W * 3 >= 1240 && SCREEN_H * 3 >= 1080, 'the promised minimum');
+});
+
+test('caption wrap width follows the screen', () => {
+  assert.equal(CAPTION_MAX_W, SCREEN_W - 40);
+  // Long lines that orphan-wrapped on the 320 screen fit in one on 416.
+  assert.equal(wrapText('IT TASTES A LITTLE OF YOUR BRAIN (-1 INT)', CAPTION_MAX_W).length, 1);
+  assert.equal(wrapText('A SOFT WHIMPER DRIFTS FROM THE NORTH', CAPTION_MAX_W).length, 1);
 });
 
 test('touch buttons exist only when together, on screen, not overlapping', () => {

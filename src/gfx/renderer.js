@@ -21,15 +21,17 @@ import {
   CABIN_SPRITE, CABIN_COLORS, cabinWindowLit, CAVE_SPRITE, CAVE_COLORS, caveGlint,
   rockPixels, TUFT_PIXELS,
 } from './structures.js';
-import { MAX_HP } from '../core/game.js';
+import { ICONS } from './icons.js';
+import { MAX_HP, XP_PER_LEVEL } from '../core/game.js';
 import { isWater, onBridge, regionAt } from '../core/terrain.js';
+import { SCREEN_W, SCREEN_H } from '../core/screen.js';
+
+export { SCREEN_W, SCREEN_H };
 import { textPixels, measureText, wrapText, GLYPH_H, LINE_GAP } from './font.js';
 
-export const SCREEN_W = 320;
-export const SCREEN_H = 200;
 export const RENDER_FPS = 15; // presentation cadence, matched to the reference
 
-const CAPTION_MAX_W = 280; // wrap captions to at most this many px
+export const CAPTION_MAX_W = SCREEN_W - 40; // wrap captions to the screen, minus margins
 const BUTTON_PAD = 3; // px of padding inside a touch button
 
 /**
@@ -38,19 +40,14 @@ const BUTTON_PAD = 3; // px of padding inside a touch button
  */
 const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
-/** The character sheet's body lines (shown inside the sheet menu). */
+/** The character sheet's header lines (stats live in the icon grid now). */
 export function sheetLines(game) {
-  const s = game.stats;
-  const wis = game.drunk > 0 ? `${s.wis} (+2)` : `${s.wis}`;
   const lines = [
-    `STR ${s.str}  DEX ${s.dex}`,
-    `INT ${s.int}  CON ${s.con}`,
-    `WIS ${wis}  CHA ${s.cha}`,
+    `LVL ${game.level}  XP ${game.xp} OF ${XP_PER_LEVEL}`,
     `HP ${game.hp} OF ${MAX_HP}`,
     `WEIGHT ${game.carriedWeight()} OF ${game.carryCapacity()} LBS`,
   ];
-  if (game.drunk > 0) lines.push(`DRUNK ${mmss(game.drunk)}`);
-  if (game.hasBone) lines.push(game.boneMeat ? 'BONE (MEATY)' : 'BONE (A GOOD CLUB)');
+  if (game.drunk > 0) lines.push(`DRUNK ${mmss(game.drunk)} (WIS +2)`);
   return lines;
 }
 
@@ -58,29 +55,58 @@ export function choicePanel(game) {
   if (!game.choice) return null;
   const opts = game.choice.options;
   const rowHM = GLYPH_H + 4;
-  if (game.choice.kind === 'map') {
-    // The map screen fills the frame; its cells are drawn by the renderer.
+  if (game.choice.kind === 'map' || game.choice.kind === 'sheet') {
+    // Full-frame pause screens. The map's cells — and the sheet's icon grid —
+    // are drawn by the renderer; taps hit-test rows and icon cells.
     const x = 6;
     const y = 4;
     const w = SCREEN_W - 12;
     const h = SCREEN_H - 12;
-    const rows = opts.map((o, i) => ({
-      index: i,
-      id: o.id,
-      label: o.label,
-      x: x + 4,
-      y: y + h - rowHM * (opts.length - i) - 4,
-      w: w - 8,
-      h: rowHM,
-    }));
-    return { x, y, w, h, title: game.choice.title, body: [], rows };
+    const body = game.choice.kind === 'sheet' ? sheetLines(game) : [];
+    const bodyH = body.length * (GLYPH_H + LINE_GAP);
+    const iconOpts = opts.filter((o) => o.icon);
+    const cellW = 30;
+    const cellH = 30;
+    const gapX = 8;
+    const rowGap = 10;
+    const perRow = 6;
+    const iconTop = y + 6 + rowHM + bodyH + 10;
+    const icons = iconOpts.map((o, i) => {
+      const row = Math.floor(i / perRow);
+      const col = i % perRow;
+      const rowCount = Math.min(perRow, iconOpts.length - row * perRow);
+      const rowW = rowCount * cellW + (rowCount - 1) * gapX;
+      return {
+        index: opts.indexOf(o),
+        id: o.id,
+        icon: o.icon,
+        label: o.label,
+        x: Math.round((SCREEN_W - rowW) / 2) + col * (cellW + gapX),
+        y: iconTop + row * (cellH + rowGap),
+        w: cellW,
+        h: cellH,
+      };
+    });
+    const rows = opts
+      .filter((o) => !o.icon)
+      .map((o, i, plain) => ({
+        index: opts.indexOf(o),
+        id: o.id,
+        label: o.label,
+        x: x + 4,
+        y: y + h - rowHM * (plain.length - i) - 4,
+        w: w - 8,
+        h: rowHM,
+      }));
+    return { x, y, w, h, title: game.choice.title, body, rows, icons };
   }
-  const body = game.choice.kind === 'sheet' ? sheetLines(game) : [];
+  const body = game.choice.body ?? [];
   const rowH = GLYPH_H + 4;
   const bodyH = body.length * (GLYPH_H + LINE_GAP);
   const contentW = Math.max(
     measureText(game.choice.title),
-    ...opts.map((o) => measureText(o.label) + 10),
+    // The selected row is drawn as `- LABEL -`, so size for the decoration.
+    ...opts.map((o) => measureText(`- ${o.label} -`)),
     ...body.map((b) => measureText(b)),
   );
   const w = Math.min(SCREEN_W - 8, contentW + 12);
@@ -529,12 +555,18 @@ export class Renderer {
       );
     }
 
-    // HP, top-left, dim smoke — flushing magenta when you're hurting.
-    const hpText = `HP ${game.hp}`;
-    this.drawText(hpText, 4 + measureText(hpText) / 2, 3, game.hp <= 3 ? PALETTE.magenta : PALETTE.smoke);
-    if (game.drunk > 0) {
-      const dText = `DRUNK ${mmss(game.drunk)}`;
-      this.drawText(dText, 4 + measureText(dText) / 2, 13, PALETTE.magenta);
+    // HP and level, top-left, dim smoke — HP flushes magenta when hurting.
+    // Hidden under full-frame pause screens (which carry the numbers
+    // themselves; a 1px sliver of HUD peeking over the panel reads as a bug).
+    if (!game.menuPaused()) {
+      const hpText = `HP ${game.hp}`;
+      this.drawText(hpText, 4 + measureText(hpText) / 2, 3, game.hp <= 3 ? PALETTE.magenta : PALETTE.smoke);
+      const lvlText = `LVL ${game.level}  XP ${game.xp}/${XP_PER_LEVEL}`;
+      this.drawText(lvlText, 4 + measureText(lvlText) / 2, 13, PALETTE.smoke);
+      if (game.drunk > 0) {
+        const dText = `DRUNK ${mmss(game.drunk)}`;
+        this.drawText(dText, 4 + measureText(dText) / 2, 23, PALETTE.magenta);
+      }
     }
 
     // The HUD minimap — what the person remembers of the nearby regions.
@@ -553,6 +585,7 @@ export class Renderer {
       ctx.fillRect(panel.x + panel.w - 1, panel.y, 1, panel.h);
       this.drawText(panel.title, SCREEN_W / 2, panel.y + 5, PALETTE.moonlight);
       if (game.choice.kind === 'map') this.drawMemoryMap(game, panel);
+      if (panel.icons) this.drawSheetIcons(game, panel);
       panel.body.forEach((line, i) => {
         this.drawText(line, SCREEN_W / 2, panel.y + 6 + (GLYPH_H + 4) + i * (GLYPH_H + LINE_GAP), PALETTE.smoke);
       });
@@ -563,8 +596,10 @@ export class Renderer {
       }
     }
 
-    // Touch buttons (coarse pointers only), above everything.
-    if (this.showTouchUI) {
+    // Touch buttons (coarse pointers only), above everything — but not over
+    // an open menu: panels capture every tap, so live-looking buttons there
+    // would either do nothing or fall through into the CLOSE row.
+    if (this.showTouchUI && !game.choice) {
       for (const b of uiButtons(game)) {
         ctx.fillStyle = PALETTE.fog;
         ctx.fillRect(b.x, b.y, b.w, b.h);
@@ -657,6 +692,42 @@ export class Renderer {
       ctx.fillRect(px + mid - 1, py + mid - 1, 2, 2);
       ctx.fillStyle = PALETTE.moonlight;
       ctx.fillRect(px + mid - 1, py + mid - 2, 2, 1);
+    }
+  }
+
+  /** The sheet's icon grid: bordered cells, doubled 9x9 pictographs, values. */
+  drawSheetIcons(game, panel) {
+    const ctx = this.ctx;
+    for (const cell of panel.icons) {
+      const focused = cell.index === game.choiceIndex;
+      ctx.fillStyle = focused ? PALETTE.moonlight : PALETTE.smokeDeep;
+      ctx.fillRect(cell.x, cell.y, cell.w, 1);
+      ctx.fillRect(cell.x, cell.y + cell.h - 1, cell.w, 1);
+      ctx.fillRect(cell.x, cell.y, 1, cell.h);
+      ctx.fillRect(cell.x + cell.w - 1, cell.y, 1, cell.h);
+      const art = ICONS[cell.icon];
+      if (art) {
+        const iw = art.sprite[0].length * 2;
+        const ix = Math.round(cell.x + (cell.w - iw) / 2);
+        const iy = cell.y + 2;
+        art.sprite.forEach((row, ry) => {
+          for (let rx = 0; rx < row.length; rx++) {
+            const ch = row[rx];
+            if (ch === '.') continue;
+            ctx.fillStyle = art.colors[ch];
+            ctx.fillRect(ix + rx * 2, iy + ry * 2, 2, 2);
+          }
+        });
+      }
+      // Stats print their score under the pictograph; items speak for themselves.
+      if (game.stats[cell.id] !== undefined) {
+        this.drawText(
+          String(game.stats[cell.id]),
+          cell.x + cell.w / 2,
+          cell.y + cell.h - 9,
+          focused ? PALETTE.moonlight : PALETTE.smoke,
+        );
+      }
     }
   }
 
