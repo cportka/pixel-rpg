@@ -42,6 +42,7 @@ export function sheetLines(game) {
     `INT ${s.int}  CON ${s.con}`,
     `WIS ${wis}  CHA ${s.cha}`,
     `HP ${game.hp} OF ${MAX_HP}`,
+    `WEIGHT ${game.carriedWeight()} OF ${game.carryCapacity()} LBS`,
   ];
   if (game.drunk > 0) lines.push(`DRUNK ${mmss(game.drunk)}`);
   if (game.hasBone) lines.push(game.boneMeat ? 'BONE (MEATY)' : 'BONE (A GOOD CLUB)');
@@ -83,8 +84,7 @@ export function choicePanel(game) {
 export function uiButtons(game) {
   const h = GLYPH_H + BUTTON_PAD * 2;
   const y = SCREEN_H - h - 4;
-  const meW = measureText('ME') + BUTTON_PAD * 2;
-  const buttons = [{ id: 'sheet', label: 'ME', x: Math.round((SCREEN_W - meW) / 2), y, w: meW, h }];
+  const buttons = [];
   if (game.together) {
     const swapW = measureText('SWAP') + BUTTON_PAD * 2;
     const ballW = measureText('BALL') + BUTTON_PAD * 2;
@@ -470,8 +470,11 @@ export class Renderer {
     }
 
     // Transition glitch: slip horizontal bands of the finished frame and
-    // scatter a few noise blocks — the signal skips for a beat.
-    if (game.glitch && game.glitch.t > 0) {
+    // scatter a few noise blocks — the signal skips for a beat. Suppressed
+    // while the inventory pause is up: the pause freezes glitch.t, which
+    // would otherwise scramble the sheet forever — instead the leftover
+    // burst plays as the resume transition when the sheet closes.
+    if (game.glitch && game.glitch.t > 0 && game.choice?.kind !== 'sheet') {
       const intensity = Math.min(1, game.glitch.t / game.glitch.dur);
       const fx = glitchFrame(game.glitch.seed, this.frame, intensity, SCREEN_W, SCREEN_H);
       for (const b of fx.bands) {
@@ -484,7 +487,9 @@ export class Renderer {
     }
 
     // Inebriation: the whole frame breathes sideways, slow and rhythmic.
-    if (game.drunk > 0) {
+    // Also stilled during the inventory pause — frozen time would hold the
+    // shear at a fixed offset and smear the sheet's text.
+    if (game.drunk > 0 && game.choice?.kind !== 'sheet') {
       for (let i = 0; i < 3; i++) {
         const by = Math.floor(((Math.sin(game.time * 0.7 + i * 2.1) + 1) / 2) * (SCREEN_H - 8));
         const dx = Math.round(Math.sin(game.time * 1.3 + i * 1.7) * 3);

@@ -33,6 +33,8 @@ export const DC_FISTS = 12; // punching a zombie: STR
 export const DC_BONE = 9; // swinging the bone: STR, but it's a club
 export const ZOMBIE_HP = 4;
 export const ZOMBIE_BITE = 2;
+export const BONE_WEIGHT = 5; // lbs — the club
+export const MEAT_WEIGHT = 2; // lbs — the meat still on it
 export const DRUNK_TIME = 600; // seconds the pipe's inebriation lasts (10 min)
 export const DRUNK_WIS_BONUS = 2; // wisdom flows easier while the colors lean in
 export const COLLAPSE_HP = 5; // where the dog's rescue leaves you
@@ -231,6 +233,26 @@ export class Game {
     return `D20: ${c.roll}${m}`;
   }
 
+  /** Fist damage scales with raw strength: floor(STR / 4). */
+  fistDamage() {
+    return Math.floor(this.stats.str / 4);
+  }
+
+  /** The bone is a club: fist damage +1 (so it always does something). */
+  boneDamage() {
+    return this.fistDamage() + 1;
+  }
+
+  /** How much the person can haul: STR x 10 + CON x 20 lbs. */
+  carryCapacity() {
+    return this.stats.str * 10 + this.stats.con * 20;
+  }
+
+  /** What they're hauling now. The forest travels light, so far. */
+  carriedWeight() {
+    return (this.hasBone ? BONE_WEIGHT : 0) + (this.boneMeat ? MEAT_WEIGHT : 0);
+  }
+
   /** Which compass way is home? (The genie knows.) */
   homeCompass() {
     const dx = Math.cos(this.homeAngle);
@@ -350,10 +372,12 @@ export class Game {
   }
 
   update(dt, input = {}) {
-    this.time += dt;
-
     // A choice menu freezes the walk: up/down select, action confirms.
+    // The inventory sheet goes further and pauses the world outright —
+    // no time, no timers, no drunk countdown while you read.
     if (this.choice) {
+      const paused = this.choice.kind === 'sheet';
+      if (!paused) this.time += dt;
       const n = this.choice.options.length;
       if (input.up && !this._prevUp) {
         this.choiceIndex = (this.choiceIndex + n - 1) % n;
@@ -369,9 +393,11 @@ export class Game {
       this._prevAction = !!input.action;
       this._prevSwap = !!input.swap;
       this._prevSheet = !!input.sheet;
-      this.tickTimers(dt);
+      if (!paused) this.tickTimers(dt);
       return;
     }
+
+    this.time += dt;
 
     // Edge-detect swap/action/sheet so a held key fires once.
     if (input.swap && !this._prevSwap) this.swapControl();
@@ -382,6 +408,7 @@ export class Game {
     this._prevSheet = !!input.sheet;
     this._prevUp = !!input.up;
     this._prevDown = !!input.down;
+    if (this.choice) return; // the sheet opened this very tick — freeze now
 
     // Snapshot positions so footsteps can be paced by distance walked.
     const prevPX = this.person.x;
@@ -613,6 +640,8 @@ export class Game {
       else this.announce(['YOU POCKET THE MEATY BONE']);
     } else if (c.kind === 'sheet') {
       if (id === 'eat') this.eatBoneMeat();
+      else if (id === 'fists' || id === 'bone') this.attackFromSheet(id);
+      else if (id === 'ball') this.throwBall();
       // close: nothing.
     } else if (c.kind === 'zombie') {
       this.resolveZombie(c, id);
@@ -703,8 +732,12 @@ export class Game {
     this.announce(['YOU GNAW OFF THE MEAT (+2 HP). THE BONE REMAINS']);
   }
 
-  /** The character sheet, as a menu (I key or the ME touch button). */
+  /**
+   * The action & inventory screen (I key, or double-click your character).
+   * Pauses the world; offers whatever you can do with what you carry.
+   */
   openSheet() {
+    const person = this.active === 'person';
     this.openChoice({
       kind: 'sheet',
       key: 'sheet',
@@ -713,9 +746,32 @@ export class Game {
       title: 'YOU',
       options: [
         ...(this.boneMeat ? [{ id: 'eat', label: 'GNAW THE BONE MEAT (+2 HP)' }] : []),
+        ...(person && this.hasBone ? [{ id: 'bone', label: 'SWING THE BONE' }] : []),
+        ...(person ? [{ id: 'fists', label: 'ATTACK WITH FISTS' }] : []),
+        ...(person && this.together && this.fetch === 'idle'
+          ? [{ id: 'ball', label: 'THROW THE BALL' }]
+          : []),
         { id: 'close', label: 'CLOSE' },
       ],
     });
+  }
+
+  /** Swing from the inventory at whatever undead thing is in reach. */
+  attackFromSheet(id) {
+    const p = this.person;
+    const zombies = this.world.zombiesInRect(
+      p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2,
+    );
+    for (const z of zombies) {
+      const key = `z:${z.x},${z.y}`;
+      if (this.encounterDone.has(key)) continue;
+      this.resolveZombie({ kind: 'zombie', key, x: z.x, y: z.y }, id);
+      return;
+    }
+    this.emit('throw'); // the whoosh of hitting nothing
+    this.announce([
+      id === 'bone' ? 'YOU SWING AT THE DARK. IT DOES NOT MIND' : 'YOU PUNCH AT THE DARK. IT DOES NOT MIND',
+    ]);
   }
 
   /** The zombie fight menu (options depend on what you're carrying). */
@@ -748,8 +804,15 @@ export class Game {
     const weapon = id === 'bone' && this.hasBone;
     const r = this.check('str');
     const dc = weapon ? DC_BONE : DC_FISTS;
-    const dmg = weapon ? 3 : 2;
+    const dmg = weapon ? this.boneDamage() : this.fistDamage();
     if (r.total >= dc) {
+      if (dmg <= 0) {
+        // A STR-3 punch lands and accomplishes nothing. No bite either —
+        // you did, technically, hit it.
+        this.announce([`${this.rollText(r)} - YOUR FISTS BOUNCE OFF HARMLESSLY`]);
+        this.openChoice(this.zombieMenu(c.key, c.x, c.y));
+        return;
+      }
       const left = hp - dmg;
       if (weapon) this.emit('bonk');
       if (left <= 0) {
