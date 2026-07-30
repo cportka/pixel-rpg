@@ -17,7 +17,12 @@ import {
   LAMP_SPRITE, LAMP_COLORS, PIPE_SPRITE, PIPE_COLORS, lampGlintPixels, pipeSmokePixels,
   ZOMBIE_SPRITE, ZOMBIE_COLORS, zombieSway,
 } from './encounters.js';
+import {
+  CABIN_SPRITE, CABIN_COLORS, cabinWindowLit, CAVE_SPRITE, CAVE_COLORS, caveGlint,
+  rockPixels, TUFT_PIXELS,
+} from './structures.js';
 import { MAX_HP } from '../core/game.js';
+import { isWater, onBridge, regionAt } from '../core/terrain.js';
 import { textPixels, measureText, wrapText, GLYPH_H, LINE_GAP } from './font.js';
 
 export const SCREEN_W = 320;
@@ -52,6 +57,24 @@ export function sheetLines(game) {
 export function choicePanel(game) {
   if (!game.choice) return null;
   const opts = game.choice.options;
+  const rowHM = GLYPH_H + 4;
+  if (game.choice.kind === 'map') {
+    // The map screen fills the frame; its cells are drawn by the renderer.
+    const x = 6;
+    const y = 4;
+    const w = SCREEN_W - 12;
+    const h = SCREEN_H - 12;
+    const rows = opts.map((o, i) => ({
+      index: i,
+      id: o.id,
+      label: o.label,
+      x: x + 4,
+      y: y + h - rowHM * (opts.length - i) - 4,
+      w: w - 8,
+      h: rowHM,
+    }));
+    return { x, y, w, h, title: game.choice.title, body: [], rows };
+  }
   const body = game.choice.kind === 'sheet' ? sheetLines(game) : [];
   const rowH = GLYPH_H + 4;
   const bodyH = body.length * (GLYPH_H + LINE_GAP);
@@ -81,6 +104,11 @@ export function choicePanel(game) {
  * draws them, main.js hit-tests them). Empty until the pair are together,
  * since swap and fetch are locked while alone.
  */
+/** The HUD minimap's screen rect (top-right). main.js hit-tests taps on it. */
+export function hudRect() {
+  return { x: SCREEN_W - 42, y: 3, w: 39, h: 39 };
+}
+
 export function uiButtons(game) {
   const h = GLYPH_H + BUTTON_PAD * 2;
   const y = SCREEN_H - h - 4;
@@ -244,6 +272,36 @@ export class Renderer {
     ctx.fillStyle = PALETTE.void;
     ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
 
+    // Terrain ground pass: water (rivers and lakes) with a slow shimmer,
+    // bridge planks, and grass tufts. Sampled in 4px blocks — cheap, chunky.
+    const seed = game.world.seed;
+    const B = 4;
+    for (let sy = 0; sy < SCREEN_H; sy += B) {
+      for (let sx = 0; sx < SCREEN_W; sx += B) {
+        const wx = viewX + sx + B / 2;
+        const wy = viewY + sy + B / 2;
+        if (isWater(seed, wx, wy)) {
+          ctx.fillStyle = PALETTE.fog;
+          ctx.fillRect(sx, sy, B, B);
+          if ((((sx + sy * 3) >> 2) + Math.floor(game.time * 2)) % 11 === 0) {
+            ctx.fillStyle = PALETTE.blue;
+            ctx.fillRect(sx + 1, sy + 2, 2, 1);
+          }
+        } else if (onBridge(seed, wx, wy)) {
+          ctx.fillStyle = PALETTE.plumDeep;
+          ctx.fillRect(sx, sy, B, B);
+          ctx.fillStyle = PALETTE.smokeDeep;
+          ctx.fillRect(sx, sy + 1, B, 1);
+        }
+      }
+    }
+    ctx.fillStyle = PALETTE.leaf;
+    for (const t of game.world.tuftsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      const tx = Math.round(t.x - viewX);
+      const ty = Math.round(t.y - viewY);
+      for (const p of TUFT_PIXELS) ctx.fillRect(tx + p.x, ty + p.y, 1, 1);
+    }
+
     // Angular stars twinkling in the dark — sharp 4-point spikes at the peak.
     for (const s of game.world.sparklesInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
       let glow = Math.sin(game.time * s.rate * 2 + s.phase);
@@ -389,6 +447,51 @@ export class Renderer {
         },
       });
     }
+    for (const r of game.world.rocksInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      drawables.push({
+        y: r.y,
+        draw: () => {
+          const bx = Math.round(r.x - viewX);
+          const by = Math.round(r.y - viewY);
+          for (const p of rockPixels(r.size, r.detailSeed)) {
+            ctx.fillStyle = p.c;
+            ctx.fillRect(bx + p.x, by + p.y, 1, 1);
+          }
+        },
+      });
+    }
+    for (const c of game.world.cabinsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      drawables.push({
+        y: c.y,
+        draw: () => {
+          const bx = Math.round(c.x - viewX) - CABIN_SPRITE[0].length / 2;
+          const by = Math.round(c.y - viewY) - CABIN_SPRITE.length;
+          const lit = cabinWindowLit(game.time);
+          CABIN_SPRITE.forEach((row, ry) => {
+            for (let rx = 0; rx < row.length; rx++) {
+              const ch = row[rx];
+              if (ch === '.') continue;
+              ctx.fillStyle = ch === 'W' && !lit ? PALETTE.fog : CABIN_COLORS[ch];
+              ctx.fillRect(bx + rx, by + ry, 1, 1);
+            }
+          });
+        },
+      });
+    }
+    for (const c of game.world.cavesInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      drawables.push({
+        y: c.y,
+        draw: () => {
+          const bx = Math.round(c.x - viewX) - CAVE_SPRITE[0].length / 2;
+          const by = Math.round(c.y - viewY) - CAVE_SPRITE.length;
+          drawSpriteWithColors(CAVE_SPRITE, CAVE_COLORS, bx, by);
+          if (caveGlint(game.time)) {
+            ctx.fillStyle = PALETTE.violet;
+            ctx.fillRect(Math.round(c.x - viewX), Math.round(c.y - viewY) - 3, 1, 1);
+          }
+        },
+      });
+    }
     for (const ch of [game.person, game.dog]) {
       const frames = ch.kind === 'person' ? PERSON_FRAMES : DOG_FRAMES;
       const map = walkFrame(frames, ch.walking, ch.animTime);
@@ -434,6 +537,10 @@ export class Renderer {
       this.drawText(dText, 4 + measureText(dText) / 2, 13, PALETTE.magenta);
     }
 
+    // The HUD minimap — what the person remembers of the nearby regions.
+    // Hidden while any menu is up (the map screen replaces it wholesale).
+    if (!game.choice) this.drawHud(game);
+
     // The open choice menu, front and center.
     const panel = choicePanel(game);
     if (panel) {
@@ -445,6 +552,7 @@ export class Renderer {
       ctx.fillRect(panel.x, panel.y, 1, panel.h);
       ctx.fillRect(panel.x + panel.w - 1, panel.y, 1, panel.h);
       this.drawText(panel.title, SCREEN_W / 2, panel.y + 5, PALETTE.moonlight);
+      if (game.choice.kind === 'map') this.drawMemoryMap(game, panel);
       panel.body.forEach((line, i) => {
         this.drawText(line, SCREEN_W / 2, panel.y + 6 + (GLYPH_H + 4) + i * (GLYPH_H + LINE_GAP), PALETTE.smoke);
       });
@@ -471,10 +579,10 @@ export class Renderer {
 
     // Transition glitch: slip horizontal bands of the finished frame and
     // scatter a few noise blocks — the signal skips for a beat. Suppressed
-    // while the inventory pause is up: the pause freezes glitch.t, which
-    // would otherwise scramble the sheet forever — instead the leftover
-    // burst plays as the resume transition when the sheet closes.
-    if (game.glitch && game.glitch.t > 0 && game.choice?.kind !== 'sheet') {
+    // while a pause screen is up: the pause freezes glitch.t, which would
+    // otherwise scramble the sheet forever — instead the leftover burst
+    // plays as the resume transition when the screen closes.
+    if (game.glitch && game.glitch.t > 0 && !game.menuPaused()) {
       const intensity = Math.min(1, game.glitch.t / game.glitch.dur);
       const fx = glitchFrame(game.glitch.seed, this.frame, intensity, SCREEN_W, SCREEN_H);
       for (const b of fx.bands) {
@@ -487,9 +595,9 @@ export class Renderer {
     }
 
     // Inebriation: the whole frame breathes sideways, slow and rhythmic.
-    // Also stilled during the inventory pause — frozen time would hold the
-    // shear at a fixed offset and smear the sheet's text.
-    if (game.drunk > 0 && game.choice?.kind !== 'sheet') {
+    // Also stilled during pause screens — frozen time would hold the shear
+    // at a fixed offset and smear the text.
+    if (game.drunk > 0 && !game.menuPaused()) {
       for (let i = 0; i < 3; i++) {
         const by = Math.floor(((Math.sin(game.time * 0.7 + i * 2.1) + 1) / 2) * (SCREEN_H - 8));
         const dx = Math.round(Math.sin(game.time * 1.3 + i * 1.7) * 3);
@@ -498,6 +606,107 @@ export class Renderer {
     }
 
     this.sweepCache();
+  }
+
+  /**
+   * One remembered region as a map cell. Freshness decides how much is left:
+   * fresh — dense dither in the biome's color plus landmark marks; faded —
+   * sparse dither, landmarks forgotten; outline — four corner pips, nothing
+   * more. (Dithering, not alpha: memory fades the pixel-art way.)
+   */
+  drawMemoryCell(px, py, size, entry, level) {
+    const ctx = this.ctx;
+    const TINT = {
+      grass: PALETTE.leaf,
+      oak: PALETTE.purple,
+      redwood: PALETTE.plumDeep,
+      lake: PALETTE.blue,
+      mountain: PALETTE.smoke,
+    };
+    if (level === 'outline') {
+      ctx.fillStyle = PALETTE.smokeDeep;
+      ctx.fillRect(px, py, 1, 1);
+      ctx.fillRect(px + size - 1, py, 1, 1);
+      ctx.fillRect(px, py + size - 1, 1, 1);
+      ctx.fillRect(px + size - 1, py + size - 1, 1, 1);
+      return;
+    }
+    const step = level === 'fresh' ? 2 : 3;
+    ctx.fillStyle = TINT[entry.biome] ?? PALETTE.smokeDeep;
+    for (let dy = 0; dy < size; dy++) {
+      for (let dx = dy % step; dx < size; dx += step) {
+        ctx.fillRect(px + dx, py + dy, 1, 1);
+      }
+    }
+    if (level !== 'fresh') return;
+    const mid = Math.floor(size / 2);
+    if (entry.water && entry.biome !== 'lake') {
+      ctx.fillStyle = PALETTE.blue;
+      ctx.fillRect(px + mid - 1, py, 2, size); // the river runs through it
+    }
+    if (entry.bridge) {
+      ctx.fillStyle = PALETTE.smoke;
+      ctx.fillRect(px + mid - 2, py + mid, 4, 1);
+    }
+    if (entry.cabin) {
+      ctx.fillStyle = PALETTE.magenta;
+      ctx.fillRect(px + mid - 1, py + mid - 1, 2, 2);
+    }
+    if (entry.cave) {
+      ctx.fillStyle = PALETTE.void;
+      ctx.fillRect(px + mid - 1, py + mid - 1, 2, 2);
+      ctx.fillStyle = PALETTE.moonlight;
+      ctx.fillRect(px + mid - 1, py + mid - 2, 2, 1);
+    }
+  }
+
+  /** The corner minimap: 5x5 remembered regions around the active character. */
+  drawHud(game) {
+    const ctx = this.ctx;
+    const r = hudRect();
+    ctx.fillStyle = PALETTE.fog;
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = PALETTE.smokeDeep;
+    ctx.fillRect(r.x, r.y, r.w, 1);
+    ctx.fillRect(r.x, r.y + r.h - 1, r.w, 1);
+    ctx.fillRect(r.x, r.y, 1, r.h);
+    ctx.fillRect(r.x + r.w - 1, r.y, 1, r.h);
+    const cell = 7;
+    const { rx: crx, ry: cry } = regionAt(game.activeChar.x, game.activeChar.y);
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const entry = game.memory.get(`${crx + dx},${cry + dy}`);
+        if (!entry) continue;
+        this.drawMemoryCell(r.x + 2 + (dx + 2) * cell, r.y + 2 + (dy + 2) * cell, cell, entry, game.memoryLevel(entry));
+      }
+    }
+    ctx.fillStyle = PALETTE.moonlight;
+    ctx.fillRect(r.x + 2 + 2 * cell + 2, r.y + 2 + 2 * cell + 2, 2, 2); // you
+  }
+
+  /** The full map screen: every remembered region, centered on the person. */
+  drawMemoryMap(game, panel) {
+    const ctx = this.ctx;
+    const cell = 6;
+    const top = panel.y + 16;
+    const bottom = panel.rows.length ? panel.rows[0].y - 4 : panel.y + panel.h - 4;
+    const cols = Math.floor((panel.w - 8) / cell);
+    const rowsN = Math.floor((bottom - top) / cell);
+    const { rx: prx, ry: pry } = regionAt(game.person.x, game.person.y);
+    const rx0 = prx - Math.floor(cols / 2);
+    const ry0 = pry - Math.floor(rowsN / 2);
+    for (const entry of game.memory.values()) {
+      if (entry.rx < rx0 || entry.rx >= rx0 + cols || entry.ry < ry0 || entry.ry >= ry0 + rowsN) continue;
+      this.drawMemoryCell(
+        panel.x + 4 + (entry.rx - rx0) * cell,
+        top + (entry.ry - ry0) * cell,
+        cell,
+        entry,
+        game.memoryLevel(entry),
+      );
+    }
+    ctx.fillStyle = PALETTE.moonlight;
+    ctx.fillRect(panel.x + 4 + (prx - rx0) * cell + 2, top + (pry - ry0) * cell + 2, 2, 2);
   }
 
   updateCamera(game, dt = 1 / 60) {

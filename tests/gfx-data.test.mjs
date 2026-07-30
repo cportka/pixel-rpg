@@ -240,6 +240,7 @@ test('every caption the game can show can be typeset', () => {
     'YOU WAKE ALONE, AND LIGHTER',
     'YOU',
     'CLOSE',
+    'WHAT YOU REMEMBER',
     'GNAW THE BONE MEAT (+2 HP)',
     'THROW THE BALL',
     'YOU PUNCH AT THE DARK. IT DOES NOT MIND',
