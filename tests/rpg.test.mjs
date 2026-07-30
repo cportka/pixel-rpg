@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   Game, MAX_HP, COLLAPSE_HP, ABILITIES,
   DC_FISTS, DC_BONE, ZOMBIE_HP, ZOMBIE_BITE, DRUNK_TIME, DRUNK_WIS_BONUS,
+  BONE_WEIGHT, MEAT_WEIGHT,
 } from '../src/core/game.js';
 import { generateChunk, CHUNK } from '../src/core/world.js';
 import { ZOMBIE_SPRITE, ZOMBIE_COLORS, zombieSway } from '../src/gfx/encounters.js';
@@ -94,13 +95,20 @@ test('the inebriation wears off and the world settles back down', () => {
   assert.equal(g.caption, null);
 });
 
-test('the drunk timer keeps draining while a menu is open', () => {
-  const g = flatGame();
+test('encounter menus leave time running; the inventory pauses the world', () => {
+  const g = zombieGame();
   g.drunk = DRUNK_TIME;
-  g.update(STEP, { sheet: true });
-  assert.ok(g.choice, 'sheet open');
   runSeconds(g, 1);
-  assert.ok(g.drunk < DRUNK_TIME, 'time passes even mid-menu');
+  assert.ok(g.drunk < DRUNK_TIME, 'a zombie fight does not stop the clock');
+
+  const g2 = flatGame();
+  g2.drunk = 100;
+  g2.update(STEP, { sheet: true });
+  assert.ok(g2.choice, 'sheet open');
+  const t0 = g2.time;
+  runSeconds(g2, 1);
+  assert.equal(g2.drunk, 100, 'the inventory pauses the drunk countdown');
+  assert.equal(g2.time, t0, 'time itself stops');
 });
 
 // --- The character sheet ----------------------------------------------------
@@ -111,12 +119,17 @@ test('the sheet opens on I, freezes the walk, and reopens without cooldown', () 
   assert.ok(g.choice, 'sheet open');
   assert.equal(g.choice.kind, 'sheet');
   assert.equal(g.choice.title, 'YOU');
-  assert.deepEqual(g.choice.options.map((o) => o.id), ['close'], 'no meat, just close');
+  assert.deepEqual(
+    g.choice.options.map((o) => o.id),
+    ['fists', 'ball', 'close'],
+    'boneless: attack, throw, close',
+  );
   const px = g.person.x;
   g.update(STEP, { right: true });
   assert.equal(g.person.x, px, 'walk frozen while reading');
   g.update(STEP, {});
-  g.update(STEP, { action: true }); // CLOSE
+  g.choiceIndex = g.choice.options.length - 1; // CLOSE
+  g.update(STEP, { action: true });
   assert.equal(g.choice, null);
   g.update(STEP, {});
   g.update(STEP, { sheet: true });
@@ -129,22 +142,27 @@ test('with meat on the bone, the sheet offers the gnaw (+2 HP)', () => {
   g.boneMeat = true;
   g.hp = 4;
   g.update(STEP, { sheet: true });
-  assert.deepEqual(g.choice.options.map((o) => o.id), ['eat', 'close']);
+  assert.deepEqual(g.choice.options.map((o) => o.id), ['eat', 'bone', 'fists', 'ball', 'close']);
   g.resolveChoice('eat');
   assert.equal(g.hp, 6);
   assert.equal(g.boneMeat, false);
   assert.ok(g.hasBone, 'the club remains');
   g.update(STEP, {});
   g.update(STEP, { sheet: true });
-  assert.deepEqual(g.choice.options.map((o) => o.id), ['close'], 'the offer is gone');
+  assert.deepEqual(
+    g.choice.options.map((o) => o.id),
+    ['bone', 'fists', 'ball', 'close'],
+    'the gnaw offer is gone; the club stays usable',
+  );
 });
 
-test('sheet lines show stats, HP, drunkenness, and the bone', () => {
+test('sheet lines show stats, HP, weight, drunkenness, and the bone', () => {
   const g = flatGame();
   const lines = sheetLines(g);
-  assert.equal(lines.length, 4, 'sober and boneless: stats + HP only');
+  assert.equal(lines.length, 5, 'sober and boneless: stats, HP, weight');
   assert.equal(lines[0], `STR ${g.stats.str}  DEX ${g.stats.dex}`);
   assert.equal(lines[3], `HP ${g.hp} OF ${MAX_HP}`);
+  assert.equal(lines[4], 'WEIGHT 0 OF 300 LBS');
   g.drunk = 599;
   g.hasBone = true;
   g.boneMeat = true;
@@ -152,8 +170,23 @@ test('sheet lines show stats, HP, drunkenness, and the bone', () => {
   assert.ok(more[2].includes('(+2)'), 'drunk wisdom is annotated');
   assert.ok(more.includes('DRUNK 9:59'), 'the timer reads M:SS');
   assert.ok(more.includes('BONE (MEATY)'));
+  assert.ok(more.includes(`WEIGHT ${BONE_WEIGHT + MEAT_WEIGHT} OF 300 LBS`), 'the load shows');
   g.boneMeat = false;
   assert.ok(sheetLines(g).includes('BONE (A GOOD CLUB)'));
+});
+
+test('you can carry STR x 10 + CON x 20 pounds', () => {
+  const g = flatGame();
+  assert.equal(g.carryCapacity(), 300, '10s across the board');
+  g.stats.str = 18;
+  g.stats.con = 14;
+  assert.equal(g.carryCapacity(), 460);
+  assert.equal(g.carriedWeight(), 0, 'empty-handed');
+  g.hasBone = true;
+  assert.equal(g.carriedWeight(), BONE_WEIGHT);
+  g.boneMeat = true;
+  assert.equal(g.carriedWeight(), BONE_WEIGHT + MEAT_WEIGHT);
+  assert.ok(g.carriedWeight() <= g.carryCapacity(), 'the forest travels light');
 });
 
 test('the sheet panel reserves room for its body lines, on screen', () => {
@@ -162,7 +195,7 @@ test('the sheet panel reserves room for its body lines, on screen', () => {
   g.drunk = 60;
   g.openSheet();
   const panel = choicePanel(g);
-  assert.equal(panel.body.length, 6, 'stats x3, HP, DRUNK, BONE');
+  assert.equal(panel.body.length, 7, 'stats x3, HP, WEIGHT, DRUNK, BONE');
   assert.ok(panel.x >= 0 && panel.y >= 0 && panel.x + panel.w <= SCREEN_W && panel.y + panel.h <= SCREEN_H);
   for (const row of panel.rows) {
     assert.ok(row.y >= panel.y && row.y + row.h <= panel.y + panel.h + 2, 'rows inside the panel');
@@ -257,6 +290,75 @@ test('INT can never be eaten below 1', () => {
   g.rng = () => 0;
   g.resolveChoice('fists');
   assert.equal(g.stats.int, 1);
+});
+
+test('fist damage is floor(STR / 4); the bone adds one', () => {
+  const g = flatGame();
+  for (const [str, fists] of [[3, 0], [10, 2], [12, 3], [16, 4], [18, 4]]) {
+    g.stats.str = str;
+    assert.equal(g.fistDamage(), fists, `STR ${str}`);
+    assert.equal(g.boneDamage(), fists + 1, `STR ${str} + club`);
+  }
+});
+
+test('a mighty punch drops the zombie in one (STR 16 = 4 damage)', () => {
+  const g = zombieGame();
+  const key = g.choice.key;
+  g.stats.str = 16; // +3 to hit, 4 damage
+  g.rng = () => 0.8; // roll 17, +3 = 20
+  g.resolveChoice('fists');
+  assert.equal(g.caption.text, 'D20: 17+3 - YOU LAND ONE');
+  assert.ok(g.encounterDone.has(key), 'one punch');
+  assert.equal(g.choice, null);
+});
+
+test('a feeble hit bounces off harmlessly — and earns no bite', () => {
+  const g = zombieGame();
+  const key = g.choice.key;
+  g.stats.str = 3; // -4 to hit, 0 damage
+  g.hp = 9;
+  g.rng = () => 0.99; // roll 20, -4 = 16: still a hit
+  g.resolveChoice('fists');
+  assert.equal(g.caption.text, 'D20: 20-4 - YOUR FISTS BOUNCE OFF HARMLESSLY');
+  assert.equal(g.hp, 9, 'you did, technically, hit it');
+  assert.equal(g.zombieHp.get(key) ?? ZOMBIE_HP, ZOMBIE_HP, 'unhurt');
+  assert.ok(g.choice, 'the standoff continues');
+});
+
+test('the inventory can attack a zombie in reach', () => {
+  const g = flatGame();
+  g.world.chunkAt(0, 0).zombies.push({ x: g.person.x + 10, y: g.person.y, phase: 0 });
+  g.rng = () => 0.99;
+  g.update(STEP, { sheet: true });
+  assert.equal(g.choice.kind, 'sheet', 'the sheet wins the tick it opens');
+  g.resolveChoice('fists');
+  assert.match(g.caption.text, /YOU LAND ONE/);
+  assert.equal(g.choice.kind, 'zombie', 'the swing joins the fight');
+});
+
+test('attacking with nothing in reach hits only the dark', () => {
+  const g = flatGame();
+  g.update(STEP, { sheet: true });
+  g.resolveChoice('fists');
+  assert.equal(g.caption.text, 'YOU PUNCH AT THE DARK. IT DOES NOT MIND');
+  assert.equal(g.choice, null);
+  const g2 = flatGame();
+  g2.hasBone = true;
+  g2.update(STEP, { sheet: true });
+  g2.resolveChoice('bone');
+  assert.equal(g2.caption.text, 'YOU SWING AT THE DARK. IT DOES NOT MIND');
+});
+
+test('the inventory can throw the ball', () => {
+  const g = flatGame();
+  g.update(STEP, { sheet: true });
+  assert.ok(g.choice.options.some((o) => o.id === 'ball'));
+  g.resolveChoice('ball');
+  assert.equal(g.fetch, 'thrown');
+  assert.ok(g.ball, 'the ball is in the air');
+  g.update(STEP, {});
+  g.update(STEP, { sheet: true });
+  assert.ok(!g.choice.options.some((o) => o.id === 'ball'), 'no second ball mid-fetch');
 });
 
 test('running away costs nothing — the cooldown covers your exit', () => {

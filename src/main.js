@@ -83,6 +83,10 @@ addEventListener('blur', () => keys.clear());
 
 // Tap / click to move: hit-test the touch buttons first, otherwise walk to
 // the tapped world position. pointerdown covers mouse, touch, and pen.
+// A double-click/double-tap on your own character pauses the game and opens
+// the action & inventory screen.
+const DOUBLE_TAP_MS = 400;
+let lastSelfTap = 0;
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   if (e.pointerType !== 'mouse') renderer.showTouchUI = true;
@@ -110,6 +114,20 @@ canvas.addEventListener('pointerdown', (e) => {
     }
   }
   const w = renderer.screenToWorld(sx, sy);
+  // Did the tap land on the character you're controlling? (Anchored at the
+  // feet; the sprite body rises ~16px above them.)
+  const a = game.activeChar;
+  if (Math.abs(w.x - a.x) <= 8 && w.y >= a.y - 18 && w.y <= a.y + 6) {
+    const now = performance.now();
+    if (now - lastSelfTap < DOUBLE_TAP_MS) {
+      lastSelfTap = 0;
+      game.openSheet();
+      return;
+    }
+    lastSelfTap = now;
+  } else {
+    lastSelfTap = 0;
+  }
   game.setMoveTarget(w.x, w.y);
 });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());

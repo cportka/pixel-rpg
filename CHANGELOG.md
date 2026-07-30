@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.10.0] - 2026-07-30
+
+### Added
+- **The action & inventory screen**: double-click (or double-tap) your own
+  character — or press I — to open the sheet, which now **pauses the game
+  outright** (no time, no timers, no drunk countdown). Beyond stats it
+  offers actions with what you carry: ATTACK WITH FISTS, SWING THE BONE,
+  THROW THE BALL, and GNAW THE BONE MEAT. Attacks reach any zombie nearby
+  and join the regular fight; with nothing in range you strike only the
+  dark, which does not mind.
+- **STR-scaled damage**: fists now deal `floor(STR / 4)` (a STR-16 brawler
+  one-punches a zombie; a landed STR-3 hit bounces off harmlessly — but
+  earns no counter-bite). The bone is +1 damage on top, so it always does
+  something.
+- **Carry weight**: capacity is **STR × 10 + CON × 20 lbs**, shown on the
+  sheet (`WEIGHT 7 OF 300 LBS`). The bone weighs 5 lbs, its meat 2.
+
+### Removed
+- The **ME** touch button — the inventory now opens by double-tapping your
+  character on every input device (I still works on keyboards).
+
 ## [0.9.0] - 2026-07-30
 
 ### Added

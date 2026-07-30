@@ -7,7 +7,7 @@ things dancing where the woods grow deep. Somewhere out there
 waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
 eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.9.0
+**Version:** 0.10.0
 
 ## Play
 
@@ -29,17 +29,19 @@ then open <http://localhost:8000>. Append `?seed=123` for a reproducible forest.
 | Arrows / WASD | Walk (keys override a tap target) |
 | Tab or C | Swap control between the person and the dog (once you've found them) |
 | Space or E | Throw the ball (as the person) — the dog fetches |
-| I | Character sheet — stats, HP, drunkenness, and the bone |
+| Double-click your character (or I) | Pause: the action & inventory screen |
 | M | Mute / unmute the 8-bit sound (`?mute=1` starts muted) |
 
-On touch devices, pixel SWAP, ME, and BALL buttons appear along the bottom
-(force them with `?touch=1`). You start alone; follow the whimpers to find the
+On touch devices, pixel SWAP and BALL buttons appear in the bottom corners
+(force them with `?touch=1`); double-tap your character for the inventory.
+You start alone; follow the whimpers to find the
 dog. After that, whichever character you aren't controlling follows along on
 its own. Rare encounters (a burning dumpster, a psychedelic cat, a genie lamp,
 a suspicious pipe, a zombie who does not want friends) open a
 choice menu: arrows/tap to pick, Space/E or tap to confirm. The simplified
 D&D ruleset — 10 HP, six 3d6-rolled abilities (STR/INT/WIS/DEX/CON/CHA),
-d20 + modifier checks, a meaty bone that doubles as a club, ten-minute pipe
+d20 + modifier checks, STR-scaled damage, carry weight (STR×10 + CON×20 lbs),
+a meaty bone that doubles as a club, ten-minute pipe
 inebriation, and collapse-and-rescue — lives in `docs/RULES.md`. Everything makes a soft 8-bit sound: footsteps pace with the
 stride, captions blip like retro dialog, dice rattle, the genie gets an
 arpeggio (audio starts on your first tap or keypress, per browser rules).

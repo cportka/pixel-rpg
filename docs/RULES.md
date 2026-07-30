@@ -1,7 +1,7 @@
 # RULES — simplified D&D
 
 The forest runs on the smallest possible tabletop ruleset. One die, six
-stats, one sheet (press **I**, or tap **ME**).
+stats, one sheet (**double-click/double-tap your character**, or press **I**).
 
 ## The six stats
 
@@ -14,6 +14,22 @@ Plus **HP**: the person starts with **10 HP** (the maximum). Current HP
 shows top-left; everything else is on the character sheet.
 
 The dog has no stats. The dog is fine. The dog is always fine.
+
+## The action & inventory screen
+
+Double-click (or double-tap) your character — or press **I** — to **pause
+the game** and open the sheet: stats, HP, carry weight, the drunk countdown,
+and what you're hauling. It's also where you act with what you carry:
+attack with fists, swing the bone, throw the ball, or gnaw saved bone meat.
+Attacking reaches any zombie nearby; with nothing in range you strike only
+the dark, which does not mind. Time is frozen while it's open — the drunk
+countdown included.
+
+## Weight
+
+You can carry **STR × 10 + CON × 20 lbs**. The sheet shows your load
+(`WEIGHT 7 OF 300 LBS`). The bone weighs 5 lbs; the meat on it another 2.
+The forest travels light, for now — but the rule is watching.
 
 ## The one die: d20
 
@@ -29,8 +45,13 @@ DC. The roll is always shown in the caption, tabletop style — `D20: 14+2 - ...
 | Smoke the pipe | WIS | 15+ | A vision, and **ten minutes of inebriation** (see below) | — |
 | Smoke the pipe | WIS | 8–14 | Nothing. Probably oak leaf | — |
 | Smoke the pipe | WIS | ≤7 | A coughing fit: **−1 HP** | — |
-| Punch the zombie | STR | 12 | 2 damage | It bites: **−2 HP** |
-| Swing the bone | STR | 9 | 3 damage, BONK | It bites: **−2 HP** |
+| Punch the zombie | STR | 12 | **⌊STR / 4⌋ damage** | It bites: **−2 HP** |
+| Swing the bone | STR | 9 | **⌊STR / 4⌋ + 1 damage**, BONK | It bites: **−2 HP** |
+
+Damage scales with raw strength: fists deal `floor(STR / 4)` (a STR-16
+brawler one-punches a zombie; a STR-3 waif's landed hits bounce off
+harmlessly — though at least that earns no bite). The bone always adds +1,
+so it always does *something*.
 
 ## The meaty bone
 
@@ -57,11 +78,12 @@ When it runs out: `THE WORLD SETTLES BACK DOWN`.
 A rare encounter. It shambles in place and it does not want friends:
 
 - **TRY TO BEFRIEND IT** — it bites you (**−2 HP**) and the menu reopens.
-- **ATTACK WITH FISTS** — STR vs DC 12, 2 damage.
-- **SWING THE BONE** — STR vs DC 9, 3 damage (only if you carry the bone).
+- **ATTACK WITH FISTS** — STR vs DC 12, ⌊STR / 4⌋ damage.
+- **SWING THE BONE** — STR vs DC 9, ⌊STR / 4⌋ + 1 damage (only with the bone).
 - **RUN AWAY** — free. It is not fast.
 
-The zombie has **4 HP**. Any miss (or friendship attempt) earns a bite for
+You can also start (or rejoin) the fight from the inventory screen if a
+zombie is in reach. The zombie has **4 HP**. Any miss (or friendship attempt) earns a bite for
 **−2 HP**. If a bite drops you to 0, it also samples your brain: **−1 INT**
 (never below 1), and the fight ends while you're dragged clear.
 
