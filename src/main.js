@@ -2,6 +2,7 @@
 
 import { Game } from './core/game.js';
 import { Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons, choicePanel } from './gfx/renderer.js';
+import { AudioPlayer } from './audio/engine.js';
 
 const canvas = document.getElementById('screen');
 canvas.width = SCREEN_W;
@@ -47,6 +48,13 @@ function fit() {
 addEventListener('resize', fit);
 fit();
 
+// 8-bit sound: the context wakes on the first input (browser autoplay
+// rules); M toggles mute, ?mute=1 starts muted.
+const audio = new AudioPlayer();
+audio.muted = params.get('mute') === '1';
+addEventListener('pointerdown', () => audio.resume());
+addEventListener('keydown', () => audio.resume());
+
 const keys = new Set();
 const pressed = new Set(); // taps latched between simulation steps
 const KEYMAP = {
@@ -58,6 +66,7 @@ const KEYMAP = {
   Space: 'action', KeyE: 'action',
 };
 addEventListener('keydown', (e) => {
+  if (e.code === 'KeyM' && !e.repeat) audio.muted = !audio.muted;
   const action = KEYMAP[e.code];
   if (action) {
     keys.add(action);
@@ -135,6 +144,9 @@ function frame(now) {
   }
   // Latched taps are cleared only once a step has actually consumed them.
   if (stepped) pressed.clear();
+  // Play whatever the simulation heard this frame.
+  for (const name of game.events) audio.play(name);
+  game.events.length = 0;
   if (renderAcc >= RENDER_STEP) {
     renderer.render(game, renderAcc);
     // Carry the overshoot so cadence averages a true RENDER_FPS (zeroing it

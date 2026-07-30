@@ -74,6 +74,8 @@ export class Game {
     this.caption = null; // { text, t }
     this.captionQueue = [];
     this.captionSticky = false; // one-shot story lines resist being clobbered
+    this.events = []; // sound-event names for main.js to drain (capped)
+    this.stepAcc = { person: 0, dog: 0 }; // distance walked since the last footstep
     this.hearts = []; // { x, y, t }
     this.ball = null; // { x, y, vx, vy, carried }
     this.fetch = 'idle'; // idle | thrown | returning
@@ -149,10 +151,21 @@ export class Game {
     return this.together && this.fetch === 'idle';
   }
 
+  /** Queue a named sound event for the frontend to play (capped, droppable). */
+  emit(name) {
+    if (this.events.length < 32) this.events.push(name);
+  }
+
+  /** Put a caption on screen now, with its talk blip. */
+  displayCaption(text) {
+    this.caption = { text, t: CAPTION_TTL };
+    this.emit(text.startsWith('A SOFT WHIMPER') ? 'whimper' : 'caption');
+  }
+
   /** Show a caption now, or queue it behind the one on screen. */
   say(text) {
     if (!this.caption) {
-      this.caption = { text, t: CAPTION_TTL };
+      this.displayCaption(text);
     } else if (this.captionQueue.length < 4) {
       this.captionQueue.push(text);
     }
@@ -175,6 +188,7 @@ export class Game {
 
   /** Roll a d20 from the gameplay rng stream. */
   d20() {
+    this.emit('roll');
     return 1 + Math.floor(this.rng() * 20);
   }
 
@@ -188,9 +202,11 @@ export class Game {
   /** Lose HP; at 0 the dog drags you back from the brink. */
   damage(n) {
     this.hp = Math.max(0, this.hp - n);
+    this.emit('damage');
     this.triggerGlitch(0.3);
     if (this.hp === 0) {
       this.hp = COLLAPSE_HP;
+      this.emit('collapse');
       this.triggerGlitch(0.6);
       this.announce([
         this.together ? 'YOU COLLAPSE. THE DOG WATCHES OVER YOU' : 'YOU COLLAPSE. THE DARK IS PATIENT',
@@ -216,6 +232,7 @@ export class Game {
     this.active = this.active === 'person' ? 'dog' : 'person';
     this.otherChar.following = false;
     this.clearMoveTarget(); // the old target belonged to the other character
+    this.emit('swap');
     this.triggerGlitch();
     this.announce([this.active === 'person' ? 'YOU ARE THE PERSON' : 'YOU ARE THE DOG']);
   }
@@ -238,6 +255,7 @@ export class Game {
   meetDog() {
     this.together = true;
     this.dog.following = false;
+    this.emit('meet');
     this.triggerGlitch(0.5); // the big one — the universe changes shape here
     this.announce(MEETING_LINES);
     this.captionSticky = true; // this beat plays exactly once — protect it
@@ -267,6 +285,7 @@ export class Game {
     this.fetch = 'thrown';
     this.fetchTime = 0;
     this.nav = { stuck: 0, detour: 0, side: 1 };
+    this.emit('throw');
     this.triggerGlitch(0.25);
     this.announce(['FETCH IS OUR FAVORITE GAME!']);
   }
@@ -278,7 +297,7 @@ export class Game {
       if (this.caption.t <= 0) {
         this.caption = null;
         const next = this.captionQueue.shift();
-        if (next) this.caption = { text: next, t: CAPTION_TTL };
+        if (next) this.displayCaption(next);
         else this.captionSticky = false; // the protected sequence has drained
       }
     }
@@ -293,8 +312,14 @@ export class Game {
     // A choice menu freezes the walk: up/down select, action confirms.
     if (this.choice) {
       const n = this.choice.options.length;
-      if (input.up && !this._prevUp) this.choiceIndex = (this.choiceIndex + n - 1) % n;
-      if (input.down && !this._prevDown) this.choiceIndex = (this.choiceIndex + 1) % n;
+      if (input.up && !this._prevUp) {
+        this.choiceIndex = (this.choiceIndex + n - 1) % n;
+        this.emit('menu-move');
+      }
+      if (input.down && !this._prevDown) {
+        this.choiceIndex = (this.choiceIndex + 1) % n;
+        this.emit('menu-move');
+      }
       if (input.action && !this._prevAction) this.resolveChoice(this.choice.options[this.choiceIndex].id);
       this._prevUp = !!input.up;
       this._prevDown = !!input.down;
@@ -311,6 +336,12 @@ export class Game {
     this._prevAction = !!input.action;
     this._prevUp = !!input.up;
     this._prevDown = !!input.down;
+
+    // Snapshot positions so footsteps can be paced by distance walked.
+    const prevPX = this.person.x;
+    const prevPY = this.person.y;
+    const prevDX = this.dog.x;
+    const prevDY = this.dog.y;
 
     // Player-controlled character: keys win over a tap target.
     const dirX = (input.right ? 1 : 0) - (input.left ? 1 : 0);
@@ -337,6 +368,18 @@ export class Game {
       this.updateAlone(dt);
     }
 
+    // Soft footsteps, paced by distance actually covered this tick.
+    this.stepAcc.person += Math.hypot(this.person.x - prevPX, this.person.y - prevPY);
+    this.stepAcc.dog += Math.hypot(this.dog.x - prevDX, this.dog.y - prevDY);
+    if (this.stepAcc.person >= 9) {
+      this.stepAcc.person = 0;
+      this.emit('step-person');
+    }
+    if (this.stepAcc.dog >= 7) {
+      this.stepAcc.dog = 0;
+      this.emit('step-dog');
+    }
+
     this.tickTimers(dt);
 
     // Rare encounters open their menus when the person wanders close.
@@ -353,6 +396,7 @@ export class Game {
       const a = this.activeChar;
       if (this.world.inflatablesInRect(a.x - 70, a.y - 70, 140, 140).length > 0) {
         this.seenInflatables = true;
+        this.emit('inflatables');
         this.triggerGlitch(0.5);
         this.announce(['THE INFLATABLES DANCE. NO ONE KNOWS WHY']);
         this.captionSticky = true; // one-shot — protect it like the meeting
@@ -390,6 +434,7 @@ export class Game {
     this.choice = choice;
     this.choiceIndex = 0;
     this.clearMoveTarget();
+    this.emit('menu-open');
     this.triggerGlitch(0.25);
   }
 
@@ -469,6 +514,7 @@ export class Game {
     this.choice = null;
     this.choiceIndex = 0;
     this.choiceCooldown = { key: c.key, x: c.x, y: c.y };
+    this.emit('menu-confirm');
 
     if (c.kind === 'dumpster') {
       if (id === 'search') {
@@ -476,6 +522,7 @@ export class Game {
         const roll = this.d20();
         if (roll >= DC_SEARCH) {
           this.heal(1);
+          this.emit('heal');
           this.hearts.push({ x: c.x, y: c.y - 16, t: 1.6 });
           this.announce([`D20: ${roll} - YOU FIND A WARM BONE (+1 HP)`]);
         } else {
@@ -498,8 +545,10 @@ export class Game {
       this.encounterDone.add(c.key); // however this goes, the cat is gone
       this.triggerGlitch(0.4);
       if (id === 'talk') {
+        this.emit('vanish');
         this.announce(['THE CAT DISSOLVES INTO STATIC']);
       } else {
+        this.emit('vanish');
         this.announce(['THE CAT SCRATCHES YOU (-1 HP) AND VANISHES']);
         this.damage(1);
       }
@@ -507,6 +556,7 @@ export class Game {
       if (id === 'rub') {
         const roll = this.d20();
         if (roll >= DC_GENIE) {
+          this.emit('genie');
           this.triggerGlitch(0.5);
           this.announce([`D20: ${roll} - A GENIE BILLOWS OUT IN VIOLET SMOKE`]);
           // Chain straight into the wish menu (same key: resolving any wish
@@ -533,6 +583,7 @@ export class Game {
       this.triggerGlitch(0.5);
       if (id === 'health') {
         this.hp = MAX_HP;
+        this.emit('heal');
         this.hearts.push({ x: c.x, y: c.y - 14, t: 1.6 });
         this.announce(['YOUR WOUNDS UNWIND (FULL HP)']);
       } else if (id === 'home') {
@@ -545,6 +596,7 @@ export class Game {
         this.encounterDone.add(c.key); // the leaf only had one bowl in it
         const roll = this.d20();
         if (roll >= DC_VISION) {
+          this.emit('vision');
           this.triggerGlitch(1.2); // the long one
           this.announce([
             `D20: ${roll} - THE STARS LEAN CLOSER`,
@@ -677,6 +729,7 @@ export class Game {
         b.carried = true;
         this.fetch = 'returning';
         this.nav = { stuck: 0, detour: 0, side: 1 };
+        this.emit('pickup');
         this.triggerGlitch(0.2);
       }
     } else if (this.fetch === 'returning') {
@@ -686,6 +739,7 @@ export class Game {
       if (Math.hypot(person.x - dog.x, person.y - dog.y) <= DELIVER_RADIUS) {
         this.ball = null;
         this.fetch = 'idle';
+        this.emit('deliver');
         this.triggerGlitch(0.25);
         this.heal(1); // a good game of fetch mends the heart (docs/RULES.md)
         this.announce(['GOOD DOG']);
