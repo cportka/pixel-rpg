@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.14.1] - 2026-08-01
+
+### Changed
+- Adapted to [`8bit-sfx` 0.4.0](https://github.com/cportka/8bit-sfx), which renamed its
+  `pixelrpg` category to `rpg` (now 100 sounds: the 24 ports plus 76 new RPG staples,
+  every effect carrying a catalog description): the parity test identifies the ported
+  game sounds as the labeled entries of `rpg`, and the dev-dependency pin moved to the
+  0.4.0 merge commit. The `PENDING_PORT` list (`xp`, `levelup`, `door`, `clock`) still
+  stands — those four await their port into the package.
+
 ## [0.14.0] - 2026-07-30
 
 ### Added
