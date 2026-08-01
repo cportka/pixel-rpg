@@ -83,6 +83,25 @@ test('the viewport is 416x360 — its common 3x upscale covers 1240x1080', () =>
   assert.ok(SCREEN_W * 3 >= 1240 && SCREEN_H * 3 >= 1080, 'the promised minimum');
 });
 
+test('the mansion interior renders on a fake canvas without throwing', () => {
+  const g = new Game(1, { story: false });
+  g.world.collides = () => false;
+  g.world.chunkAt(0, 0).mansions.push({ x: 60, y: 0 });
+  g.person.x = 60;
+  g.person.y = 0;
+  g.update(1 / 60, {});
+  assert.equal(g.location, 'mansion');
+  const canvas = fakeCanvas();
+  const r = makeRenderer(canvas);
+  r.render(g);
+  assert.ok(canvas.ctx.ops.fillRect > 500, 'the interior painted floor, walls, furnishings');
+  assert.equal(r.lastLocation, 'mansion');
+  for (const [x, y, w, h] of canvas.ctx.rects) {
+    assert.ok(x >= -1 && y >= -1 && x + w <= SCREEN_W + 1 && y + h <= SCREEN_H + 1,
+      `interior pixel (${x},${y}) off screen`);
+  }
+});
+
 test('caption wrap width follows the screen', () => {
   assert.equal(CAPTION_MAX_W, SCREEN_W - 40);
   // Long lines that orphan-wrapped on the 320 screen fit in one on 416.

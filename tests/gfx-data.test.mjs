@@ -287,6 +287,19 @@ test('every caption the game can show can be typeset', () => {
     'FETCH MENDS THE HEART (+1 HP)',
     'PUNCH SOMETHING',
     'BACK',
+    'THE DOOR WAS NOT LOCKED',
+    'IT SHUT ITSELF BEHIND YOU ANYWAY',
+    'THE MANSION AGAIN. IT REMEMBERS YOU',
+    'THE NIGHT AIR AGAIN',
+    'AN OLD PORTRAIT',
+    'LOOK CLOSER',
+    'LOOK AWAY',
+    'IT IS NO ONE YOU KNOW',
+    'IT KNOWS YOU, THOUGH',
+    'THE EYES FOLLOW YOU ANYWAY',
+    'THE STAIRS ARE LOCKED',
+    'WHO LOCKS STAIRS?',
+    'NOT IN HERE',
   ];
   for (const text of captions) {
     for (const ch of text) {

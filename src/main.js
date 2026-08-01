@@ -156,12 +156,20 @@ canvas.addEventListener('pointerdown', (e) => {
       }
     }
   }
-  // A tap on the HUD minimap opens the full map screen.
+  // A tap on the HUD minimap opens the full map screen — only where the
+  // minimap is actually drawn (it hides indoors).
   const hud = hudRect();
-  if (sx >= hud.x && sx < hud.x + hud.w && sy >= hud.y && sy < hud.y + hud.h) {
+  if (
+    game.location === 'world' &&
+    sx >= hud.x && sx < hud.x + hud.w && sy >= hud.y && sy < hud.y + hud.h
+  ) {
     game.openMap();
     return;
   }
+  // Scene transitions outpace the 15fps render: if the last drawn frame
+  // belongs to the other location, its view transform (and everything the
+  // player is aiming at) is stale — swallow the tap.
+  if (renderer.lastLocation !== game.location) return;
   const w = renderer.screenToWorld(sx, sy);
   // Did the tap land on the character you're controlling? (Anchored at the
   // feet; the sprite body rises ~16px above them.)

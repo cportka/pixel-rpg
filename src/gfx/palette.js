@@ -16,11 +16,21 @@ export const PALETTE = {
   blue: '#5561ff', // cold electric blue
   pink: '#ff4fc8', // the fetch ball
   leaf: '#6fae52', // the one green in the forest: the pipe's half-burnt leaf
+
+  // The 16-bit generation (v0.14): shade tones, kept few and noir.
+  moonshadow: '#b9b3cf', // moonlight's turned-away side (character shading)
+  plum: '#592a70', // mid-plum between plumDeep and purple (canopy depth)
+  umbra: '#110c1a', // barely above the void — floor speckle, soft shadow
+  waterDeep: '#10162e', // still water, darker than the night around it
+  waterEdge: '#2b3a63', // the shelf where water meets the shore
+  brass: '#c9a45a', // the one warm color: lamplight in mansion windows
+  parquet: '#231530', // mansion floorboards
 };
 
 // Sprite maps use single characters; '.' is transparent.
 export const SPRITE_COLORS = {
   W: PALETTE.moonlight,
+  s: PALETTE.moonshadow,
   P: PALETTE.pink,
   R: PALETTE.magenta,
 };

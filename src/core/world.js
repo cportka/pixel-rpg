@@ -144,6 +144,11 @@ export class World {
     return this.featuresInRect('cabins', x, y, w, h, 24);
   }
 
+  /** Brooding mansions near the world-space rect (tall facade — big pad). */
+  mansionsInRect(x, y, w, h) {
+    return this.featuresInRect('mansions', x, y, w, h, 56);
+  }
+
   /** Cave mouths near the world-space rect. */
   cavesInRect(x, y, w, h) {
     return this.featuresInRect('caves', x, y, w, h, 20);
@@ -176,6 +181,14 @@ export class World {
       }
       for (const c of chunk.cabins) {
         if (x < c.x + 10 && x + w > c.x - 10 && y < c.y + 1 && y + h > c.y - 6) return true;
+      }
+      for (const m of chunk.mansions) {
+        // The facade is solid — except the doorway (center 10px), which is
+        // how you get in (game.js watches for feet crossing it).
+        if (x < m.x + 28 && x + w > m.x - 28 && y < m.y + 1 && y + h > m.y - 8) {
+          const cx = x + w / 2;
+          if (!(cx > m.x - 5 && cx < m.x + 5)) return true;
+        }
       }
       for (const c of chunk.caves) {
         // The rock face is solid except the mouth itself (center 6px).
@@ -356,6 +369,7 @@ export function generateChunk(seed, cx, cy) {
   const inChunk = (p) =>
     p && Math.floor(p.x / CHUNK) === cx && Math.floor(p.y / CHUNK) === cy;
   const cabins = inChunk(info.cabin) ? [{ x: info.cabin.x, y: info.cabin.y }] : [];
+  const mansions = inChunk(info.mansion) ? [{ x: info.mansion.x, y: info.mansion.y }] : [];
   const caves = inChunk(info.cave) ? [{ x: info.cave.x, y: info.cave.y }] : [];
 
   // Nothing grows or lurks in the water (filtered after generation so the
@@ -376,6 +390,7 @@ export function generateChunk(seed, cx, cy) {
     rocks: rocks.filter(dry),
     tufts: tufts.filter(dry),
     cabins,
+    mansions,
     caves,
   };
 }

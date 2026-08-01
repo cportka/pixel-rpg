@@ -4,6 +4,34 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.14.0] - 2026-07-30
+
+### Added
+- **The 16-bit generation**: a substantial style upgrade in the SNES
+  action-RPG spirit (Secret of Mana / FF), kept minimal and neo-noir. The
+  palette gains a small set of shade tones (moonshadow, mid-plum, umbra,
+  deep/edge water, warm brass, parquet); the person and dog get a
+  moonlight-from-top-right shading pass (`shadeFrames` — silhouettes and
+  the sacred cadence untouched); trees shade their moon-away flank and
+  tier undersides with occasional moonlit crown glints; the void floor
+  carries a deterministic biome speckle; water is deep with a lighter
+  shelf where it meets land; every creature casts a soft two-row shadow;
+  and panels wear FF-style chrome (violet border, inset, moonlit corner
+  pips).
+- **The mansion** — a rare landmark in forest and grass regions (same rng
+  draws as cabins, so older worlds keep their cabins where they were): a
+  56×42 two-story facade with brass-lit windows, a chimney, and an attic
+  window that lights up when nobody is home. **The front door is not
+  locked.** Inside is a one-screen Maniac-Mansion-style interior — parquet
+  floors, paneled walls, a library, grand hall, and parlor, a chandelier
+  pooling light on a magenta-rimmed rug, candelabra flames, a grandfather
+  clock that ticks when you stand near it, a portrait whose eyes follow
+  you (with a one-shot LOOK CLOSER menu), and a locked staircase (WHO
+  LOCKS STAIRS?). Walking onto the door mat leads back out; the world
+  waits where you left it. Fetch is declined indoors; encounters and the
+  memory map stay outside. New chip sounds: the door creak and the clock
+  tick (added to the 8bit-sfx `PENDING_PORT` list).
+
 ## [0.13.0] - 2026-07-30
 
 ### Added

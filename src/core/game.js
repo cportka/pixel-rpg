@@ -12,6 +12,9 @@
 import { World, CHUNK } from './world.js';
 import { regionAt, regionLandmarks } from './terrain.js';
 import { SCREEN_W, SCREEN_H } from './screen.js';
+import {
+  SPAWN as MANSION_SPAWN, mansionCollides, onDoor, nearStairs, nearPortrait, nearClock,
+} from './mansion.js';
 import { mulberry32, hashCoords } from './rng.js';
 import { PERSON, DOG, makeCharacter, moveCharacter, updateFollower, feetBox } from './entities.js';
 
@@ -143,6 +146,12 @@ export class Game {
     this.memory = new Map();
     this.memoryCheck = 0;
 
+    // Where the pair are: the open world, or inside a mansion.
+    this.location = 'world';
+    this.mansionKey = null; // which mansion, while inside
+    this.mansionReturn = null; // world position to restore on the way out
+    this.clockTick = 0; // the grandfather clock's patience
+
     this._prevUp = false;
     this._prevDown = false;
     this._prevLeft = false;
@@ -193,6 +202,112 @@ export class Game {
   /** The dotted leash shows whenever the pair walk together (not mid-fetch). */
   leashActive() {
     return this.together && this.fetch === 'idle';
+  }
+
+  /** The collision surface for wherever we are (world, or mansion walls). */
+  phys() {
+    return this.location === 'mansion' ? { collides: mansionCollides } : this.world;
+  }
+
+  /** Step through the front door. The world position waits outside. */
+  enterMansion(m) {
+    const key = `m:${m.x},${m.y}`;
+    this.location = 'mansion';
+    this.mansionKey = key;
+    this.mansionReturn = { px: m.x, py: m.y + 7, dx: m.x - 11, dy: m.y + 10 };
+    this.person.x = MANSION_SPAWN.x;
+    this.person.y = MANSION_SPAWN.y;
+    if (this.together) {
+      this.dog.x = MANSION_SPAWN.x - 13;
+      this.dog.y = MANSION_SPAWN.y + 2;
+    }
+    this.clearMoveTarget();
+    this.ball = null;
+    this.fetch = 'idle';
+    this.emit('door');
+    this.triggerGlitch(0.5);
+    if (!this.encounterDone.has(`${key}:in`)) {
+      this.encounterDone.add(`${key}:in`);
+      this.announce(['THE DOOR WAS NOT LOCKED', 'IT SHUT ITSELF BEHIND YOU ANYWAY']);
+    } else {
+      this.announce(['THE MANSION AGAIN. IT REMEMBERS YOU']);
+    }
+  }
+
+  /** Back out the front door into the night. */
+  exitMansion() {
+    this.location = 'world';
+    const r = this.mansionReturn;
+    // The lawn is not guaranteed clear (a tree can grow right up to the
+    // steps) — probe outward from the doorstep for open ground so stepping
+    // out can never wedge the pair inside something solid.
+    const spot = this.findClearSpot(r.px, r.py, this.person);
+    this.person.x = spot.x;
+    this.person.y = spot.y;
+    if (this.together) {
+      const ds = this.findClearSpot(spot.x - 11, spot.y + 3, this.dog);
+      this.dog.x = ds.x;
+      this.dog.y = ds.y;
+    }
+    this.mansionKey = null;
+    this.clearMoveTarget();
+    this.emit('door');
+    this.triggerGlitch(0.4);
+    this.say('THE NIGHT AIR AGAIN');
+  }
+
+  /** The nearest collision-free stand for a character, spiraling outward. */
+  findClearSpot(x, y, ch) {
+    for (const [dx, dy] of [
+      [0, 0], [0, 6], [8, 4], [-8, 4], [0, 12], [16, 8], [-16, 8],
+      [0, 20], [24, 12], [-24, 12], [0, 30], [32, 16], [-32, 16],
+    ]) {
+      const b = feetBox(ch, x + dx, y + dy);
+      if (!this.world.collides(b.x, b.y, b.w, b.h)) return { x: x + dx, y: y + dy };
+    }
+    return { x, y }; // give up gracefully; the detour steering can still wiggle out
+  }
+
+  /** Interior beats: the exit door, the portrait, the stairs, the clock. */
+  updateMansion(dt) {
+    const p = this.person;
+    if (this.active === 'person' && onDoor(p.x, p.y)) {
+      this.exitMansion();
+      return;
+    }
+    const pk = `${this.mansionKey}:port`;
+    if (!this.choice && !this.encounterDone.has(pk) && nearPortrait(p.x, p.y)) {
+      // The menu owns the screen: retire any routine caption still up.
+      if (!this.captionSticky) {
+        this.caption = null;
+        this.captionQueue.length = 0;
+      }
+      this.openChoice({
+        kind: 'portrait',
+        key: pk,
+        x: p.x,
+        y: p.y,
+        title: 'AN OLD PORTRAIT',
+        options: [
+          { id: 'look', label: 'LOOK CLOSER' },
+          { id: 'away', label: 'LOOK AWAY' },
+        ],
+      });
+      return;
+    }
+    const sk = `${this.mansionKey}:stairs`;
+    if (!this.encounterDone.has(sk) && nearStairs(p.x, p.y)) {
+      this.encounterDone.add(sk);
+      // say(), not announce(): the portrait's payoff lines must survive
+      // walking from one beat straight into the other.
+      this.say('THE STAIRS ARE LOCKED');
+      this.say('WHO LOCKS STAIRS?');
+    }
+    this.clockTick += dt;
+    if (this.clockTick >= 2) {
+      this.clockTick = 0;
+      if (nearClock(p.x, p.y)) this.emit('clock');
+    }
   }
 
   /** Queue a named sound event for the frontend to play (capped, droppable). */
@@ -352,6 +467,10 @@ export class Game {
 
   /** Person throws the pink ball in the direction they face. */
   throwBall() {
+    if (this.location !== 'world') {
+      this.say('NOT IN HERE');
+      return;
+    }
     if (!this.together || this.fetch !== 'idle') return;
     const p = this.person;
     let x = p.x + p.facing * 6;
@@ -492,23 +611,25 @@ export class Game {
     const dirY = (input.down ? 1 : 0) - (input.up ? 1 : 0);
     if (dirX !== 0 || dirY !== 0) {
       this.clearMoveTarget();
-      moveCharacter(this.activeChar, dirX, dirY, dt, this.world);
+      moveCharacter(this.activeChar, dirX, dirY, dt, this.phys());
     } else if (this.moveTarget) {
       this.updateTapMove(dt);
     } else {
-      moveCharacter(this.activeChar, 0, 0, dt, this.world);
+      moveCharacter(this.activeChar, 0, 0, dt, this.phys());
     }
 
     if (this.together) {
       // The other one follows — unless the dog is mid-fetch, which takes priority.
       const dogBusy = this.fetch !== 'idle' && this.active === 'person';
       if (!dogBusy) {
-        updateFollower(this.otherChar, this.activeChar, dt, this.world);
+        updateFollower(this.otherChar, this.activeChar, dt, this.phys());
       }
-      this.updateBall(dt);
-      this.updateFetchAI(dt);
-      this.updateAmbient(dt);
-    } else {
+      if (this.location === 'world') {
+        this.updateBall(dt);
+        this.updateFetchAI(dt);
+        this.updateAmbient(dt);
+      }
+    } else if (this.location === 'world') {
       this.updateAlone(dt);
     }
 
@@ -525,6 +646,23 @@ export class Game {
     }
 
     this.tickTimers(dt);
+
+    // Inside the mansion, the interior runs its own small world.
+    if (this.location === 'mansion') {
+      this.updateMansion(dt);
+      return;
+    }
+
+    // The mansion door: step into the doorway and you're inside.
+    if (this.active === 'person') {
+      const p = this.person;
+      for (const m of this.world.mansionsInRect(p.x - 40, p.y - 40, 80, 80)) {
+        if (Math.abs(p.x - m.x) < 5 && p.y > m.y - 4 && p.y < m.y + 3) {
+          this.enterMansion(m);
+          return;
+        }
+      }
+    }
 
     // Rare encounters open their menus when the person wanders close.
     this.encounterCheck += dt;
@@ -622,6 +760,7 @@ export class Game {
   /** Open encounter menus for whatever the person walks up to. */
   checkEncounters() {
     if (this.choice) return; // never clobber an open menu (e.g. a level-up)
+    if (this.location !== 'world') return; // the mansion has its own manners
     if (this.active !== 'person') return; // the dog is unbothered by all of it
     const p = this.person;
     // Re-arm a recently closed menu only once you've actually walked away.
@@ -705,8 +844,9 @@ export class Game {
     this.choice = null;
     this.choiceIndex = 0;
     // Only world encounters claim the (single) re-arm cooldown slot; closing
-    // a pause screen must not wipe the cooldown of an encounter you fled.
-    if (!['sheet', 'detail', 'map', 'levelup'].includes(c.kind)) {
+    // a pause screen — or the mansion's portrait — must not wipe the
+    // cooldown of an encounter you fled outside.
+    if (!['sheet', 'detail', 'map', 'levelup', 'portrait'].includes(c.kind)) {
       this.choiceCooldown = { key: c.key, x: c.x, y: c.y };
     }
     this.emit('menu-confirm');
@@ -769,6 +909,10 @@ export class Game {
       }
     } else if (c.kind === 'map') {
       // close: the world resumes.
+    } else if (c.kind === 'portrait') {
+      this.encounterDone.add(c.key); // it only needs to be seen once
+      if (id === 'look') this.announce(['IT IS NO ONE YOU KNOW', 'IT KNOWS YOU, THOUGH']);
+      else this.announce(['THE EYES FOLLOW YOU ANYWAY']);
     } else if (c.kind === 'zombie') {
       this.resolveZombie(c, id);
     } else if (c.kind === 'cat') {
@@ -961,7 +1105,9 @@ export class Game {
   /** Swing from the inventory at whatever undead thing is in reach. */
   attackFromSheet(id) {
     const p = this.person;
-    const zombies = this.world.zombiesInRect(
+    // Indoors, interior coordinates would alias world chunks near the origin
+    // — and the mansion keeps no zombies anyway. You swing at the dark.
+    const zombies = this.location !== 'world' ? [] : this.world.zombiesInRect(
       p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2,
     );
     for (const z of zombies) {
@@ -1118,11 +1264,11 @@ export class Game {
       const dx = tx - ch.x;
       const dy = ty - ch.y;
       const len = Math.hypot(dx, dy) || 1;
-      moveCharacter(ch, (-dy / len) * nav.side, (dx / len) * nav.side, dt, this.world);
+      moveCharacter(ch, (-dy / len) * nav.side, (dx / len) * nav.side, dt, this.phys());
       return;
     }
     const before = Math.hypot(tx - ch.x, ty - ch.y);
-    moveCharacter(ch, tx - ch.x, ty - ch.y, dt, this.world);
+    moveCharacter(ch, tx - ch.x, ty - ch.y, dt, this.phys());
     const after = Math.hypot(tx - ch.x, ty - ch.y);
     if (before - after < ch.speed * dt * STUCK_PROGRESS && before > PICKUP_RADIUS) {
       nav.stuck += dt;
@@ -1145,7 +1291,7 @@ export class Game {
     const py = dx / len;
     const open = (s) => {
       const b = feetBox(ch, ch.x + px * s * 8, ch.y + py * s * 8);
-      return !this.world.collides(b.x, b.y, b.w, b.h);
+      return !this.phys().collides(b.x, b.y, b.w, b.h);
     };
     if (open(1)) return 1;
     if (open(-1)) return -1;

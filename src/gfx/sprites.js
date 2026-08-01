@@ -111,6 +111,32 @@ for (const key of Object.keys(PERSON_FRAMES)) {
   PERSON_FRAMES[key] = PERSON_FRAMES[key].map((row) => row.replaceAll('X', 'W'));
 }
 
+/**
+ * The 16-bit shading pass: moonlight falls from the top-right, so interior
+ * pixels whose left neighbor is also lit turn to moonshadow — except the top
+ * row of each limb and the rightmost pixel of each run, which stay bright.
+ * The silhouette (which pixels exist) and the cadence are untouched; only
+ * tones change, so every collision box and animation test still holds.
+ */
+export function shadeFrames(map) {
+  const at = (x, y) => (map[y] && map[y][x]) || '.';
+  return map.map((row, y) =>
+    [...row]
+      .map((ch, x) => {
+        if (ch !== 'W') return ch;
+        const litLeft = at(x - 1, y) === 'W' || at(x - 1, y) === 's';
+        const litAbove = at(x, y - 1) !== '.';
+        const litRight = at(x + 1, y) !== '.';
+        return litLeft && litAbove && litRight ? 's' : 'W';
+      })
+      .join(''),
+  );
+}
+
+for (const key of Object.keys(PERSON_FRAMES)) {
+  PERSON_FRAMES[key] = shadeFrames(PERSON_FRAMES[key]);
+}
+
 export const DOG_FRAMES = {
   // Standing: tail up at the left, head and snout raised at the right.
   stand: [
@@ -150,9 +176,9 @@ export const DOG_FRAMES = {
   ],
 };
 
-// The dog's 'X' pixels (ear tip) are moonlight too.
+// The dog's 'X' pixels (ear tip) are moonlight too — then the shading pass.
 for (const key of Object.keys(DOG_FRAMES)) {
-  DOG_FRAMES[key] = DOG_FRAMES[key].map((row) => row.replaceAll('X', 'W'));
+  DOG_FRAMES[key] = shadeFrames(DOG_FRAMES[key].map((row) => row.replaceAll('X', 'W')));
 }
 
 export const BALL_SPRITE = [

@@ -133,12 +133,24 @@ world glitches hard, and you come back at **5 HP**:
 ## What you remember
 
 There is no minimap of the world — only of your memory of it. Regions you
-walk through are remembered sharply (biome, rivers, bridges, cabins, caves)
-for a minute or two, then the details dither away, and after about five
-minutes only the barest outline remains. The HUD shows the nearby regions;
+walk through are remembered sharply (biome, rivers, bridges, cabins, caves,
+and the mansion — the one warm brass dot on the map) for a minute or two,
+then the details dither away, and after about five minutes only the barest
+outline remains. The HUD shows the nearby regions;
 clicking it (or pressing **P**) pauses the game on the full remembered map.
 Nothing is ever forgotten completely. Nothing is ever remembered completely
 either.
+
+## The mansion
+
+Rarer than the cabins, somewhere in the forest or the grass, stands a
+two-story mansion with brass-lit windows and an attic light that comes on
+when nobody is home. **The front door is not locked.** Walk into the
+doorway and you're inside: a library, a grand hall, a parlor, a portrait
+whose eyes follow you (look closer — once), a grandfather clock you can
+hear from across the room, and a locked staircase. Nothing in the mansion
+rolls dice at you. Yet. The door mat at the entrance leads back out to the
+night, exactly where you left it. Fetch is declined indoors.
 
 ## Encounters
 

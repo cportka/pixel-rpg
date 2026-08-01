@@ -129,6 +129,16 @@ export const SOUNDS = {
     { type: 'tone', wave: 'triangle', f0: 1047, d: 0.2, v: 0.12, t: 0.27 },
     { type: 'noise', f0: 2500, f1: 3500, d: 0.15, v: 0.05, t: 0.3 },
   ],
+
+  // The mansion.
+  door: [
+    { type: 'noise', f0: 300, f1: 70, d: 0.35, v: 0.09 }, // the long creak
+    { type: 'tone', wave: 'triangle', f0: 82, f1: 60, d: 0.12, v: 0.1, t: 0.34 }, // the shut
+  ],
+  clock: [
+    { type: 'tone', wave: 'square', f0: 220, d: 0.03, v: 0.06 },
+    { type: 'tone', wave: 'square', f0: 174, d: 0.03, v: 0.05, t: 0.45 },
+  ],
 };
 
 /** Every event name the game can emit. main.js plays these 1:1. */
