@@ -27,8 +27,12 @@ test(
   'the 8bit-sfx package carries every game sound (minus declared pending), exactly',
   { skip: manifest === null ? '8bit-sfx not installed (run npm install to enable)' : false },
   () => {
+    // The ported game sounds live in the package's 'rpg' category (renamed from
+    // 'pixelrpg' in 8bit-sfx 0.4.0); they are the entries carrying a label.
     const ported = new Map(
-      manifest.effects.filter((e) => e.category === 'pixelrpg').map((e) => [e.label, e])
+      manifest.effects
+        .filter((e) => e.category === 'rpg' && e.label)
+        .map((e) => [e.label, e])
     );
     let pendingMissing = 0;
     for (const name of EVENT_NAMES) {
