@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.14.2] - 2026-08-01
+
+### Changed
+- `8bit-sfx` now comes from the **npm registry** (`^0.4.1`, published) instead of a
+  commit-pinned GitHub URL — ordinary semver resolution, a registry-resolved lockfile,
+  and patch/minor library updates arrive with `npm update`. Nothing else moved: the
+  parity test, its `PENDING_PORT` list (`xp`, `levelup`, `door`, `clock`), and the
+  in-game audio engine are unchanged.
+
 ## [0.14.1] - 2026-08-01
 
 ### Changed
