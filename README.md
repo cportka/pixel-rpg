@@ -7,7 +7,7 @@ things dancing where the woods grow deep. Somewhere out there
 waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
 eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.13.0
+**Version:** 0.14.0
 
 ## Play
 
@@ -48,6 +48,17 @@ little explanation windows, a meaty bone that doubles as a club, ten-minute
 pipe inebriation, and collapse-and-rescue — lives in `docs/RULES.md`. The
 viewport is 416×360 world pixels (3× upscale = 1248×1080) at the same art
 scale, and on portrait phones the game locks itself horizontal.
+
+The look is 16-bit now — Secret-of-Mana-era shading discipline kept minimal
+and noir: characters and trees carry a moonshadow side and moonlit rims,
+the void floor gains a barely-there biome speckle, water runs deep with a
+lighter shelf at the shore, everything that walks casts a soft shadow, and
+menus wear FF-style window chrome with moonlit corner pips. Somewhere out
+in the woods stands a **mansion** — gabled, brass-lit, its attic window
+sometimes glowing when it shouldn't — and its front door is not locked:
+walk in for a Maniac-Mansion-style interior (library, grand hall, parlor,
+a portrait whose eyes follow you, a grandfather clock keeping honest time,
+and a staircase somebody locked).
 
 The forest is no longer all forest: a lazy terrain layer deals every region
 (640px square) a biome — grasslands, sparse oak woods, dense redwood stands,

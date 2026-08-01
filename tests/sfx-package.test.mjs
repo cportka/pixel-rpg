@@ -18,7 +18,10 @@ try {
 // Sounds added game-side that await the next 8bit-sfx publish. Parity stays
 // exact for everything else, in both directions; the assertions below fail
 // the moment the pinned package ships one of these, prompting its removal.
-const PENDING_PORT = new Set(['xp', 'levelup']); // added in v0.13.0
+const PENDING_PORT = new Set([
+  'xp', 'levelup', // added in v0.13.0
+  'door', 'clock', // added in v0.14.0 (the mansion)
+]);
 
 test(
   'the 8bit-sfx package carries every game sound (minus declared pending), exactly',

@@ -20,10 +20,17 @@ import {
 import {
   CABIN_SPRITE, CABIN_COLORS, cabinWindowLit, CAVE_SPRITE, CAVE_COLORS, caveGlint,
   rockPixels, TUFT_PIXELS,
+  MANSION_SPRITE, MANSION_COLORS, mansionAtticLit,
+  CLOCK_SPRITE, PORTRAIT_SPRITE, SHELF_SPRITE, TABLE_SPRITE, CHAIR_SPRITE,
+  CANDELABRA_SPRITE, CHANDELIER_SPRITE, FURNISH_COLORS, flameColor,
 } from './structures.js';
+import {
+  TILE, MANSION_MAP, INTERIOR_W, INTERIOR_H, FURNISH,
+} from '../core/mansion.js';
 import { ICONS } from './icons.js';
 import { MAX_HP, XP_PER_LEVEL } from '../core/game.js';
-import { isWater, onBridge, regionAt } from '../core/terrain.js';
+import { isWater, onBridge, regionAt, biomeAt, REGION } from '../core/terrain.js';
+import { hashCoords } from '../core/rng.js';
 import { SCREEN_W, SCREEN_H } from '../core/screen.js';
 
 export { SCREEN_W, SCREEN_H };
@@ -175,6 +182,7 @@ export class Renderer {
     this.showTouchUI = false; // main.js flips this on for coarse pointers
     this.lastViewX = null; // view origin of the most recent frame
     this.lastViewY = null;
+    this.lastLocation = 'world'; // which scene the last frame belonged to
   }
 
   /** Map a point on the 320x200 screen to world coordinates. */
@@ -219,6 +227,40 @@ export class Renderer {
     for (const [key, entry] of this.treeCache) {
       if (this.frame - entry.lastUsed > staleFrames) this.treeCache.delete(key);
     }
+  }
+
+  /**
+   * 16-bit window chrome: fog fill, a violet outer line, a dusky inner
+   * inset, and moonlit corner pips — the FF window, gone noir.
+   */
+  drawPanelChrome(x, y, w, h) {
+    const ctx = this.ctx;
+    ctx.fillStyle = PALETTE.fog;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = PALETTE.purple;
+    ctx.fillRect(x, y, w, 1);
+    ctx.fillRect(x, y + h - 1, w, 1);
+    ctx.fillRect(x, y, 1, h);
+    ctx.fillRect(x + w - 1, y, 1, h);
+    ctx.fillStyle = PALETTE.smokeDeep;
+    ctx.fillRect(x + 2, y + 2, w - 4, 1);
+    ctx.fillRect(x + 2, y + h - 3, w - 4, 1);
+    ctx.fillRect(x + 2, y + 2, 1, h - 4);
+    ctx.fillRect(x + w - 3, y + 2, 1, h - 4);
+    ctx.fillStyle = PALETTE.moonlight;
+    for (const [px, py] of [
+      [x, y], [x + w - 2, y], [x, y + h - 2], [x + w - 2, y + h - 2],
+    ]) {
+      ctx.fillRect(px, py, 2, 2);
+    }
+  }
+
+  /** A soft two-row ground shadow under a creature — 16-bit grounding. */
+  drawShadow(cx, cy, w) {
+    const ctx = this.ctx;
+    ctx.fillStyle = PALETTE.umbra;
+    ctx.fillRect(Math.round(cx - w / 2), cy, w, 1);
+    ctx.fillRect(Math.round(cx - w / 2) + 1, cy + 1, Math.max(1, w - 2), 1);
   }
 
   drawSpriteMap(map, x, y, flip = false) {
@@ -271,6 +313,15 @@ export class Renderer {
     }
   }
 
+  /**
+   * Text with a 1px void drop shadow (+1,+1) — the canonical SNES trick
+   * that keeps HUD lines and captions legible over busy dither.
+   */
+  drawShadowedText(text, cx, y, color) {
+    this.drawText(text, cx + 1, y + 1, PALETTE.void);
+    this.drawText(text, cx, y, color);
+  }
+
   /** Wrapped caption anchored above a character, clamped to the screen. */
   drawCaption(text, anchorScreenX, anchorScreenY, color = PALETTE.moonlight) {
     const lines = wrapText(text, CAPTION_MAX_W);
@@ -281,7 +332,7 @@ export class Renderer {
       const w = measureText(line);
       let cx = Math.round(anchorScreenX);
       cx = Math.max(2 + w / 2, Math.min(cx, SCREEN_W - 2 - w / 2));
-      this.drawText(line, cx, top + i * lineH, color);
+      this.drawShadowedText(line, cx, top + i * lineH, color);
     });
   }
 
@@ -289,17 +340,26 @@ export class Renderer {
   render(game, dt = 1 / RENDER_FPS) {
     const ctx = this.ctx;
     this.frame++;
+    if (game.location === 'mansion') {
+      this.renderMansionScene(game);
+      this.drawUi(game);
+      this.finishFrame(game);
+      return;
+    }
     const cam = this.updateCamera(game, dt);
     const viewX = cam.x - SCREEN_W / 2;
     const viewY = cam.y - SCREEN_H / 2;
     this.lastViewX = viewX;
     this.lastViewY = viewY;
+    this.lastLocation = 'world';
 
     ctx.fillStyle = PALETTE.void;
     ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
 
-    // Terrain ground pass: water (rivers and lakes) with a slow shimmer,
-    // bridge planks, and grass tufts. Sampled in 4px blocks — cheap, chunky.
+    // Terrain ground pass, 16-bit edition: deep still water with a lighter
+    // shelf where it meets the shore, bridge planks, a sparse deterministic
+    // floor speckle per biome (the void gains a texture without losing its
+    // dark), and grass tufts. Sampled in 4px blocks — cheap, chunky.
     const seed = game.world.seed;
     const B = 4;
     for (let sy = 0; sy < SCREEN_H; sy += B) {
@@ -307,17 +367,38 @@ export class Renderer {
         const wx = viewX + sx + B / 2;
         const wy = viewY + sy + B / 2;
         if (isWater(seed, wx, wy)) {
-          ctx.fillStyle = PALETTE.fog;
+          const shore =
+            !isWater(seed, wx - B, wy) || !isWater(seed, wx + B, wy) ||
+            !isWater(seed, wx, wy - B) || !isWater(seed, wx, wy + B);
+          ctx.fillStyle = shore ? PALETTE.waterEdge : PALETTE.waterDeep;
           ctx.fillRect(sx, sy, B, B);
-          if ((((sx + sy * 3) >> 2) + Math.floor(game.time * 2)) % 11 === 0) {
-            ctx.fillStyle = PALETTE.blue;
-            ctx.fillRect(sx + 1, sy + 2, 2, 1);
+          if (!shore) {
+            // Moonlight on still water: world-anchored and hash-jittered so
+            // the glints ride the water instead of sticking to the glass.
+            const wc = hashCoords(seed ^ 0x77a7e412, Math.floor(wx / B), Math.floor(wy / B));
+            if (((wc >> 4) % 9) === (Math.floor(game.time * 2) % 9)) {
+              ctx.fillStyle = PALETTE.blue;
+              ctx.fillRect(sx + (wc & 1), sy + ((wc >> 1) & 3), 2, 1);
+            }
           }
         } else if (onBridge(seed, wx, wy)) {
           ctx.fillStyle = PALETTE.plumDeep;
           ctx.fillRect(sx, sy, B, B);
           ctx.fillStyle = PALETTE.smokeDeep;
           ctx.fillRect(sx, sy + 1, B, 1);
+        } else {
+          // The forest floor: a dark speck in ~1 of 4 cells, the odd
+          // brighter plum fleck — deterministic per world cell.
+          const cellX = Math.floor(wx / B);
+          const cellY = Math.floor(wy / B);
+          const h = hashCoords(seed ^ 0x5011f100, cellX, cellY);
+          if ((h & 7) < 2) {
+            const bright = ((h >> 7) & 63) === 0;
+            ctx.fillStyle = bright
+              ? PALETTE.plum
+              : ((h >> 6) & 1) === 0 ? PALETTE.fog : PALETTE.umbra;
+            ctx.fillRect(sx + ((h >> 3) & 3), sy + ((h >> 5) & 3), bright ? 1 : 2, 1);
+          }
         }
       }
     }
@@ -455,6 +536,7 @@ export class Renderer {
         draw: () => {
           const zx = Math.round(z.x - viewX) - 4 + zombieSway(game.time, z.phase);
           const zy = Math.round(z.y - viewY) - ZOMBIE_SPRITE.length;
+          this.drawShadow(z.x - viewX, Math.round(z.y - viewY), 8);
           drawSpriteWithColors(ZOMBIE_SPRITE, ZOMBIE_COLORS, zx, zy);
         },
       });
@@ -504,6 +586,24 @@ export class Renderer {
         },
       });
     }
+    for (const m of game.world.mansionsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      drawables.push({
+        y: m.y,
+        draw: () => {
+          const bx = Math.round(m.x - viewX) - MANSION_SPRITE[0].length / 2;
+          const by = Math.round(m.y - viewY) - MANSION_SPRITE.length;
+          const atticLit = mansionAtticLit(game.time);
+          MANSION_SPRITE.forEach((row, ry) => {
+            for (let rx = 0; rx < row.length; rx++) {
+              const ch = row[rx];
+              if (ch === '.') continue;
+              ctx.fillStyle = ch === 'A' && atticLit ? PALETTE.brass : MANSION_COLORS[ch];
+              ctx.fillRect(bx + rx, by + ry, 1, 1);
+            }
+          });
+        },
+      });
+    }
     for (const c of game.world.cavesInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
       drawables.push({
         y: c.y,
@@ -524,8 +624,10 @@ export class Renderer {
       const { w, h } = spriteSize(map);
       drawables.push({
         y: ch.y,
-        draw: () =>
-          this.drawSpriteMap(map, Math.round(ch.x - viewX - w / 2), Math.round(ch.y - viewY - h), ch.facing < 0),
+        draw: () => {
+          this.drawShadow(ch.x - viewX, Math.round(ch.y - viewY), ch.kind === 'person' ? 8 : 10);
+          this.drawSpriteMap(map, Math.round(ch.x - viewX - w / 2), Math.round(ch.y - viewY - h), ch.facing < 0);
+        },
       });
     }
     if (game.ball) {
@@ -555,34 +657,252 @@ export class Renderer {
       );
     }
 
+    this.drawUi(game);
+    this.finishFrame(game);
+  }
+
+  /**
+   * The mansion interior — a single fixed screen, Maniac Mansion style:
+   * parquet floors, paneled walls, a locked staircase, furnishings whose
+   * details move (the pendulum, the flames, the portrait's eyes), and the
+   * pair, y-sorted among them. The chandelier hangs above everything.
+   */
+  renderMansionScene(game) {
+    const ctx = this.ctx;
+    const viewX = -Math.round((SCREEN_W - INTERIOR_W) / 2);
+    const viewY = -Math.round((SCREEN_H - INTERIOR_H) / 2);
+    this.lastViewX = viewX;
+    this.lastViewY = viewY;
+    this.lastLocation = 'mansion';
+    this.camInit = false; // snap the outdoor camera when we step back out
+
+    ctx.fillStyle = PALETTE.void;
+    ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+
+    for (let cy = 0; cy < MANSION_MAP.length; cy++) {
+      for (let cx = 0; cx < MANSION_MAP[0].length; cx++) {
+        const ch = MANSION_MAP[cy][cx];
+        const sx = cx * TILE - viewX;
+        const sy = cy * TILE - viewY;
+        if (ch === '.' || ch === 'D') {
+          // Parquet: long horizontal planks — a course line every 8px and a
+          // half-tile-staggered end seam per course, so it reads as floor,
+          // not brickwork.
+          ctx.fillStyle = PALETTE.parquet;
+          ctx.fillRect(sx, sy, TILE, TILE);
+          ctx.fillStyle = PALETTE.umbra;
+          for (let py = 0; py < TILE; py += 8) {
+            ctx.fillRect(sx, sy + py, TILE, 1);
+            const seam = ((cy * TILE + py) / 8) % 2 === 0 ? 0 : 8;
+            ctx.fillRect(sx + seam, sy + py, 1, 8);
+          }
+          if (ch === 'D') {
+            ctx.fillStyle = PALETTE.plumDeep;
+            ctx.fillRect(sx + 1, sy + 2, TILE - 2, TILE - 2); // the door mat
+            ctx.fillStyle = PALETTE.brass;
+            ctx.fillRect(sx + 1, sy + 2, TILE - 2, 1);
+            // A knob on each leaf's inner edge, so it reads as a double door.
+            ctx.fillRect(cx === 12 ? sx + TILE - 3 : sx + 2, sy + 8, 1, 2);
+          }
+        } else if (ch === 'L') {
+          // The locked staircase: treads climbing brighter toward the top,
+          // barred only across the lower half — stairs first, gate second.
+          const TREADS = [PALETTE.smokeDeep, PALETTE.plum, PALETTE.smoke, PALETTE.moonshadow];
+          for (let step = 0; step < 4; step++) {
+            ctx.fillStyle = TREADS[step];
+            ctx.fillRect(sx, sy + TILE - (step + 1) * 4, TILE, 4);
+            ctx.fillStyle = PALETTE.umbra;
+            ctx.fillRect(sx, sy + TILE - (step + 1) * 4 + 3, TILE, 1);
+          }
+          ctx.fillStyle = PALETTE.fog;
+          for (let gx = 1; gx < TILE; gx += 5) ctx.fillRect(sx + gx, sy + TILE / 2, 1, TILE / 2);
+          ctx.fillStyle = PALETTE.brass;
+          ctx.fillRect(sx + TILE - 3, sy + 10, 1, 2); // the lock catches the light
+        } else {
+          // Wall: paneled face where it fronts the room, dark cap elsewhere.
+          const below = cy + 1 < MANSION_MAP.length ? MANSION_MAP[cy + 1][cx] : '#';
+          if (below === '.' || below === 'D' || below === 'L') {
+            ctx.fillStyle = PALETTE.plumDeep;
+            ctx.fillRect(sx, sy, TILE, TILE);
+            ctx.fillStyle = PALETTE.smokeDeep;
+            ctx.fillRect(sx, sy, TILE, 2);
+            ctx.fillRect(sx, sy + TILE - 3, TILE, 1);
+            ctx.fillStyle = PALETTE.umbra;
+            ctx.fillRect(sx + (cx % 2 ? 4 : 10), sy + 4, 1, TILE - 8);
+          } else {
+            ctx.fillStyle = PALETTE.umbra;
+            ctx.fillRect(sx, sy, TILE, TILE);
+          }
+        }
+      }
+    }
+
+    // Tap-to-move works indoors too — show its marker on the parquet.
+    if (game.moveTarget) {
+      const mx = Math.round(game.moveTarget.x - viewX);
+      const my = Math.round(game.moveTarget.y - viewY);
+      for (const p of targetMarkerPixels(game.time)) {
+        ctx.fillStyle = p.apex ? PALETTE.moonlight : LEASH_COLORS[p.tri % LEASH_COLORS.length];
+        ctx.fillRect(mx + p.x, my + p.y, 1, 1);
+      }
+    }
+
+    // The leash runs under the characters here too.
+    if (game.leashActive() && game.together) this.drawLeash(game, viewX, viewY);
+
+    // Furnishings and the pair, y-sorted; the chandelier floats above all.
+    const drawables = [];
+    for (const f of FURNISH) {
+      drawables.push({
+        y: f.kind === 'chandelier' ? 9999 : f.y,
+        draw: () => this.drawFurnish(game, f, viewX, viewY),
+      });
+    }
+    const cast = game.together ? [game.person, game.dog] : [game.person];
+    for (const chr of cast) {
+      const frames = chr.kind === 'person' ? PERSON_FRAMES : DOG_FRAMES;
+      const map = walkFrame(frames, chr.walking, chr.animTime);
+      const { w, h } = spriteSize(map);
+      drawables.push({
+        y: chr.y,
+        draw: () => {
+          this.drawShadow(chr.x - viewX, Math.round(chr.y - viewY), chr.kind === 'person' ? 8 : 10);
+          this.drawSpriteMap(map, Math.round(chr.x - viewX - w / 2), Math.round(chr.y - viewY - h), chr.facing < 0);
+        },
+      });
+    }
+    drawables.sort((a, b) => a.y - b.y);
+    for (const d of drawables) d.draw();
+
+    // The chandelier's light falls ON whatever is under it — rug included —
+    // so the pool paints after the furnishings, dithered warm-plum.
+    const chand = FURNISH.find((f) => f.kind === 'chandelier');
+    if (chand) {
+      ctx.fillStyle = PALETTE.plum;
+      const px = chand.x - viewX;
+      const py = 150 - viewY;
+      for (let ry = -8; ry <= 8; ry += 2) {
+        const half = Math.round(Math.sqrt(Math.max(0, 1 - (ry / 10) ** 2)) * 26);
+        for (let rx = -half; rx <= half; rx += 4) {
+          ctx.fillRect(px + rx + (ry % 4 === 0 ? 0 : 2), py + ry, 2, 1);
+        }
+      }
+    }
+
+    if (game.caption) {
+      const a = game.activeChar;
+      this.drawCaption(
+        game.caption.text,
+        a.x - viewX,
+        a.y - viewY,
+        game.drunk > 0 ? PALETTE.magenta : PALETTE.moonlight,
+      );
+    }
+  }
+
+  /** One interior furnishing, with its moving parts. */
+  drawFurnish(game, f, viewX, viewY) {
+    const ctx = this.ctx;
+    if (f.kind === 'rug') {
+      // A worn oval rug: plum field, magenta border, dithered.
+      const cx = f.x - viewX;
+      const cy = f.y - viewY;
+      for (let ry = -10; ry <= 10; ry++) {
+        const half = Math.round(Math.sqrt(Math.max(0, 1 - (ry / 11) ** 2)) * 30);
+        if (half < 2) continue;
+        for (let rx = -half; rx <= half; rx++) {
+          const rim = Math.abs(rx) > half - 2 || Math.abs(ry) > 8;
+          if ((rx + ry) % 2 === 0) {
+            // A plum border with the rare worn ember fleck — the brass
+            // chandelier stays the room's one loud thing.
+            const ember = rim && (rx * 7 + ry * 13) % 23 === 0;
+            ctx.fillStyle = ember ? PALETTE.magenta : rim ? PALETTE.plum : PALETTE.plumDeep;
+            ctx.fillRect(cx + rx, cy + ry, 1, 1);
+          }
+        }
+      }
+      return;
+    }
+    const SPRITES = {
+      clock: CLOCK_SPRITE,
+      portrait: PORTRAIT_SPRITE,
+      shelf: SHELF_SPRITE,
+      table: TABLE_SPRITE,
+      chair: CHAIR_SPRITE,
+      candelabra: CANDELABRA_SPRITE,
+      chandelier: CHANDELIER_SPRITE,
+    };
+    const sprite = SPRITES[f.kind];
+    if (!sprite) return;
+    const bx = Math.round(f.x - viewX - sprite[0].length / 2);
+    const by = Math.round(f.y - viewY - sprite.length);
+    sprite.forEach((row, ry) => {
+      for (let rx = 0; rx < row.length; rx++) {
+        const ch = row[rx];
+        if (ch === '.') continue;
+        ctx.fillStyle = FURNISH_COLORS[ch] ?? PALETTE.smoke;
+        ctx.fillRect(bx + rx, by + ry, 1, 1);
+      }
+    });
+    if (f.kind === 'portrait') {
+      // The eyes follow whoever is in the room. Of course they do.
+      const off = Math.max(-1, Math.min(1, Math.sign(game.person.x - f.x)));
+      ctx.fillStyle = PALETTE.moonlight;
+      ctx.fillRect(bx + 3 + off, by + 3, 1, 1);
+      ctx.fillRect(bx + 8 + off, by + 3, 1, 1);
+    } else if (f.kind === 'candelabra') {
+      for (const fx of [0, 3, 6]) {
+        ctx.fillStyle = flameColor(game.time, f.x + fx);
+        ctx.fillRect(bx + fx, by, 1, 1);
+      }
+    } else if (f.kind === 'chandelier') {
+      // The chain climbs to the ceiling so the fixture reads as hanging.
+      ctx.fillStyle = PALETTE.brass;
+      for (let y = by - 2; y > 18 - viewY; y -= 3) {
+        ctx.fillRect(bx + 7, y, 1, 1);
+      }
+      for (const fx of [0, 15]) {
+        ctx.fillStyle = flameColor(game.time, f.x + fx);
+        ctx.fillRect(bx + fx, by + 2, 1, 1);
+      }
+    } else if (f.kind === 'clock') {
+      // The pendulum keeps the only honest time in here.
+      ctx.fillStyle = PALETTE.brass;
+      ctx.fillRect(bx + 3 + (Math.sin(game.time * 2.2) > 0 ? 1 : 0), by + 10, 1, 2);
+    }
+  }
+
+  /** HUD text, minimap, the open menu, and touch buttons — every scene. */
+  drawUi(game) {
+    const ctx = this.ctx;
     // HP and level, top-left, dim smoke — HP flushes magenta when hurting.
     // Hidden under full-frame pause screens (which carry the numbers
     // themselves; a 1px sliver of HUD peeking over the panel reads as a bug).
     if (!game.menuPaused()) {
       const hpText = `HP ${game.hp}`;
-      this.drawText(hpText, 4 + measureText(hpText) / 2, 3, game.hp <= 3 ? PALETTE.magenta : PALETTE.smoke);
+      this.drawShadowedText(hpText, 4 + measureText(hpText) / 2, 3, game.hp <= 3 ? PALETTE.magenta : PALETTE.smoke);
       const lvlText = `LVL ${game.level}  XP ${game.xp}/${XP_PER_LEVEL}`;
-      this.drawText(lvlText, 4 + measureText(lvlText) / 2, 13, PALETTE.smoke);
+      this.drawShadowedText(lvlText, 4 + measureText(lvlText) / 2, 13, PALETTE.smoke);
       if (game.drunk > 0) {
         const dText = `DRUNK ${mmss(game.drunk)}`;
-        this.drawText(dText, 4 + measureText(dText) / 2, 23, PALETTE.magenta);
+        this.drawShadowedText(dText, 4 + measureText(dText) / 2, 23, PALETTE.magenta);
       }
     }
 
     // The HUD minimap — what the person remembers of the nearby regions.
-    // Hidden while any menu is up (the map screen replaces it wholesale).
-    if (!game.choice) this.drawHud(game);
+    // Hidden while any menu is up, and indoors (no sky to navigate by).
+    if (!game.choice && game.location === 'world') this.drawHud(game);
 
-    // The open choice menu, front and center.
+    // The open choice menu, front and center. Full-frame pause screens get
+    // a clean void behind them — live world pixels peeking past the border
+    // read as glitched columns, not scenery.
     const panel = choicePanel(game);
     if (panel) {
-      ctx.fillStyle = PALETTE.fog;
-      ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
-      ctx.fillStyle = PALETTE.smokeDeep;
-      ctx.fillRect(panel.x, panel.y, panel.w, 1);
-      ctx.fillRect(panel.x, panel.y + panel.h - 1, panel.w, 1);
-      ctx.fillRect(panel.x, panel.y, 1, panel.h);
-      ctx.fillRect(panel.x + panel.w - 1, panel.y, 1, panel.h);
+      if (game.choice.kind === 'sheet' || game.choice.kind === 'map') {
+        ctx.fillStyle = PALETTE.void;
+        ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+      }
+      this.drawPanelChrome(panel.x, panel.y, panel.w, panel.h);
       this.drawText(panel.title, SCREEN_W / 2, panel.y + 5, PALETTE.moonlight);
       if (game.choice.kind === 'map') this.drawMemoryMap(game, panel);
       if (panel.icons) this.drawSheetIcons(game, panel);
@@ -611,7 +931,11 @@ export class Renderer {
         this.drawText(b.label, b.x + b.w / 2, b.y + BUTTON_PAD, PALETTE.smoke);
       }
     }
+  }
 
+  /** Post effects (transition glitch, drunk shear) and the cache sweep. */
+  finishFrame(game) {
+    const ctx = this.ctx;
     // Transition glitch: slip horizontal bands of the finished frame and
     // scatter a few noise blocks — the signal skips for a beat. Suppressed
     // while a pause screen is up: the pause freezes glitch.t, which would
@@ -686,6 +1010,11 @@ export class Renderer {
     if (entry.cabin) {
       ctx.fillStyle = PALETTE.magenta;
       ctx.fillRect(px + mid - 1, py + mid - 1, 2, 2);
+    }
+    if (entry.mansion) {
+      ctx.fillStyle = PALETTE.brass; // the one warm dot on the map
+      ctx.fillRect(px + mid - 1, py + mid - 1, 2, 2);
+      ctx.fillRect(px + mid, py + mid - 2, 1, 1);
     }
     if (entry.cave) {
       ctx.fillStyle = PALETTE.void;
@@ -763,7 +1092,13 @@ export class Renderer {
     const bottom = panel.rows.length ? panel.rows[0].y - 4 : panel.y + panel.h - 4;
     const cols = Math.floor((panel.w - 8) / cell);
     const rowsN = Math.floor((bottom - top) / cell);
-    const { rx: prx, ry: pry } = regionAt(game.person.x, game.person.y);
+    // Indoors the person's coordinates are interior-space; the map centers
+    // on the mansion's spot in the world instead.
+    const anchor =
+      game.location === 'mansion' && game.mansionReturn
+        ? { x: game.mansionReturn.px, y: game.mansionReturn.py }
+        : game.person;
+    const { rx: prx, ry: pry } = regionAt(anchor.x, anchor.y);
     const rx0 = prx - Math.floor(cols / 2);
     const ry0 = pry - Math.floor(rowsN / 2);
     for (const entry of game.memory.values()) {

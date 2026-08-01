@@ -45,6 +45,18 @@ const LITTER_COLORS = [
   PALETTE.fog,
 ];
 
+// 16-bit depth: the moon sits top-right, so the canopy's left flank and each
+// tier's underside step one tone darker, and the top tier's right rim takes
+// the occasional moonlit glint. One lookup, no new geometry.
+const DARKER = new Map([
+  [PALETTE.violet, PALETTE.purple],
+  [PALETTE.purple, PALETTE.plum],
+  [PALETTE.plum, PALETTE.plumDeep],
+  [PALETTE.smoke, PALETTE.smokeDeep],
+  [PALETTE.smokeDeep, PALETTE.fog],
+  [PALETTE.plumDeep, PALETTE.fog],
+]);
+
 const snap = (x) => 2 * Math.round(x / 2);
 
 /**
@@ -73,7 +85,9 @@ export function treePixels(tree) {
     const rowColor = pick(rng, TRUNK_COLORS);
     for (let x = -snap(half); x <= half; x += BLOCK_W) {
       if (rng() < 0.82) {
-        const c = rng() < 0.25 ? pick(rng, TRUNK_COLORS) : rowColor;
+        let c = rng() < 0.25 ? pick(rng, TRUNK_COLORS) : rowColor;
+        // The trunk's left flank falls into shadow; the right edge stays lit.
+        if (x < 0 && DARKER.has(c) && rng() < 0.6) c = DARKER.get(c);
         pixels.push({ x: x + wobble, y, c });
       }
     }
@@ -91,6 +105,7 @@ export function treePixels(tree) {
   for (let row = 0; row < canopyH; row++) {
     const tier = Math.floor(row / tierRows);
     const frac = ((row % tierRows) + 1) / tierRows;
+    const shelfRow = (row % tierRows) === tierRows - 1; // a tier's underside
     let half = Math.round((canopyHalf * (tier + 1)) / tiers) * frac;
     if (rng() < 0.4) half += rng() < 0.5 ? -2 : 2; // jagged edge
     half = Math.max(2, Math.round(half));
@@ -98,7 +113,16 @@ export function treePixels(tree) {
     for (let x = -snap(half); x <= half; x += BLOCK_W) {
       // Rim blocks always land so the angles read crisply; the fill dithers.
       if (Math.abs(x) >= half - 1 || rng() < 0.72) {
-        pixels.push({ x, y, c: pick(rng, mix) });
+        let c = pick(rng, mix);
+        // Shade the moon-away side and each shelf's underside one tone down.
+        if ((x < -half * 0.3 || shelfRow) && DARKER.has(c) && rng() < 0.8) {
+          c = DARKER.get(c);
+        }
+        // The top tier's upper-right rim catches the moon now and then.
+        if (tier === 0 && row < tierRows && x >= half - 3 && rng() < 0.18) {
+          c = PALETTE.moonlight;
+        }
+        pixels.push({ x, y, c });
       }
     }
   }
@@ -141,7 +165,9 @@ function bushPixels(bush, rng) {
     const y = -ry * 2 + row;
     for (let x = -snap(half); x <= half; x += BLOCK_W) {
       if (Math.abs(x) >= half - 1 || rng() < 0.7) {
-        pixels.push({ x, y, c: pick(rng, mix) });
+        let c = pick(rng, mix);
+        if (x < -half * 0.3 && DARKER.has(c) && rng() < 0.8) c = DARKER.get(c);
+        pixels.push({ x, y, c });
       }
     }
   }

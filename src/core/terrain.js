@@ -132,18 +132,21 @@ export function isWater(seed, x, y) {
 
 /**
  * A region's fixed contents: its biome, its lake, and its landmark if any —
- * a mysterious cabin (some forest/grass regions) or a cave mouth (every
- * mountain region). Landmarks that would drown are dropped, not moved.
+ * a mysterious cabin (some forest/grass regions), a brooding mansion (rarer
+ * still, same roll so older worlds keep their cabins where they were), or a
+ * cave mouth (every mountain region). Landmarks that would drown are
+ * dropped, not moved.
  */
 export function regionInfo(seed, rx, ry) {
   const biome = biomeAt(seed, rx, ry);
-  const info = { rx, ry, biome, cabin: null, cave: null, lake: lakeAt(seed, rx, ry) };
+  const info = { rx, ry, biome, cabin: null, mansion: null, cave: null, lake: lakeAt(seed, rx, ry) };
   const r = coordRng((seed ^ SALT_LODGE) >>> 0, rx, ry);
   if (!isHomeRegion(rx, ry) && (biome === 'oak' || biome === 'redwood' || biome === 'grass')) {
     const roll = r();
     const x = rx * REGION + Math.floor(REGION * (0.15 + r() * 0.7));
     const y = ry * REGION + Math.floor(REGION * (0.15 + r() * 0.7));
     if (roll < 0.1 && !isWater(seed, x, y)) info.cabin = { x, y };
+    else if (roll < 0.14 && !isWater(seed, x, y)) info.mansion = { x, y };
   } else if (biome === 'mountain') {
     const x = rx * REGION + Math.floor(REGION * (0.25 + r() * 0.5));
     const y = ry * REGION + Math.floor(REGION * (0.25 + r() * 0.5));
@@ -159,6 +162,7 @@ export function regionLandmarks(seed, rx, ry) {
   return {
     biome: info.biome,
     cabin: !!info.cabin,
+    mansion: !!info.mansion,
     cave: !!info.cave,
     water: info.biome === 'lake' || river,
     // Rivers cross a bridge at least once per region height (spacing math:
