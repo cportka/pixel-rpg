@@ -1,8 +1,9 @@
 // Parity between the game's sound events and the 8bit-sfx package's ported set.
 //
-// 8bit-sfx is a dev-time git dependency; on a fresh clone without `npm install`
-// (or in CI without network access to the dep) it isn't resolvable — skip with
-// a note rather than fail, mirroring the runner's toolchain-skip philosophy.
+// 8bit-sfx is a dev-only dependency from the npm registry; on a fresh clone
+// without `npm install` (or in CI without network access to it) it isn't
+// resolvable — skip with a note rather than fail, mirroring the runner's
+// toolchain-skip philosophy.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EVENT_NAMES } from '../src/audio/sfx.js';
@@ -41,7 +42,7 @@ test(
         pendingMissing++;
         continue; // declared: waiting on the next package publish
       }
-      assert.ok(entry, `missing from the 8bit-sfx pixelrpg set: ${name}`);
+      assert.ok(entry, `missing from the 8bit-sfx rpg set: ${name}`);
       assert.ok(entry.duration_s > 0, `zero-length port: ${name}`);
       assert.ok(
         !PENDING_PORT.has(name),
