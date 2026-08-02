@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.15.0] - 2026-08-02
+
+### Changed
+- **The whole sound set now ships in [`8bit-sfx`](https://www.npmjs.com/package/8bit-sfx)**,
+  which released 1.0.0: `xp`, `levelup`, `door` and `clock` are ported, so the game's 28
+  sounds are all in the package's `rpg` category and the `PENDING_PORT` carve-out is gone —
+  `tests/sfx-package.test.mjs` is back to exact parity in both directions.
+- The dev dependency moved to `^1.0.0`. 1.0.0 synthesizes effects on demand instead of
+  shipping WAVs (the package is a 377 kB download rather than ~130 MB), so the parity test
+  gained a second check: every game sound must actually **synthesize** from the package, not
+  merely appear in its catalog.
+- The in-game audio engine is still unchanged — it keeps live-synthesizing through its own
+  Web Audio path, which is where the ported sounds came from in the first place.
+
 ## [0.14.2] - 2026-08-01
 
 ### Changed
