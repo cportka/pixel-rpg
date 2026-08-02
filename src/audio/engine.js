@@ -1,13 +1,20 @@
-// A tiny Web Audio chip-synth for the SOUNDS table.
+// Playback for the 8bit-sfx library.
 //
-// The context is created lazily on resume() (browsers require a user
-// gesture before audio can start); play() is a no-op until then, and while
-// muted. Noise comes from one shared LCG-filled buffer — deterministic,
-// no Math.random — pushed through a swept bandpass.
+// v0.15 retired this file's hand-rolled Web Audio synth: sounds are now
+// synthesized by the vendored 8bit-sfx 1.0.0 engine (vendor/8bit-sfx), the
+// same code that produced the library's published `rpg` category — so the
+// game and the library can never drift, and the library's 202 procedural RPG
+// effects are available to us for spells and battle stingers.
+//
+// Each effect is rendered once to an AudioBuffer and cached; playback is a
+// buffer source through a gain node. The context is created lazily on
+// resume() (browsers require a user gesture), so play() is a no-op until
+// then, and while muted.
 
+import { render, SR } from '../../vendor/8bit-sfx/index.js';
 import { SOUNDS } from './sfx.js';
 
-const MASTER_GAIN = 0.4;
+const MASTER_GAIN = 0.45;
 
 export class AudioPlayer {
   /** @param {() => AudioContext} createContext test seam; defaults to WebAudio */
@@ -16,7 +23,7 @@ export class AudioPlayer {
       createContext ?? (() => new (window.AudioContext || window.webkitAudioContext)());
     this.ctx = null;
     this.master = null;
-    this.noiseBuf = null;
+    this.buffers = new Map(); // effect name -> AudioBuffer
     this.muted = false;
     this.intensity = 1; // >1 while the pipe's colors lean closer
   }
@@ -32,56 +39,32 @@ export class AudioPlayer {
     if (this.ctx.state === 'suspended') this.ctx.resume();
   }
 
-  /** Half a second of deterministic white noise, built once. */
-  noiseBuffer() {
-    if (!this.noiseBuf) {
-      const len = Math.max(1, Math.floor(this.ctx.sampleRate * 0.5));
-      this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-      const data = this.noiseBuf.getChannelData(0);
-      let s = 1234567;
-      for (let i = 0; i < len; i++) {
-        s = (s * 1103515245 + 12345) & 0x7fffffff;
-        data[i] = s / 0x3fffffff - 1;
-      }
+  /**
+   * Synthesize (once) and cache an effect as an AudioBuffer. The library
+   * renders at its own sample rate; the buffer carries that rate so the
+   * context resamples on playback.
+   */
+  buffer(effect) {
+    let buf = this.buffers.get(effect);
+    if (!buf) {
+      const samples = render(effect);
+      buf = this.ctx.createBuffer(1, samples.length, SR);
+      buf.getChannelData(0).set(samples);
+      this.buffers.set(effect, buf);
     }
-    return this.noiseBuf;
+    return buf;
   }
 
-  /** Play a named sound from the table. No-op when unknown, muted, or asleep. */
+  /** Play a named game event. No-op when unknown, muted, or asleep. */
   play(name) {
-    const segments = SOUNDS[name];
-    if (!segments || this.muted || !this.ctx) return;
-    const now = this.ctx.currentTime;
-    for (const seg of segments) this.playSegment(seg, now + (seg.t ?? 0));
-  }
-
-  playSegment(seg, at) {
+    const sound = SOUNDS[name];
+    if (!sound || this.muted || !this.ctx) return;
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(Math.min(0.25, seg.v * this.intensity), at);
-    gain.gain.exponentialRampToValueAtTime(0.001, at + seg.d);
+    gain.gain.value = Math.min(1, sound.gain * this.intensity);
     gain.connect(this.master);
-
-    if (seg.type === 'noise') {
-      const src = this.ctx.createBufferSource();
-      src.buffer = this.noiseBuffer();
-      src.loop = true;
-      const filter = this.ctx.createBiquadFilter();
-      filter.type = 'bandpass';
-      filter.Q.value = 1;
-      filter.frequency.setValueAtTime(seg.f0, at);
-      filter.frequency.linearRampToValueAtTime(seg.f1 ?? seg.f0, at + seg.d);
-      src.connect(filter);
-      filter.connect(gain);
-      src.start(at);
-      src.stop(at + seg.d);
-    } else {
-      const osc = this.ctx.createOscillator();
-      osc.type = seg.wave;
-      osc.frequency.setValueAtTime(seg.f0, at);
-      osc.frequency.linearRampToValueAtTime(seg.f1 ?? seg.f0, at + seg.d);
-      osc.connect(gain);
-      osc.start(at);
-      osc.stop(at + seg.d);
-    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.buffer(sound.name);
+    src.connect(gain);
+    src.start();
   }
 }

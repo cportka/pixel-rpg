@@ -259,11 +259,11 @@ test('fetch survives a trunk directly between dog and ball (detour steering)', (
   assert.ok(tree, 'seed 1 grows a tree in chunk 0,0');
   const b = trunkBox(tree);
   const cy = b.y + 3; // dog feet box overlaps the trunk rows at this height
-  g.person.x = b.x - 30;
+  g.person.x = b.x - 45;
   g.person.y = cy;
-  g.dog.x = b.x - 6; // wedged against the left trunk face...
+  g.dog.x = b.x - 9; // wedged against the left trunk face...
   g.dog.y = cy;
-  g.ball = { x: b.x + b.w + 30, y: cy, vx: 0, vy: 0, carried: false }; // ...ball on the right
+  g.ball = { x: b.x + b.w + 45, y: cy, vx: 0, vy: 0, carried: false }; // ...ball on the right
   g.fetch = 'thrown';
   g.fetchTime = 0;
 

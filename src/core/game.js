@@ -20,10 +20,10 @@ import { PERSON, DOG, makeCharacter, moveCharacter, updateFollower, feetBox } fr
 
 export const CAPTION_TTL = 3.2; // seconds a caption stays up
 export const FETCH_TIMEOUT = 25; // seconds before a hopeless fetch resets
-export const MEET_RADIUS = 30; // px at which the person finds the dog
+export const MEET_RADIUS = 45; // px at which the person finds the dog
 export const HINT_PERIOD = 12; // seconds between whimper hints while alone
 export const AMBIENT_PERIOD = 26; // seconds between ambient lines when together
-export const TAP_ARRIVE = 3; // px at which a tap-move target counts as reached
+export const TAP_ARRIVE = 5; // px at which a tap-move target counts as reached
 export const TAP_GIVE_UP = 2.5; // seconds without progress before abandoning a tap target
 
 // Simplified D&D (docs/RULES.md): ability checks (d20 + modifier) vs a DC.
@@ -49,20 +49,52 @@ export const LEVEL_POINTS = 2; // +1s to hand out per level, together or apart
 export const XP_DOG = 4; // finding the friendly lost dog
 export const XP_ZOMBIE = 1; // per zombie put back down
 
+// Magic (v0.15). The half-burnt leaf never hurt anyone — it teaches. Each
+// vision hands over the next spell in the book; casting spends focus, which
+// comes back slowly under the open sky.
+export const SPELLS = [
+  {
+    id: 'ember',
+    name: 'EMBER',
+    cost: 1,
+    blurb: 'A ROSE-GOLD FLAME. 3 DAMAGE',
+  },
+  {
+    id: 'ward',
+    name: 'WARD',
+    cost: 1,
+    blurb: 'THE NEXT BITE FINDS NOTHING',
+  },
+  {
+    id: 'moonlight',
+    name: 'MOONLIGHT',
+    cost: 2,
+    blurb: 'DRINK THE MOON. +3 HP',
+  },
+];
+export const FOCUS_BASE = 3; // focus = 3 + WIS modifier
+export const FOCUS_REGEN = 20; // seconds per point of focus recovered
+
+// Turn-based combat (v0.15). Hostiles close by pull the world out of free
+// movement: you get a step budget and one action per turn, then they answer.
+export const BATTLE_RADIUS = 120; // px at which a hostile engages you
+export const BATTLE_LEAVE = 200; // px you must put between you to disengage
+export const BATTLE_MOVE = 60; // px of movement per turn
+
 // The remembered map (docs/RULES.md has none of this; memory keeps its own
 // rules). Regions near the person refresh; the rest fade over minutes.
 export const MEM_FRESH = 90; // s a memory stays sharp (landmarks and all)
 export const MEM_FADED = 300; // s until only the barest outline remains
-const ENCOUNTER_RADIUS = 26; // px at which an encounter opens its menu
-const ENCOUNTER_REARM = 44; // walk this far away before it can re-open
+const ENCOUNTER_RADIUS = 39; // px at which an encounter opens its menu
+const ENCOUNTER_REARM = 66; // walk this far away before it can re-open
 
-const DOG_SPAWN_MIN = 240; // px from the person the lost dog waits
-const DOG_SPAWN_MAX = 320; // (outside the 416x360 opening view, whimper range)
+const DOG_SPAWN_MIN = 360; // px from the person the lost dog waits
+const DOG_SPAWN_MAX = 480; // (outside the 416x360 opening view, whimper range)
 
-const BALL_THROW_SPEED = 130; // px/s
-const BALL_DRAG = 140; // px/s^2
-const PICKUP_RADIUS = 7;
-const DELIVER_RADIUS = 12;
+const BALL_THROW_SPEED = 195; // px/s
+const BALL_DRAG = 210; // px/s^2
+const PICKUP_RADIUS = 11;
+const DELIVER_RADIUS = 18;
 const HEART_TTL = 1.6;
 
 // Detour steering: the AI notices it stopped making progress toward its
@@ -146,6 +178,18 @@ export class Game {
     this.memory = new Map();
     this.memoryCheck = 0;
 
+    // Magic and battle (v0.15).
+    this.spells = []; // spell ids learned, in the order the leaf taught them
+    this.focus = this.maxFocus();
+    this.focusTimer = 0;
+    this.warded = false; // WARD eats the next bite
+    this.mode = 'free'; // 'free' | 'turn' — the world's two gears
+    this.turn = 'you'; // whose move, while turn-based
+    this.moveLeft = 0; // px of movement left in your turn
+    this.battleFoes = []; // hostile keys currently engaged
+    this.round = 0;
+    this.battleCheck = 0;
+
     // Where the pair are: the open world, or inside a mansion.
     this.location = 'world';
     this.mansionKey = null; // which mansion, while inside
@@ -214,16 +258,20 @@ export class Game {
     const key = `m:${m.x},${m.y}`;
     this.location = 'mansion';
     this.mansionKey = key;
-    this.mansionReturn = { px: m.x, py: m.y + 7, dx: m.x - 11, dy: m.y + 10 };
+    this.mansionReturn = { px: m.x, py: m.y + 10, dx: m.x - 17, dy: m.y + 15 };
     this.person.x = MANSION_SPAWN.x;
     this.person.y = MANSION_SPAWN.y;
     if (this.together) {
-      this.dog.x = MANSION_SPAWN.x - 13;
-      this.dog.y = MANSION_SPAWN.y + 2;
+      this.dog.x = MANSION_SPAWN.x - 20;
+      this.dog.y = MANSION_SPAWN.y + 3;
     }
     this.clearMoveTarget();
     this.ball = null;
     this.fetch = 'idle';
+    // The interior runs its own loop and never reaches checkBattle, so a
+    // fight you walked in on has to be let go at the threshold — otherwise
+    // the mode frame and the step budget follow you inside for good.
+    if (this.mode === 'turn') this.endBattle('THE DOOR SHUTS THE FIGHT OUTSIDE');
     this.emit('door');
     this.triggerGlitch(0.5);
     if (!this.encounterDone.has(`${key}:in`)) {
@@ -245,7 +293,7 @@ export class Game {
     this.person.x = spot.x;
     this.person.y = spot.y;
     if (this.together) {
-      const ds = this.findClearSpot(spot.x - 11, spot.y + 3, this.dog);
+      const ds = this.findClearSpot(spot.x - 17, spot.y + 5, this.dog);
       this.dog.x = ds.x;
       this.dog.y = ds.y;
     }
@@ -259,8 +307,8 @@ export class Game {
   /** The nearest collision-free stand for a character, spiraling outward. */
   findClearSpot(x, y, ch) {
     for (const [dx, dy] of [
-      [0, 0], [0, 6], [8, 4], [-8, 4], [0, 12], [16, 8], [-16, 8],
-      [0, 20], [24, 12], [-24, 12], [0, 30], [32, 16], [-32, 16],
+      [0, 0], [0, 9], [12, 6], [-12, 6], [0, 18], [24, 12], [-24, 12],
+      [0, 30], [36, 18], [-36, 18], [0, 45], [48, 24], [-48, 24],
     ]) {
       const b = feetBox(ch, x + dx, y + dy);
       if (!this.world.collides(b.x, b.y, b.w, b.h)) return { x: x + dx, y: y + dy };
@@ -460,8 +508,8 @@ export class Game {
     this.captionSticky = true; // this beat plays exactly once — protect it
     this.ambientTimer = 0;
     const mx = (this.person.x + this.dog.x) / 2;
-    const my = Math.min(this.person.y, this.dog.y) - 14;
-    this.hearts.push({ x: mx - 4, y: my, t: HEART_TTL }, { x: mx + 4, y: my - 3, t: HEART_TTL * 1.2 });
+    const my = Math.min(this.person.y, this.dog.y) - 21;
+    this.hearts.push({ x: mx - 6, y: my, t: HEART_TTL }, { x: mx + 6, y: my - 5, t: HEART_TTL * 1.2 });
     this.gainXp(XP_DOG); // finding a friend is most of the point
   }
 
@@ -473,17 +521,17 @@ export class Game {
     }
     if (!this.together || this.fetch !== 'idle') return;
     const p = this.person;
-    let x = p.x + p.facing * 6;
-    let y = p.y - 6;
-    if (this.world.collides(x - 1, y - 1, 2, 2)) {
+    let x = p.x + p.facing * 9;
+    let y = p.y - 9;
+    if (this.world.collides(x - 2, y - 2, 3, 3)) {
       x = p.x; // facing straight into a trunk — drop at their feet instead
-      y = p.y - 1;
+      y = p.y - 2;
     }
     this.ball = {
       x,
       y,
       vx: p.facing * BALL_THROW_SPEED,
-      vy: -10 + this.rng() * 20,
+      vy: -15 + this.rng() * 30,
       carried: false,
     };
     this.fetch = 'thrown';
@@ -510,13 +558,26 @@ export class Game {
     if (this.glitch.t > 0) this.glitch.t = Math.max(0, this.glitch.t - dt);
     if (this.drunk > 0) {
       this.drunk = Math.max(0, this.drunk - dt);
-      if (this.drunk === 0) this.say('THE WORLD SETTLES BACK DOWN');
+      if (this.drunk === 0) {
+        this.say('THE WORLD SETTLES BACK DOWN');
+        // Inebriation lends WIS, and WIS is the focus pool — sobering up
+        // takes the borrowed points back rather than leaving you over full.
+        this.focus = Math.min(this.focus, this.maxFocus());
+      }
+    }
+    // Focus seeps back under the open sky, a point at a time.
+    if (this.spells.length && this.focus < this.maxFocus()) {
+      this.focusTimer += dt;
+      if (this.focusTimer >= FOCUS_REGEN) {
+        this.focusTimer = 0;
+        this.focus++;
+      }
     }
   }
 
   /** True while a world-pausing screen (inventory, detail, map, level) is up. */
   menuPaused() {
-    return !!this.choice && ['sheet', 'detail', 'map', 'levelup'].includes(this.choice.kind);
+    return !!this.choice && ['sheet', 'detail', 'map', 'levelup', 'spell'].includes(this.choice.kind);
   }
 
   /** Earn experience; every XP_PER_LEVEL of it is a level and 2 stat points. */
@@ -588,7 +649,10 @@ export class Game {
     // Edge-detect swap/action/sheet/map so a held key fires once.
     if (input.swap && !this._prevSwap) this.swapControl();
     this._prevSwap = !!input.swap;
-    if (input.action && !this._prevAction && this.active === 'person') this.throwBall();
+    if (input.action && !this._prevAction && this.active === 'person') {
+      if (this.mode === 'turn') this.openBattleMenu();
+      else this.throwBall();
+    }
     this._prevAction = !!input.action;
     if (input.sheet && !this._prevSheet) this.openSheet();
     this._prevSheet = !!input.sheet;
@@ -600,6 +664,12 @@ export class Game {
     this._prevRight = !!input.right;
     if (this.choice) return; // a pause screen opened this very tick — freeze now
 
+    // While turn-based you move on a budget, and only on your own turn.
+    let dirXLock = false;
+    const budgeted = this.mode === 'turn' && this.active === 'person';
+    if (budgeted && (this.turn !== 'you' || this.moveLeft <= 0)) {
+      dirXLock = true;
+    }
     // Snapshot positions so footsteps can be paced by distance walked.
     const prevPX = this.person.x;
     const prevPY = this.person.y;
@@ -607,8 +677,9 @@ export class Game {
     const prevDY = this.dog.y;
 
     // Player-controlled character: keys win over a tap target.
-    const dirX = (input.right ? 1 : 0) - (input.left ? 1 : 0);
-    const dirY = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+    const dirX = dirXLock ? 0 : (input.right ? 1 : 0) - (input.left ? 1 : 0);
+    const dirY = dirXLock ? 0 : (input.down ? 1 : 0) - (input.up ? 1 : 0);
+    if (dirXLock) this.clearMoveTarget();
     if (dirX !== 0 || dirY !== 0) {
       this.clearMoveTarget();
       moveCharacter(this.activeChar, dirX, dirY, dt, this.phys());
@@ -634,13 +705,18 @@ export class Game {
     }
 
     // Soft footsteps, paced by distance actually covered this tick.
-    this.stepAcc.person += Math.hypot(this.person.x - prevPX, this.person.y - prevPY);
+    const walkedPerson = Math.hypot(this.person.x - prevPX, this.person.y - prevPY);
+    if (budgeted && this.turn === 'you' && walkedPerson > 0) {
+      this.moveLeft = Math.max(0, this.moveLeft - walkedPerson);
+      if (this.moveLeft === 0 && !this.choice) this.openBattleMenu();
+    }
+    this.stepAcc.person += walkedPerson;
     this.stepAcc.dog += Math.hypot(this.dog.x - prevDX, this.dog.y - prevDY);
-    if (this.stepAcc.person >= 9) {
+    if (this.stepAcc.person >= 14) {
       this.stepAcc.person = 0;
       this.emit('step-person');
     }
-    if (this.stepAcc.dog >= 7) {
+    if (this.stepAcc.dog >= 11) {
       this.stepAcc.dog = 0;
       this.emit('step-dog');
     }
@@ -656,12 +732,19 @@ export class Game {
     // The mansion door: step into the doorway and you're inside.
     if (this.active === 'person') {
       const p = this.person;
-      for (const m of this.world.mansionsInRect(p.x - 40, p.y - 40, 80, 80)) {
-        if (Math.abs(p.x - m.x) < 5 && p.y > m.y - 4 && p.y < m.y + 3) {
+      for (const m of this.world.mansionsInRect(p.x - 60, p.y - 60, 120, 120)) {
+        if (Math.abs(p.x - m.x) < 8 && p.y > m.y - 6 && p.y < m.y + 5) {
           this.enterMansion(m);
           return;
         }
       }
+    }
+
+    // The world's gear: hostiles nearby drop it into turn-based.
+    this.battleCheck += dt;
+    if (this.battleCheck >= 0.3) {
+      this.battleCheck = 0;
+      this.checkBattle();
     }
 
     // Rare encounters open their menus when the person wanders close.
@@ -828,6 +911,8 @@ export class Game {
     }
 
     // Zombies get their own path: options depend on the bone, and they groan.
+    // While turn-based, the round structure owns them instead.
+    if (this.mode === 'turn') return;
     for (const z of near('zombiesInRect')) {
       const key = `z:${z.x},${z.y}`;
       if (blocked(key)) continue;
@@ -846,7 +931,7 @@ export class Game {
     // Only world encounters claim the (single) re-arm cooldown slot; closing
     // a pause screen — or the mansion's portrait — must not wipe the
     // cooldown of an encounter you fled outside.
-    if (!['sheet', 'detail', 'map', 'levelup', 'portrait'].includes(c.kind)) {
+    if (!['sheet', 'detail', 'map', 'levelup', 'portrait', 'spell', 'battle'].includes(c.kind)) {
       this.choiceCooldown = { key: c.key, x: c.x, y: c.y };
     }
     this.emit('menu-confirm');
@@ -859,7 +944,7 @@ export class Game {
           this.hasBone = true;
           this.boneMeat = true;
           this.emit('heal');
-          this.hearts.push({ x: c.x, y: c.y - 16, t: 1.6 });
+          this.hearts.push({ x: c.x, y: c.y - 24, t: 1.6 });
           this.announce([`${this.rollText(r)} - YOU PULL OUT A MEATY BONE`]);
           this.openChoice({
             kind: 'bone',
@@ -892,7 +977,8 @@ export class Game {
       if (id === 'eat') this.eatBoneMeat();
       else this.announce(['YOU POCKET THE MEATY BONE']);
     } else if (c.kind === 'sheet') {
-      if (id !== 'close') this.openIconDetail(id);
+      if (id === 'spells') this.openSpellMenu();
+      else if (id !== 'close') this.openIconDetail(id);
     } else if (c.kind === 'detail') {
       if (id === 'back') this.openSheet();
       else if (id === 'eat') this.eatBoneMeat();
@@ -959,7 +1045,7 @@ export class Game {
       if (id === 'health') {
         this.hp = MAX_HP;
         this.emit('heal');
-        this.hearts.push({ x: c.x, y: c.y - 14, t: 1.6 });
+        this.hearts.push({ x: c.x, y: c.y - 21, t: 1.6 });
         this.announce(['YOUR WOUNDS UNWIND (FULL HP)']);
       } else if (id === 'home') {
         this.announce([`THE GENIE POINTS. HOME IS FAR TO THE ${this.homeCompass()}`]);
@@ -971,6 +1057,8 @@ export class Game {
         this.encounterDone.add(c.key); // the leaf only had one bowl in it
         const r = this.check('wis');
         if (r.total >= DC_VISION) {
+          // The leaf is not a drug, it is a teacher. The vision hands you a
+          // spell — and the colors stay leaned in for ten minutes.
           this.drunk = DRUNK_TIME;
           this.emit('vision');
           this.emit('drunk');
@@ -980,9 +1068,14 @@ export class Game {
             'A VISION: THE INFLATABLES DANCE AT THE CENTER OF ALL THINGS',
             'THE COLORS LEAN CLOSER TOO (DRUNK 10:00)',
           ]);
+          this.learnSpell();
         } else if (r.total <= DC_COUGH) {
-          this.announce([`${this.rollText(r)} - YOU COUGH FOR A FULL MINUTE (-1 HP)`, 'THE PIPE IS SPENT']);
-          this.damage(1);
+          // No damage: the smoke is never the thing that hurts you. It just
+          // doesn't take, and the woods stay quiet.
+          this.announce([
+            `${this.rollText(r)} - THE SMOKE GOES NOWHERE`,
+            'NO VISION. THE PIPE IS SPENT',
+          ]);
         } else {
           this.announce([`${this.rollText(r)} - NOTHING. PROBABLY OAK LEAF`, 'THE PIPE IS SPENT']);
         }
@@ -990,6 +1083,24 @@ export class Game {
         this.announce(['IT SMELLS LIKE REGRET AND LAWN CLIPPINGS']);
       }
       // walkaway: it keeps smoldering.
+    } else if (c.kind === 'battle') {
+      if (id === 'wait') {
+        this.say('YOU HOLD YOUR GROUND');
+        this.endPlayerTurn();
+      } else if (id === 'befriend') {
+        this.announce(['THE ZOMBIE DOES NOT WANT FRIENDS']);
+        this.endPlayerTurn();
+      } else if (id === 'cast') {
+        this.openSpellMenu();
+      } else {
+        const foe = this.nearestFoe();
+        if (!foe) this.endPlayerTurn();
+        else this.resolveZombie({ kind: 'zombie', key: `z:${foe.x},${foe.y}`, x: foe.x, y: foe.y }, id);
+      }
+    } else if (c.kind === 'spell') {
+      if (id !== 'back') this.castSpell(id);
+      else if (this.mode === 'turn') this.openBattleMenu();
+      else this.openSheet();
     }
   }
 
@@ -1017,6 +1128,7 @@ export class Game {
       title: 'YOU',
       options: [
         ...ABILITIES.map((a) => ({ id: a, label: a.toUpperCase(), icon: a })),
+        ...(this.spells.length ? [{ id: 'spells', label: 'SPELLS', icon: 'spells' }] : []),
         ...(this.hasBone ? [{ id: 'bone', label: 'BONE', icon: 'bone' }] : []),
         ...(this.boneMeat ? [{ id: 'meat', label: 'MEAT', icon: 'meat' }] : []),
         ...(person && this.together && this.fetch === 'idle'
@@ -1122,6 +1234,209 @@ export class Game {
     ]);
   }
 
+  // --- Magic ---------------------------------------------------------------
+
+  /** Focus pool: 3 + WIS modifier, never below 1. */
+  maxFocus() {
+    return Math.max(1, FOCUS_BASE + this.mod('wis'));
+  }
+
+  /** A vision teaches the next spell in the book (if any are left). */
+  learnSpell() {
+    const next = SPELLS.find((s) => !this.spells.includes(s.id));
+    if (!next) {
+      this.say('THE LEAF HAS NOTHING LEFT TO TEACH');
+      return;
+    }
+    this.spells.push(next.id);
+    this.focus = this.maxFocus();
+    this.emit('spell-learn');
+    this.say(`YOU LEARN ${next.name}: ${next.blurb}`);
+  }
+
+  /** The spell menu — from the sheet, or as a battle action. */
+  openSpellMenu() {
+    if (this.spells.length === 0) {
+      this.say('YOU KNOW NO SPELLS. THE LEAF KNOWS SOME');
+      return;
+    }
+    this.openChoice({
+      kind: 'spell',
+      key: 'spell',
+      x: this.person.x,
+      y: this.person.y,
+      title: `FOCUS ${this.focus} OF ${this.maxFocus()}`,
+      body: SPELLS.filter((s) => this.spells.includes(s.id)).map((s) => `${s.name}: ${s.blurb}`),
+      options: [
+        ...SPELLS.filter((s) => this.spells.includes(s.id)).map((s) => ({
+          id: s.id,
+          label: `${s.name} (${s.cost})`,
+        })),
+        { id: 'back', label: 'BACK' },
+      ],
+    });
+  }
+
+  /** Cast a known spell, if focus allows. Costs your turn in battle. */
+  castSpell(id) {
+    const spell = SPELLS.find((s) => s.id === id);
+    if (!spell || !this.spells.includes(id)) return;
+    if (this.focus < spell.cost) {
+      this.emit('spell-fail');
+      this.announce(['NOT ENOUGH FOCUS. THE WORDS SCATTER']);
+      if (this.mode === 'turn') this.endPlayerTurn();
+      return;
+    }
+    this.focus -= spell.cost;
+    this.triggerGlitch(0.35);
+    if (id === 'ember') {
+      this.emit('spell-cast');
+      const target = this.nearestFoe();
+      if (!target) {
+        this.announce(['EMBER BLOOMS AND FINDS NOTHING TO BURN']);
+      } else {
+        const key = `z:${target.x},${target.y}`;
+        const left = (this.zombieHp.get(key) ?? ZOMBIE_HP) - 3;
+        if (left <= 0) {
+          this.encounterDone.add(key);
+          this.zombieHp.delete(key);
+          this.emit('vanish');
+          this.announce(['EMBER TAKES IT. THE ZOMBIE GOES OUT LIKE A CANDLE']);
+          this.gainXp(XP_ZOMBIE);
+        } else {
+          this.zombieHp.set(key, left);
+          this.announce(['EMBER BITES. THE ZOMBIE BURNS AND KEEPS COMING']);
+        }
+      }
+    } else if (id === 'ward') {
+      this.warded = true;
+      this.emit('ward');
+      this.announce(['A WARD SETTLES OVER YOU, THIN AS FROST']);
+    } else if (id === 'moonlight') {
+      this.emit('heal');
+      this.heal(3);
+      this.hearts.push({ x: this.person.x, y: this.person.y - 30, t: 1.6 });
+      this.announce(['YOU DRINK THE MOON (+3 HP)']);
+    }
+    if (this.mode === 'turn') this.endPlayerTurn();
+  }
+
+  // --- Turn-based combat ---------------------------------------------------
+
+  /** Hostiles (living zombies) within a radius of the person. */
+  hostilesNear(radius) {
+    if (this.location !== 'world') return [];
+    const p = this.person;
+    return this.world
+      .zombiesInRect(p.x - radius, p.y - radius, radius * 2, radius * 2)
+      .filter((z) => !this.encounterDone.has(`z:${z.x},${z.y}`))
+      .filter((z) => Math.hypot(z.x - p.x, z.y - p.y) <= radius);
+  }
+
+  /** The closest living hostile, or null. */
+  nearestFoe() {
+    const p = this.person;
+    const near = this.hostilesNear(BATTLE_LEAVE);
+    let best = null;
+    for (const z of near) {
+      const d = Math.hypot(z.x - p.x, z.y - p.y);
+      if (!best || d < best.d) best = { ...z, d };
+    }
+    return best;
+  }
+
+  /**
+   * The world has two gears. Something hostile close by drops it into
+   * turn-based; putting distance between you lets it go again.
+   */
+  checkBattle() {
+    if (this.location !== 'world') {
+      if (this.mode === 'turn') this.endBattle();
+      return;
+    }
+    if (this.mode === 'free') {
+      const foes = this.hostilesNear(BATTLE_RADIUS);
+      if (foes.length) this.startBattle(foes);
+    } else if (this.hostilesNear(BATTLE_LEAVE).length === 0) {
+      this.endBattle();
+    }
+  }
+
+  startBattle(foes) {
+    this.mode = 'turn';
+    this.turn = 'you';
+    this.round = 1;
+    this.moveLeft = BATTLE_MOVE;
+    this.battleFoes = foes.map((z) => `z:${z.x},${z.y}`);
+    this.clearMoveTarget();
+    this.emit('battle-start');
+    this.triggerGlitch(0.5);
+    this.announce(['SOMETHING IS CLOSE', 'TURN-BASED: ONE MOVE, ONE ACTION']);
+  }
+
+  endBattle(line = 'THE WOODS LET GO. YOU MOVE FREELY AGAIN') {
+    this.mode = 'free';
+    this.turn = 'you';
+    this.battleFoes = [];
+    this.warded = false;
+    this.emit('battle-end');
+    this.say(line);
+  }
+
+  /** The battle action menu — your one action for the turn. */
+  openBattleMenu() {
+    const foe = this.nearestFoe();
+    const inReach = foe && foe.d <= ENCOUNTER_RADIUS;
+    this.openChoice({
+      kind: 'battle',
+      key: 'battle',
+      x: this.person.x,
+      y: this.person.y,
+      title: inReach ? 'A ZOMBIE IS ON YOU' : 'IT SHAMBLES CLOSER',
+      options: [
+        // The first round still lets you try the friendly thing.
+        ...(this.round <= 1 ? [{ id: 'befriend', label: 'TRY TO BEFRIEND IT' }] : []),
+        ...(inReach ? [{ id: 'fists', label: 'ATTACK WITH FISTS' }] : []),
+        ...(inReach && this.hasBone ? [{ id: 'bone', label: 'SWING THE BONE' }] : []),
+        ...(this.spells.length ? [{ id: 'cast', label: 'CAST A SPELL' }] : []),
+        { id: 'wait', label: 'HOLD YOUR GROUND' },
+      ],
+    });
+  }
+
+  /** Your action is spent — the hostiles answer, then it's your move again. */
+  endPlayerTurn() {
+    if (this.mode !== 'turn') return;
+    this.turn = 'foes';
+    const p = this.person;
+    for (const z of this.hostilesNear(ENCOUNTER_RADIUS)) {
+      if (this.warded) {
+        this.warded = false;
+        this.emit('ward');
+        this.say('THE WARD TAKES THE BITE FOR YOU');
+        continue;
+      }
+      this.emit('zombie');
+      const lethal = this.hp <= ZOMBIE_BITE;
+      this.damage(ZOMBIE_BITE);
+      if (lethal) {
+        this.stats.int = Math.max(1, this.stats.int - 1);
+        this.announce([
+          'IT TASTES A LITTLE OF YOUR BRAIN (-1 INT)',
+          this.together ? 'THE DOG DRAGS YOU AWAY' : 'YOU WAKE ALONE, AND LIGHTER',
+        ]);
+      } else {
+        this.say(`IT BITES (-${ZOMBIE_BITE} HP)`);
+      }
+      break; // one bite per round; the woods are not that cruel
+    }
+    void p;
+    this.turn = 'you';
+    this.round++;
+    this.moveLeft = BATTLE_MOVE;
+    this.emit('turn');
+  }
+
   /** The zombie fight menu (options depend on what you're carrying). */
   zombieMenu(key, x, y) {
     return {
@@ -1158,7 +1473,8 @@ export class Game {
         // A STR-3 punch lands and accomplishes nothing. No bite either —
         // you did, technically, hit it.
         this.announce([`${this.rollText(r)} - YOUR FISTS BOUNCE OFF HARMLESSLY`]);
-        this.openChoice(this.zombieMenu(c.key, c.x, c.y));
+        if (this.mode === 'turn') this.endPlayerTurn();
+        else this.openChoice(this.zombieMenu(c.key, c.x, c.y));
         return;
       }
       const left = hp - dmg;
@@ -1173,14 +1489,17 @@ export class Game {
           'THE ZOMBIE CRUMBLES. THE FOREST EXHALES',
         ]);
         this.gainXp(XP_ZOMBIE);
+        if (this.mode === 'turn') this.endPlayerTurn();
       } else {
         this.zombieHp.set(c.key, left);
         this.announce([`${this.rollText(r)} - ${weapon ? 'BONK! IT STAGGERS' : 'YOU LAND ONE. IT STAGGERS'}`]);
-        this.openChoice(this.zombieMenu(c.key, c.x, c.y));
+        if (this.mode === 'turn') this.endPlayerTurn();
+        else this.openChoice(this.zombieMenu(c.key, c.x, c.y));
       }
     } else {
       this.announce([`${this.rollText(r)} - YOU MISS`]);
-      this.zombieBites(c);
+      if (this.mode === 'turn') this.endPlayerTurn();
+      else this.zombieBites(c);
     }
   }
 
@@ -1290,7 +1609,7 @@ export class Game {
     const px = -dy / len;
     const py = dx / len;
     const open = (s) => {
-      const b = feetBox(ch, ch.x + px * s * 8, ch.y + py * s * 8);
+      const b = feetBox(ch, ch.x + px * s * 12, ch.y + py * s * 12);
       return !this.phys().collides(b.x, b.y, b.w, b.h);
     };
     if (open(1)) return 1;
@@ -1315,7 +1634,7 @@ export class Game {
 
     if (this.fetch === 'thrown') {
       if (dogIsAI) this.aiMoveToward(dog, b.x, b.y, dt);
-      if (Math.hypot(b.x - dog.x, b.y - (dog.y - 3)) <= PICKUP_RADIUS) {
+      if (Math.hypot(b.x - dog.x, b.y - (dog.y - 5)) <= PICKUP_RADIUS) {
         b.carried = true;
         this.fetch = 'returning';
         this.nav = { stuck: 0, detour: 0, side: 1 };
@@ -1323,8 +1642,8 @@ export class Game {
         this.triggerGlitch(0.2);
       }
     } else if (this.fetch === 'returning') {
-      b.x = dog.x + dog.facing * 6;
-      b.y = dog.y - 4;
+      b.x = dog.x + dog.facing * 9;
+      b.y = dog.y - 6;
       if (dogIsAI) this.aiMoveToward(dog, person.x, person.y, dt);
       if (Math.hypot(person.x - dog.x, person.y - dog.y) <= DELIVER_RADIUS) {
         this.ball = null;
@@ -1335,7 +1654,7 @@ export class Game {
         this.announce(['GOOD DOG']);
         this.hearts.push({
           x: (person.x + dog.x) / 2,
-          y: Math.min(person.y, dog.y) - 14,
+          y: Math.min(person.y, dog.y) - 21,
           t: HEART_TTL,
         });
       }

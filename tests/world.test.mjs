@@ -110,7 +110,7 @@ test('inflatable groves are rare, well-formed, and stay in their chunk', () => {
       for (const f of chunk.inflatables) {
         assert.ok(f.x >= cx * CHUNK && f.x < (cx + 1) * CHUNK, 'x in chunk');
         assert.ok(f.y >= cy * CHUNK && f.y < (cy + 1) * CHUNK, 'y in chunk');
-        assert.ok(f.h >= 22 && f.h <= 32, 'tube height sane');
+        assert.ok(f.h >= 30 && f.h <= 50, 'tube height sane');
         assert.ok(f.tint >= 0 && f.tint < 4);
         assert.ok(f.speed > 0);
       }

@@ -136,6 +136,21 @@ export const ICONS = {
     ],
     colors: C,
   },
+  // Spells — a rose-gold star of focus.
+  spells: {
+    sprite: [
+      '....W....',
+      '...WgW...',
+      '..WggkW..',
+      '.WggkggW.',
+      'WgkkkkkgW',
+      '.WggkggW.',
+      '..WggW...',
+      '.W..g..W.',
+      'W.......W',
+    ],
+    colors: { ...C, g: PALETTE.gold, k: PALETTE.goldRose },
+  },
   // The pink ball.
   ball: {
     sprite: [

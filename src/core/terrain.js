@@ -13,16 +13,16 @@
 
 import { coordRng, hashCoords } from './rng.js';
 
-export const REGION = 640; // px per region side (4x4 chunks)
+export const REGION = 960; // px per region side (4x4 chunks)
 export const BIOMES = ['grass', 'oak', 'redwood', 'lake', 'mountain'];
 
 export const RIVER_EVERY = 5; // a river column every 5 region-columns
 export const RIVER_COL = 2; // ...on columns where rx % 5 === 2 (away from home)
-export const RIVER_W = 26; // px across
-export const BRIDGE_EVERY = 420; // px of river between bridges
-export const BRIDGE_H = 14; // walkable span height
-const MEANDER = 44; // max sideways drift (stays inside the column)
-const MEANDER_STEP = 256; // px of y between meander control points
+export const RIVER_W = 39; // px across
+export const BRIDGE_EVERY = 630; // px of river between bridges
+export const BRIDGE_H = 21; // walkable span height
+const MEANDER = 66; // max sideways drift (stays inside the column)
+const MEANDER_STEP = 384; // px of y between meander control points
 
 const SALT_BIOME = 0x7e77a917;
 const SALT_RIVER = 0x52117e12;
@@ -166,7 +166,7 @@ export function regionLandmarks(seed, rx, ry) {
     cave: !!info.cave,
     water: info.biome === 'lake' || river,
     // Rivers cross a bridge at least once per region height (spacing math:
-    // max bridge gap 630px < REGION 640).
+    // max bridge gap 945px < REGION 960).
     bridge: river,
   };
 }

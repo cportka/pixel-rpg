@@ -124,7 +124,7 @@ test('stepping into the doorway takes you inside; the door mat leads out', () =>
   assert.equal(g.location, 'mansion');
   assert.equal(g.person.x, SPAWN.x);
   assert.equal(g.person.y, SPAWN.y);
-  assert.ok(Math.abs(g.dog.x - SPAWN.x) < 20, 'the dog comes along');
+  assert.ok(Math.abs(g.dog.x - SPAWN.x) <= 24, 'the dog comes along');
   assert.equal(g.caption.text, 'THE DOOR WAS NOT LOCKED');
   assert.ok(g.captionQueue.includes('IT SHUT ITSELF BEHIND YOU ANYWAY'));
 
@@ -132,7 +132,7 @@ test('stepping into the doorway takes you inside; the door mat leads out', () =>
   g.person.y = 13 * TILE + 4; // onto the mat
   g.update(STEP, {});
   assert.equal(g.location, 'world');
-  assert.equal(g.person.y, 7, 'back outside, below the door');
+  assert.equal(g.person.y, 10, 'back outside, below the door');
   g.update(STEP, {});
   assert.equal(g.location, 'world', 'no revolving door');
 });
@@ -144,9 +144,10 @@ test('interior walls actually stop you', () => {
   const g = enter(mansionGame());
   g.person.x = SPAWN.x;
   g.person.y = SPAWN.y;
-  runSeconds(g, 3, { right: true });
-  assert.ok(g.person.x < 302, `the east wall held (x=${g.person.x.toFixed(1)})`);
-  assert.ok(g.person.x > 290, 'the person actually reached the wall');
+  runSeconds(g, 5, { right: true });
+  const wall = 19 * TILE; // the hall's east wall
+  assert.ok(g.person.x < wall, `the east wall held (x=${g.person.x.toFixed(1)})`);
+  assert.ok(g.person.x > wall - 20, 'the person actually reached the wall');
   assert.ok(g.location === 'mansion', 'still inside');
 });
 
@@ -275,23 +276,46 @@ test('furnishing sprites are rectangular with known colors', () => {
   }
   const flames = new Set();
   for (let t = 0; t < 4; t += 0.1) flames.add(flameColor(t));
-  assert.deepEqual([...flames].sort(), [PALETTE.brass, PALETTE.magenta].sort());
+  assert.deepEqual([...flames].sort(), [PALETTE.gold, PALETTE.goldRose].sort());
 });
 
 test('character shading keeps the silhouette and the cadence', () => {
-  const shape = (m) => m.map((r) => r.replaceAll('s', 'W'));
-  const inner = shadeFrames(['WWW', 'WWW', 'WWW']);
-  assert.equal(inner[1][1], 's', 'interior pixels fall into moonshadow');
-  assert.equal(inner[0][0], 'W', 'edges stay moonlit');
+  const shape = (m) => m.map((r) => r.replace(/[sdr]/g, 'W'));
+  const inner = shadeFrames(['WWWWW', 'WWWWW', 'WWWWW', 'WWWWW', 'WWWWW']);
+  assert.equal(inner[2][2], 's', 'interior pixels fall into moonshadow');
+  assert.equal(inner[2][4], 'W', 'the right edge stays moonlit');
+  assert.equal(inner[2][0], 'd', 'the left flank falls to deep smoke');
+  assert.equal(inner[0][4], 'r', 'the crown catches a rose-gold rim');
   let shaded = 0;
   for (const frames of [PERSON_FRAMES, DOG_FRAMES]) {
     for (const map of Object.values(frames)) {
       for (const row of map) {
-        assert.match(row, /^[.Ws]+$/, 'only moonlight, moonshadow, air');
-        shaded += (row.match(/s/g) ?? []).length;
+        assert.match(row, /^[.Wsdr]+$/, 'moonlight, moonshadow, deep smoke, rose rim, air');
+        shaded += (row.match(/[sdr]/g) ?? []).length;
       }
       assert.deepEqual(shape(shadeFrames(shape(map))), shape(map), 'shading is shape-stable');
     }
   }
   assert.ok(shaded > 20, `the pair carry real shading (${shaded} px)`);
+});
+
+test('the door shuts the fight outside — no turn-based mode indoors', () => {
+  // Regression: the interior loop returns before checkBattle, so a fight you
+  // walked in on would keep the mode frame and the step budget forever.
+  const g = new Game(1, { story: false });
+  g.world.collides = () => false;
+  g.world.chunkAt(0, 0).mansions.push({ x: 60, y: 0 });
+  g.world.chunkAt(0, 0).zombies.push({ x: -10, y: -20, phase: 0 });
+  g.person.x = 0; // out on the lawn, clear of the doorway
+  g.person.y = 0;
+  runSeconds(g, 0.4); // the battle check notices the zombie
+  assert.equal(g.mode, 'turn', 'engaged on the lawn');
+  g.person.x = 60;
+  g.person.y = 0;
+  g.update(1 / 60, {});
+  assert.equal(g.location, 'mansion');
+  assert.equal(g.mode, 'free', 'the fight stays on the lawn');
+  assert.deepEqual(g.battleFoes, []);
+  runSeconds(g, 1);
+  assert.equal(g.mode, 'free', 'and does not follow you in');
 });

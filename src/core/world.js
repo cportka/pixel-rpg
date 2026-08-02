@@ -8,14 +8,14 @@
 import { coordRng, pick } from './rng.js';
 import { biomeAt, isWater, regionInfo, REGION } from './terrain.js';
 
-export const CHUNK = 160; // px per chunk side
+export const CHUNK = 240; // px per chunk side
 
 // Canopy moods for the neo-noir forest — the reference footage's mix,
 // re-themed: most trees burn violet/plum with magenta flecks ('ember') and a
 // few are smoke-crowned ('leafy').
 export const TREE_VARIANTS = ['ember', 'ember', 'ember', 'leafy', 'leafy'];
 
-const MIN_TREE_GAP = 34; // px between tree anchors within a chunk
+const MIN_TREE_GAP = 51; // px between tree anchors within a chunk
 
 const PRUNE_KEEP_RADIUS = 6; // chunks kept around the player when pruning
 const PRUNE_THRESHOLD = 220; // cache size that triggers a prune sweep
@@ -70,7 +70,7 @@ export class World {
     // Trees can be tall/wide; pad the query so off-rect anchors still draw.
     for (const chunk of this.chunksInRect(x - CHUNK, y - CHUNK, w + 2 * CHUNK, h + 2 * CHUNK)) {
       for (const t of chunk.trees) {
-        if (t.x >= x - 64 && t.x <= x + w + 64 && t.y >= y - 16 && t.y <= y + h + 80) out.push(t);
+        if (t.x >= x - 96 && t.x <= x + w + 96 && t.y >= y - 24 && t.y <= y + h + 120) out.push(t);
       }
     }
     return out;
@@ -92,7 +92,7 @@ export class World {
     const out = [];
     for (const chunk of this.chunksInRect(x - CHUNK, y - CHUNK, w + 2 * CHUNK, h + 2 * CHUNK)) {
       for (const f of chunk.inflatables) {
-        if (f.x >= x - 24 && f.x <= x + w + 24 && f.y >= y - 8 && f.y <= y + h + 48) out.push(f);
+        if (f.x >= x - 36 && f.x <= x + w + 36 && f.y >= y - 12 && f.y <= y + h + 72) out.push(f);
       }
     }
     return out;
@@ -111,52 +111,52 @@ export class World {
 
   /** Burning dumpsters near the world-space rect. */
   dumpstersInRect(x, y, w, h) {
-    return this.featuresInRect('dumpsters', x, y, w, h, 16);
+    return this.featuresInRect('dumpsters', x, y, w, h, 24);
   }
 
   /** Psychedelic cats near the world-space rect. */
   catsInRect(x, y, w, h) {
-    return this.featuresInRect('cats', x, y, w, h, 12);
+    return this.featuresInRect('cats', x, y, w, h, 18);
   }
 
   /** Old lamps near the world-space rect. */
   lampsInRect(x, y, w, h) {
-    return this.featuresInRect('lamps', x, y, w, h, 12);
+    return this.featuresInRect('lamps', x, y, w, h, 18);
   }
 
   /** Half-burnt pipes near the world-space rect. */
   pipesInRect(x, y, w, h) {
-    return this.featuresInRect('pipes', x, y, w, h, 12);
+    return this.featuresInRect('pipes', x, y, w, h, 18);
   }
 
   /** Zombies near the world-space rect. */
   zombiesInRect(x, y, w, h) {
-    return this.featuresInRect('zombies', x, y, w, h, 14);
+    return this.featuresInRect('zombies', x, y, w, h, 21);
   }
 
   /** Mountain rocks near the world-space rect. */
   rocksInRect(x, y, w, h) {
-    return this.featuresInRect('rocks', x, y, w, h, 20);
+    return this.featuresInRect('rocks', x, y, w, h, 30);
   }
 
   /** Mysterious cabins near the world-space rect. */
   cabinsInRect(x, y, w, h) {
-    return this.featuresInRect('cabins', x, y, w, h, 24);
+    return this.featuresInRect('cabins', x, y, w, h, 36);
   }
 
   /** Brooding mansions near the world-space rect (tall facade — big pad). */
   mansionsInRect(x, y, w, h) {
-    return this.featuresInRect('mansions', x, y, w, h, 56);
+    return this.featuresInRect('mansions', x, y, w, h, 84);
   }
 
   /** Cave mouths near the world-space rect. */
   cavesInRect(x, y, w, h) {
-    return this.featuresInRect('caves', x, y, w, h, 20);
+    return this.featuresInRect('caves', x, y, w, h, 30);
   }
 
   /** Grass tufts within the world-space rect (ground decoration). */
   tuftsInRect(x, y, w, h) {
-    return this.featuresInRect('tufts', x, y, w, h, 4);
+    return this.featuresInRect('tufts', x, y, w, h, 6);
   }
 
   /**
@@ -173,27 +173,27 @@ export class World {
       }
       for (const d of chunk.dumpsters) {
         // A dumpster is solid at its base (16 wide, like the sprite).
-        if (x < d.x + 8 && x + w > d.x - 8 && y < d.y + 1 && y + h > d.y - 3) return true;
+        if (x < d.x + 12 && x + w > d.x - 12 && y < d.y + 1 && y + h > d.y - 5) return true;
       }
       for (const r of chunk.rocks) {
-        const half = Math.max(3, Math.round(r.size * 0.35));
-        if (x < r.x + half && x + w > r.x - half && y < r.y + 1 && y + h > r.y - 4) return true;
+        const half = Math.max(4, Math.round(r.size * 0.35));
+        if (x < r.x + half && x + w > r.x - half && y < r.y + 1 && y + h > r.y - 6) return true;
       }
       for (const c of chunk.cabins) {
-        if (x < c.x + 10 && x + w > c.x - 10 && y < c.y + 1 && y + h > c.y - 6) return true;
+        if (x < c.x + 15 && x + w > c.x - 15 && y < c.y + 1 && y + h > c.y - 9) return true;
       }
       for (const m of chunk.mansions) {
         // The facade is solid — except the doorway (center 10px), which is
         // how you get in (game.js watches for feet crossing it).
-        if (x < m.x + 28 && x + w > m.x - 28 && y < m.y + 1 && y + h > m.y - 8) {
+        if (x < m.x + 42 && x + w > m.x - 42 && y < m.y + 1 && y + h > m.y - 12) {
           const cx = x + w / 2;
-          if (!(cx > m.x - 5 && cx < m.x + 5)) return true;
+          if (!(cx > m.x - 8 && cx < m.x + 8)) return true;
         }
       }
       for (const c of chunk.caves) {
         // The rock face is solid except the mouth itself (center 6px).
-        if (x < c.x + 9 && x + w > c.x - 9 && y < c.y + 1 && y + h > c.y - 5) {
-          if (!(x + w / 2 > c.x - 3 && x + w / 2 < c.x + 3 && y + h > c.y - 2)) return true;
+        if (x < c.x + 14 && x + w > c.x - 14 && y < c.y + 1 && y + h > c.y - 8) {
+          if (!(x + w / 2 > c.x - 5 && x + w / 2 < c.x + 5 && y + h > c.y - 3)) return true;
         }
       }
     }
@@ -209,19 +209,19 @@ export class World {
 
 /** Solid collision box at a tree's base (world-space, top-left + size). */
 export function trunkBox(tree) {
-  const half = Math.max(2, Math.round(tree.size * 0.09));
-  return { x: tree.x - half, y: tree.y - 3, w: half * 2, h: 4 };
+  const half = Math.max(3, Math.round(tree.size * 0.06));
+  return { x: tree.x - half, y: tree.y - 4, w: half * 2, h: 6 };
 }
 
 // Per-biome generation parameters. Oak is EXACTLY the pre-terrain sequence
 // (same draws in the same order), so home-woods chunks — and every oak region
 // — keep the layouts older seeds grew.
 const BIOME_GEN = {
-  grass: { trees: (r) => (r() < 0.3 ? 1 : 0), size: [24, 14], gap: 34, bushes: (r) => Math.floor(r() * 3), tufts: [8, 7] },
-  oak: { trees: (r) => 1 + Math.floor(r() * 3), size: [32, 20], gap: 34, bushes: (r) => Math.floor(r() * 3), tufts: [2, 3] },
-  lake: { trees: (r) => Math.floor(r() * 2), size: [32, 16], gap: 34, bushes: (r) => Math.floor(r() * 2), tufts: [3, 3] },
-  redwood: { trees: (r) => 3 + Math.floor(r() * 4), size: [50, 28], gap: 26, bushes: (r) => Math.floor(r() * 2), tufts: [0, 0] },
-  mountain: { trees: (r) => (r() < 0.4 ? 1 : 0), size: [26, 14], gap: 34, bushes: (r) => (r() < 0.5 ? 1 : 0), tufts: [0, 0], rocks: [2, 4] },
+  grass: { trees: (r) => (r() < 0.3 ? 1 : 0), size: [36, 21], gap: 51, bushes: (r) => Math.floor(r() * 3), tufts: [8, 7] },
+  oak: { trees: (r) => 1 + Math.floor(r() * 3), size: [48, 30], gap: 51, bushes: (r) => Math.floor(r() * 3), tufts: [2, 3] },
+  lake: { trees: (r) => Math.floor(r() * 2), size: [48, 24], gap: 51, bushes: (r) => Math.floor(r() * 2), tufts: [3, 3] },
+  redwood: { trees: (r) => 3 + Math.floor(r() * 4), size: [75, 42], gap: 39, bushes: (r) => Math.floor(r() * 2), tufts: [0, 0] },
+  mountain: { trees: (r) => (r() < 0.4 ? 1 : 0), size: [39, 21], gap: 51, bushes: (r) => (r() < 0.5 ? 1 : 0), tufts: [0, 0], rocks: [2, 4] },
 };
 
 /** Pure chunk generator — same (seed, cx, cy) always returns identical content. */
@@ -260,7 +260,7 @@ export function generateChunk(seed, cx, cy) {
       kind: 'bush',
       x: baseX + Math.floor(rng() * CHUNK),
       y: baseY + Math.floor(rng() * CHUNK),
-      size: 8 + Math.floor(rng() * 6),
+      size: 12 + Math.floor(rng() * 9),
       variant: pick(rng, TREE_VARIANTS),
       detailSeed: Math.floor(rng() * 0xffffffff) >>> 0,
     });
@@ -284,14 +284,14 @@ export function generateChunk(seed, cx, cy) {
   // for seeds generated by older versions.)
   const inflatables = [];
   if (rng() < 0.025) {
-    const gx = baseX + 30 + Math.floor(rng() * (CHUNK - 60));
-    const gy = baseY + 30 + Math.floor(rng() * (CHUNK - 60));
+    const gx = baseX + 45 + Math.floor(rng() * (CHUNK - 90));
+    const gy = baseY + 45 + Math.floor(rng() * (CHUNK - 90));
     const n = 2 + Math.floor(rng() * 3);
     for (let i = 0; i < n; i++) {
       inflatables.push({
-        x: gx + Math.floor((rng() - 0.5) * 56),
-        y: gy + Math.floor((rng() - 0.5) * 32),
-        h: 22 + Math.floor(rng() * 10), // tube height in px
+        x: gx + Math.floor((rng() - 0.5) * 84),
+        y: gy + Math.floor((rng() - 0.5) * 48),
+        h: 33 + Math.floor(rng() * 15), // tube height in px
         tint: Math.floor(rng() * 4), // index into INFLATABLE_TINTS
         phase: rng() * Math.PI * 2,
         speed: 3 + rng() * 2, // wave speed
@@ -304,8 +304,8 @@ export function generateChunk(seed, cx, cy) {
   const dumpsters = [];
   if (rng() < 0.02) {
     dumpsters.push({
-      x: baseX + 20 + Math.floor(rng() * (CHUNK - 40)),
-      y: baseY + 20 + Math.floor(rng() * (CHUNK - 40)),
+      x: baseX + 30 + Math.floor(rng() * (CHUNK - 60)),
+      y: baseY + 30 + Math.floor(rng() * (CHUNK - 60)),
     });
   }
   const cats = [];
@@ -347,9 +347,9 @@ export function generateChunk(seed, cx, cy) {
     const n = gen.rocks[0] + Math.floor(rng() * gen.rocks[1]);
     for (let i = 0; i < n; i++) {
       rocks.push({
-        x: baseX + 10 + Math.floor(rng() * (CHUNK - 20)),
-        y: baseY + 10 + Math.floor(rng() * (CHUNK - 20)),
-        size: 10 + Math.floor(rng() * 12),
+        x: baseX + 15 + Math.floor(rng() * (CHUNK - 30)),
+        y: baseY + 15 + Math.floor(rng() * (CHUNK - 30)),
+        size: 15 + Math.floor(rng() * 18),
         detailSeed: Math.floor(rng() * 0xffffffff) >>> 0,
       });
     }

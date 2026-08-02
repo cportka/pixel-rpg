@@ -9,11 +9,14 @@ import {
 } from '../src/core/terrain.js';
 import { World, generateChunk, CHUNK } from '../src/core/world.js';
 import { Game, MEM_FRESH, MEM_FADED } from '../src/core/game.js';
-import { choicePanel, hudRect, SCREEN_W, SCREEN_H } from '../src/gfx/renderer.js';
+import {
+  choicePanel, hudRect, memoryGlyphs, HUD_CELL, HUD_SPAN, SCREEN_W, SCREEN_H,
+} from '../src/gfx/renderer.js';
 import {
   CABIN_SPRITE, CABIN_COLORS, CAVE_SPRITE, CAVE_COLORS,
   cabinWindowLit, caveGlint, rockPixels, TUFT_PIXELS,
 } from '../src/gfx/structures.js';
+import { PALETTE } from '../src/gfx/palette.js';
 
 const STEP = 1 / 60;
 const SEED = 77;
@@ -67,7 +70,7 @@ test('rivers run down every fifth region column and meander inside it', () => {
   const colCenter = RIVER_COL * REGION + REGION / 2;
   for (let y = -1000; y <= 1000; y += 137) {
     const r = riverNear(SEED, colCenter, y);
-    assert.ok(Math.abs(r.center - colCenter) <= 60, 'meander stays in its column');
+    assert.ok(Math.abs(r.center - colCenter) <= 90, 'meander stays in its column');
     assert.ok(inRiver(SEED, r.center, y), 'the center line is wet');
     assert.equal(inRiver(SEED, r.center + RIVER_W, y), false, 'the far bank is dry');
   }
@@ -314,6 +317,55 @@ test('map panel fills the screen; HUD sits in the top-right corner', () => {
   assert.ok(hud.y + hud.h < SCREEN_H / 2);
 });
 
+test('the HUD map is big enough to read: a 5x5 of chunky cells', () => {
+  assert.equal(HUD_SPAN, 5, 'five regions across, so you see your neighbours');
+  assert.ok(HUD_CELL >= 14, 'each one big enough to hold a glyph');
+  const hud = hudRect();
+  assert.equal(hud.w, HUD_CELL * HUD_SPAN + 6, 'cells plus the frame');
+  assert.equal(hud.w, hud.h, 'square');
+  assert.ok(hud.w >= 75, `roomy on the 624px screen (got ${hud.w})`);
+  assert.ok(hud.w < SCREEN_W / 4, 'but not so big it eats the woods');
+});
+
+test('every landmark reads as its own pictogram', () => {
+  const size = HUD_CELL;
+  const kinds = {
+    river: { water: true, biome: 'river' },
+    bridge: { bridge: true },
+    cabin: { cabin: true },
+    mansion: { mansion: true },
+    cave: { cave: true },
+  };
+  const shapes = {};
+  for (const [name, entry] of Object.entries(kinds)) {
+    const glyphs = memoryGlyphs(entry, size);
+    assert.ok(glyphs.length > 0, `${name} draws something`);
+    for (const g of glyphs) {
+      assert.ok(g.w > 0 && g.h > 0, `${name} rects have area`);
+      assert.ok(typeof g.c === 'string' && g.c.startsWith('#'), `${name} uses the palette`);
+    }
+    shapes[name] = JSON.stringify(glyphs);
+  }
+  const seen = new Set(Object.values(shapes));
+  assert.equal(seen.size, Object.keys(kinds).length, 'no two landmarks look alike');
+  // The two houses are the easiest pair to confuse — the mansion is taller,
+  // wider, and lights two windows.
+  const cabin = memoryGlyphs(kinds.cabin, size);
+  const mansion = memoryGlyphs(kinds.mansion, size);
+  const top = (gs) => Math.min(...gs.map((g) => g.y));
+  const wide = (gs) => Math.max(...gs.map((g) => g.w));
+  assert.ok(top(mansion) < top(cabin), 'the mansion stands taller');
+  assert.ok(wide(mansion) > wide(cabin), 'and wider');
+  assert.ok(
+    mansion.filter((g) => g.c === PALETTE.gold).length > cabin.filter((g) => g.c === PALETTE.gold).length,
+    'with more lit windows',
+  );
+});
+
+test('an empty region draws no glyphs at all', () => {
+  assert.deepEqual(memoryGlyphs({ biome: 'grass' }, HUD_CELL), [], 'plain woods stay plain');
+});
+
 // --- Structure art ----------------------------------------------------------
 
 test('cabin and cave sprites are rectangular with known colors', () => {
@@ -339,10 +391,10 @@ test('the window and the glint keep their own hours', () => {
 });
 
 test('rocks are deterministic angular mounds', () => {
-  assert.deepEqual(rockPixels(14, 123), rockPixels(14, 123));
-  assert.notDeepEqual(rockPixels(14, 123), rockPixels(14, 124), 'seeds differ');
-  const px = rockPixels(16, 5);
+  assert.deepEqual(rockPixels(21, 123), rockPixels(21, 123));
+  assert.notDeepEqual(rockPixels(21, 123), rockPixels(21, 124), 'seeds differ');
+  const px = rockPixels(24, 5);
   assert.ok(px.length > 20, 'a real pile');
   for (const p of px) assert.ok(p.y <= 0, 'rocks rise from their anchor');
-  assert.equal(TUFT_PIXELS.length, 3, 'a tuft is three pixels');
+  assert.ok(TUFT_PIXELS.length >= 3, 'a tuft is a small fan of blades');
 });

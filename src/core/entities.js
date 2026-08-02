@@ -7,20 +7,20 @@
 
 export const PERSON = {
   kind: 'person',
-  speed: 46, // px/s
-  feetW: 6,
-  feetH: 3,
+  speed: 69, // px/s (v0.15: the world grew 1.5x with the art)
+  feetW: 9,
+  feetH: 5,
 };
 
 export const DOG = {
   kind: 'dog',
-  speed: 58, // dogs are quicker
-  feetW: 9,
-  feetH: 3,
+  speed: 87, // dogs are quicker
+  feetW: 14,
+  feetH: 5,
 };
 
-export const FOLLOW_START = 40; // follower starts moving beyond this distance
-export const FOLLOW_STOP = 24; // ...and settles once back within this
+export const FOLLOW_START = 60; // follower starts moving beyond this distance
+export const FOLLOW_STOP = 36; // ...and settles once back within this
 
 export function makeCharacter(spec, x, y) {
   return {
