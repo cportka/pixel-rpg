@@ -1,4 +1,4 @@
-// Audio, v0.15: the game no longer synthesizes its own sounds — it names
+// Audio, v0.16: the game no longer synthesizes its own sounds — it names
 // effects in the 8bit-sfx library and plays what the vendored engine renders.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

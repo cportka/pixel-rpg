@@ -1,7 +1,7 @@
 // The game's sound set — now a mapping into the 8bit-sfx library rather
 // than a hand-rolled synth table.
 //
-// v0.15: the 28 sounds this game grew are published in 8bit-sfx as its
+// v0.16: the 28 sounds this game grew are published in 8bit-sfx as its
 // `rpg` category (rendered by an exact port of the engine this file used to
 // carry), so the definitions live there and the game just names them. That
 // also opens the library's 202 procedural RPG effects to us — which is where
@@ -62,7 +62,7 @@ export const SOUNDS = {
   door: { name: 'rpg_door', gain: 0.9 },
   clock: { name: 'rpg_clock', gain: 0.5 },
 
-  // v0.15 — drawn from the library's procedural RPG set.
+  // v0.16 — drawn from the library's procedural RPG set.
   'battle-start': { name: 'rpg_017', gain: 1 }, // the world goes turn-based
   'battle-end': { name: 'rpg_035', gain: 0.9 }, // ...and lets go again
   turn: { name: 'rpg_006', gain: 0.5 }, // your move

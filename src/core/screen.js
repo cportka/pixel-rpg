@@ -1,6 +1,6 @@
 // The logical viewport, in world pixels.
 //
-// v0.15 halved the size of a game pixel: 624x360... no — 624x540 logical at
+// v0.16 halved the size of a game pixel: 624x360... no — 624x540 logical at
 // the common 2x integer upscale is 1248x1080 device pixels, the same physical
 // picture v0.14 drew as 416x360 at 3x. Every game pixel is now 2x2 device
 // pixels instead of 3x3, so lines are a third as thick and there is half

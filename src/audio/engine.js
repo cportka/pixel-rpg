@@ -1,6 +1,6 @@
 // Playback for the 8bit-sfx library.
 //
-// v0.15 retired this file's hand-rolled Web Audio synth: sounds are now
+// v0.16 retired this file's hand-rolled Web Audio synth: sounds are now
 // synthesized by the vendored 8bit-sfx 1.0.0 engine (vendor/8bit-sfx), the
 // same code that produced the library's published `rpg` category — so the
 // game and the library can never drift, and the library's 202 procedural RPG

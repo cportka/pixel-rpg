@@ -2,7 +2,7 @@
 // the mansion (outside and in). Pure data + geometry — the renderer
 // rasterizes.
 //
-// v0.15 redrew all of it ~1.5x larger for the finer screen, against the new
+// v0.16 redrew all of it ~1.5x larger for the finer screen, against the new
 // palette: dirt and plum for anything built, gold for anything lit, and the
 // deep nature greens for anything the forest has started taking back.
 

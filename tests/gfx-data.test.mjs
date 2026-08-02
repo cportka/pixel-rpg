@@ -40,7 +40,7 @@ test('all sprite maps are rectangular and use palette keys', () => {
 });
 
 test('sprites match the reference proportions', () => {
-  // v0.15 redrew both ~1.5x for the finer screen; the proportions are what
+  // v0.16 redrew both ~1.5x for the finer screen; the proportions are what
   // matter, so they are asserted as ratios rather than fixed pixel counts.
   const person = spriteSize(PERSON_FRAMES.stand);
   assert.ok(person.h >= 24, `person is tall (${person.h}px)`);
@@ -341,7 +341,7 @@ test('treePixels is deterministic, block-aligned, and stays near its anchor', ()
   const palette = new Set(Object.values(PALETTE));
   for (const p of a.pixels) {
     assert.ok(palette.has(p.c), `off-palette color ${p.c}`);
-    assert.equal(BLOCK_W, 1, 'v0.15 retired the 2x1 double-wide dither');
+    assert.equal(BLOCK_W, 1, 'v0.16 retired the 2x1 double-wide dither');
     assert.ok(p.x >= a.minX && p.x + BLOCK_W - 1 <= a.maxX);
     assert.ok(p.y >= a.minY && p.y <= a.maxY);
   }
@@ -372,7 +372,7 @@ test('inflatables are deterministic per moment and animate over time', () => {
   const palette = new Set([...Object.values(PALETTE)]);
   for (const p of a.pixels) {
     assert.ok(palette.has(p.c), `off-palette color ${p.c}`);
-    assert.equal(BLOCK_W, 1, 'v0.15 retired the 2x1 double-wide dither');
+    assert.equal(BLOCK_W, 1, 'v0.16 retired the 2x1 double-wide dither');
     assert.ok(p.x >= a.minX && p.x + BLOCK_W - 1 <= a.maxX);
     assert.ok(p.y >= a.minY && p.y <= a.maxY);
   }

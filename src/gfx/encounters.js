@@ -1,7 +1,7 @@
 // Encounter art: the burning dumpster, the psychedelic cat, the genie lamp,
 // the half-burnt pipe, and the zombie.
 //
-// v0.15 redrew every one of these ~1.5x larger for the finer screen and
+// v0.16 redrew every one of these ~1.5x larger for the finer screen and
 // re-lit them from the top-right against the new palette — dirt and rust
 // where things are old, gold where things burn, rose where things are alive
 // and shouldn't be. Pure data + geometry; the renderer rasterizes.

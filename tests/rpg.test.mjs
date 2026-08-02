@@ -33,7 +33,7 @@ function flatGame() {
 }
 
 /**
- * Plant a zombie next to the person and let the world notice it. Since v0.15
+ * Plant a zombie next to the person and let the world notice it. Since v0.16
  * a hostile inside BATTLE_RADIUS drops the world into turn-based on its own,
  * so this just idles until the gear changes. Sound events are drained per
  * step into g.heard (mirroring main.js) so the cap can't swallow them.

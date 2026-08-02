@@ -336,7 +336,7 @@ test('the sheet grows a focus line once the leaf has taught you', () => {
 });
 
 test('ground noise is smooth: neighbours differ by a little, not a lot', () => {
-  // Regression (v0.15 art pass): a raw per-block hash tiled the forest floor
+  // Regression (v0.16 art pass): a raw per-block hash tiled the forest floor
   // into visible squares. Smoothed noise must fade instead of stepping.
   let biggestStep = 0;
   for (let y = -60; y < 60; y++) {

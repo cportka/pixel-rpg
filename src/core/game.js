@@ -49,7 +49,7 @@ export const LEVEL_POINTS = 2; // +1s to hand out per level, together or apart
 export const XP_DOG = 4; // finding the friendly lost dog
 export const XP_ZOMBIE = 1; // per zombie put back down
 
-// Magic (v0.15). The half-burnt leaf never hurt anyone — it teaches. Each
+// Magic (v0.16). The half-burnt leaf never hurt anyone — it teaches. Each
 // vision hands over the next spell in the book; casting spends focus, which
 // comes back slowly under the open sky.
 export const SPELLS = [
@@ -75,7 +75,7 @@ export const SPELLS = [
 export const FOCUS_BASE = 3; // focus = 3 + WIS modifier
 export const FOCUS_REGEN = 20; // seconds per point of focus recovered
 
-// Turn-based combat (v0.15). Hostiles close by pull the world out of free
+// Turn-based combat (v0.16). Hostiles close by pull the world out of free
 // movement: you get a step budget and one action per turn, then they answer.
 export const BATTLE_RADIUS = 120; // px at which a hostile engages you
 export const BATTLE_LEAVE = 200; // px you must put between you to disengage
@@ -178,7 +178,7 @@ export class Game {
     this.memory = new Map();
     this.memoryCheck = 0;
 
-    // Magic and battle (v0.15).
+    // Magic and battle (v0.16).
     this.spells = []; // spell ids learned, in the order the leaf taught them
     this.focus = this.maxFocus();
     this.focusTimer = 0;

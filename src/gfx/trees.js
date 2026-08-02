@@ -1,4 +1,4 @@
-// Procedural trees — the signature look, rebuilt for 16-bit in v0.15.
+// Procedural trees — the signature look, rebuilt for 16-bit in v0.16.
 //
 // The reference's dither used 2x1 double-wide blocks (an Atari-era
 // affectation): at the old 3x upscale every fleck was six device pixels

@@ -1,7 +1,7 @@
 // Pixel sprites as string maps — one character per pixel, '.' transparent.
 // Keys into SPRITE_COLORS (see palette.js).
 //
-// v0.15 redrew both characters ~1.5x larger for the finer screen: the person
+// v0.16 redrew both characters ~1.5x larger for the finer screen: the person
 // is 16x27 (was 11x18), the dog 19x14 (was 13x9), so at the new 2x upscale
 // they occupy the same physical space with half again the detail. Silhouettes
 // are authored in 'X' and shaded procedurally by shadeFrames(), which lights

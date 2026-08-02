@@ -7,7 +7,7 @@
 
 export const PERSON = {
   kind: 'person',
-  speed: 69, // px/s (v0.15: the world grew 1.5x with the art)
+  speed: 69, // px/s (v0.16: the world grew 1.5x with the art)
   feetW: 9,
   feetH: 5,
 };

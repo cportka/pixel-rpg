@@ -1,4 +1,4 @@
-// The neo-noir palette — v0.15's 16-bit rebuild.
+// The neo-noir palette — v0.16's 16-bit rebuild.
 //
 // Art direction: minimal neo-noir in purple, pink, golden rose, dirt, and
 // dark nature. Where v0.14 had a dozen flat colors, this is a set of short
