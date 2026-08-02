@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
-## [0.15.0] - 2026-08-02
+## [0.16.0] - 2026-08-02
 
 ### Added
 - **Two gears, and you always know which one you are in.** A hostile
@@ -48,18 +48,56 @@ Every change bumps the version and adds an entry below.
   void:** seven ground cells in ten stay pure violet-black, and the
   floor's noise is smoothed over two octaves so the earth that does show
   drifts in soft patches instead of tiling the screen into squares.
-- **The sound is the library now.** `8bit-sfx` moves from `0.3.0` to
-  **`1.0.0`**, and the game plays it directly: `vendor/8bit-sfx/`
-  carries a byte-identical slice of the library's synthesis engine (the
-  static site cannot import from `node_modules`), and the audio engine
-  renders each cue on demand into a cached `AudioBuffer` rather than
-  shipping hand-rolled oscillator code. All 28 of the game's sounds are
-  the library's ported originals; new cues (battle start/end, turn,
-  learn/cast/fail a spell, ward) come from its procedural `rpg` bank.
-  Tests pin the vendored copy to the installed package byte-for-byte and
-  compare rendered samples, so the game's sounds and the library's
-  cannot become two different things. Closes the upstream port request
-  for the XP, level-up, door, and clock cues, which 1.0.0 ships.
+- **The game plays the library now, not just a matching set of sounds.**
+  0.15.0 moved the dependency to `8bit-sfx` 1.0.0; this release stops
+  hand-rolling the audio entirely. `vendor/8bit-sfx/` carries a
+  byte-identical slice of the library's synthesis engine — dsp, the
+  ported sounds, and the `rpg` generators — because a no-build static
+  site cannot import from `node_modules`, and the engine renders each
+  cue on demand into a cached `AudioBuffer` instead of driving its own
+  oscillators. All 28 original cues are the library's ports of them; the
+  new ones (battle start/end, turn, learn/cast/fail a spell, ward) come
+  from the same category's procedural bank. `tests/sfx-package.test.mjs`
+  now pins the vendored copy to the installed package byte-for-byte and
+  compares rendered samples for every wired sound, on top of the catalog
+  and synthesis checks it already carried — so the game's sounds and the
+  library's cannot become two different things. (That byte-identity
+  check was also silently skipping: `new URL('.', <absolute path>)`
+  throws, which nulled the package directory and disabled the whole
+  file. It runs now.)
+
+## [0.15.0] - 2026-08-02
+
+### Changed
+- **The whole sound set now ships in [`8bit-sfx`](https://www.npmjs.com/package/8bit-sfx)**,
+  which released 1.0.0: `xp`, `levelup`, `door` and `clock` are ported, so the game's 28
+  sounds are all in the package's `rpg` category and the `PENDING_PORT` carve-out is gone —
+  `tests/sfx-package.test.mjs` is back to exact parity in both directions.
+- The dev dependency moved to `^1.0.0`. 1.0.0 synthesizes effects on demand instead of
+  shipping WAVs (the package is a 377 kB download rather than ~130 MB), so the parity test
+  gained a second check: every game sound must actually **synthesize** from the package, not
+  merely appear in its catalog.
+- The in-game audio engine is still unchanged — it keeps live-synthesizing through its own
+  Web Audio path, which is where the ported sounds came from in the first place.
+
+## [0.14.2] - 2026-08-01
+
+### Changed
+- `8bit-sfx` now comes from the **npm registry** (`^0.4.1`, published) instead of a
+  commit-pinned GitHub URL — ordinary semver resolution, a registry-resolved lockfile,
+  and patch/minor library updates arrive with `npm update`. Nothing else moved: the
+  parity test, its `PENDING_PORT` list (`xp`, `levelup`, `door`, `clock`), and the
+  in-game audio engine are unchanged.
+
+## [0.14.1] - 2026-08-01
+
+### Changed
+- Adapted to [`8bit-sfx` 0.4.0](https://github.com/cportka/8bit-sfx), which renamed its
+  `pixelrpg` category to `rpg` (now 100 sounds: the 24 ports plus 76 new RPG staples,
+  every effect carrying a catalog description): the parity test identifies the ported
+  game sounds as the labeled entries of `rpg`, and the dev-dependency pin moved to the
+  0.4.0 merge commit. The `PENDING_PORT` list (`xp`, `levelup`, `door`, `clock`) still
+  stands — those four await their port into the package.
 
 ## [0.14.0] - 2026-07-30
 

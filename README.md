@@ -7,7 +7,7 @@ things dancing where the woods grow deep. Somewhere out there
 waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
 eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.15.0
+**Version:** 0.16.0
 
 ## Play
 
@@ -92,7 +92,7 @@ glint — sharp for a minute or two, dithering away over minutes until only
 the barest outline remains. Zelda-overworld style, but sparser. The full
 remembered map is the map pause screen, same glyphs, with a legend.
 Everything makes a soft 8-bit sound, synthesized on demand by
-[`8bit-sfx`](https://github.com/cportka/8bit-sfx) 1.0.0: footsteps pace
+[`8bit-sfx`](https://www.npmjs.com/package/8bit-sfx) 1.0.0: footsteps pace
 with the stride, captions blip like retro dialog, dice rattle, the genie
 gets an arpeggio (audio starts on your first tap or keypress, per browser
 rules).
