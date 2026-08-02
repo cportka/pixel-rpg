@@ -7,7 +7,7 @@
 // interior world-pixels (base-center anchors) and the solid ones carry their
 // own little boxes.
 
-export const TILE = 16;
+export const TILE = 24;
 
 export const MANSION_MAP = [
   '##########################',
@@ -30,21 +30,21 @@ export const INTERIOR_W = MANSION_MAP[0].length * TILE; // 416 — one screen
 export const INTERIOR_H = MANSION_MAP.length * TILE; // 224
 
 // Where you stand when the door shuts itself behind you.
-export const SPAWN = { x: 13 * TILE, y: INTERIOR_H - TILE - 4 };
+export const SPAWN = { x: 13 * TILE, y: INTERIOR_H - TILE - 6 };
 
 // Furnishings: the library (left), the grand hall (center), the parlor
 // (right). solid: true carries a base collision box {w, h}.
 export const FURNISH = [
-  { kind: 'shelf', x: 56, y: 34, solid: true, w: 16, h: 5 },
-  { kind: 'shelf', x: 104, y: 34, solid: true, w: 16, h: 5 },
-  { kind: 'candelabra', x: 72, y: 130, solid: true, w: 5, h: 3 },
-  { kind: 'clock', x: 288, y: 36, solid: true, w: 8, h: 4 },
-  { kind: 'portrait', x: 200, y: 30, solid: false },
-  { kind: 'rug', x: 224, y: 150, solid: false },
-  { kind: 'chandelier', x: 224, y: 96, solid: false },
-  { kind: 'table', x: 360, y: 120, solid: true, w: 18, h: 6 },
-  { kind: 'chair', x: 340, y: 122, solid: true, w: 7, h: 4 },
-  { kind: 'candelabra', x: 380, y: 60, solid: true, w: 5, h: 3 },
+  { kind: 'shelf', x: 84, y: 51, solid: true, w: 24, h: 8 },
+  { kind: 'shelf', x: 156, y: 51, solid: true, w: 24, h: 8 },
+  { kind: 'candelabra', x: 108, y: 195, solid: true, w: 8, h: 5 },
+  { kind: 'clock', x: 432, y: 54, solid: true, w: 12, h: 6 },
+  { kind: 'portrait', x: 300, y: 45, solid: false },
+  { kind: 'rug', x: 336, y: 225, solid: false },
+  { kind: 'chandelier', x: 336, y: 144, solid: false },
+  { kind: 'table', x: 540, y: 180, solid: true, w: 27, h: 9 },
+  { kind: 'chair', x: 510, y: 183, solid: true, w: 11, h: 6 },
+  { kind: 'candelabra', x: 570, y: 90, solid: true, w: 8, h: 5 },
 ];
 
 /** The map character at an interior world-pixel ('#' outside the grid). */
@@ -85,17 +85,17 @@ export function onDoor(x, y) {
  * so it cannot fire from the portrait's spot two tiles west.
  */
 export function nearStairs(x, y) {
-  return x > 14 * TILE - 4 && x < 16 * TILE + 4 && y < 4 * TILE;
+  return x > 14 * TILE - 6 && x < 16 * TILE + 6 && y < 4 * TILE;
 }
 
 /** Near the portrait? (It notices before you do.) */
 export function nearPortrait(x, y) {
   const p = FURNISH.find((f) => f.kind === 'portrait');
-  return Math.abs(x - p.x) < 22 && y < p.y + 34;
+  return Math.abs(x - p.x) < 33 && y < p.y + 51;
 }
 
 /** Near the grandfather clock? (You can hear it from here.) */
 export function nearClock(x, y) {
   const c = FURNISH.find((f) => f.kind === 'clock');
-  return Math.abs(x - c.x) < 40 && Math.abs(y - c.y) < 48;
+  return Math.abs(x - c.x) < 60 && Math.abs(y - c.y) < 72;
 }

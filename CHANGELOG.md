@@ -4,6 +4,68 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.16.0] - 2026-08-02
+
+### Added
+- **Two gears, and you always know which one you are in.** A hostile
+  within 120px pulls the world out of free movement into **turn-based**:
+  a rose-gold double frame with corner brackets locks the screen, a
+  banner names the mode and whose move it is, and a bar under it counts
+  down your 60px step budget. Spend the budget (or hit Space/E) and the
+  action menu opens — befriend it (round one only), fists, the bone if
+  you carry one, a spell if you know one, or hold your ground. Then the
+  dead answer. Walking 200px clear lets the woods go again. New sounds
+  for the mode change and each turn.
+- **Magic, taught by the pipe.** Smoking no longer costs a hit point —
+  the leaf is a teacher, not a wound. A vision (WIS check, DC 15) hands
+  over the next spell in the book: **EMBER** (1 focus, 3 damage),
+  **WARD** (1 focus, the next bite finds nothing), **MOONLIGHT** (2
+  focus, +3 HP). Focus is `3 + WIS` and seeps back a point every 20
+  seconds under the open sky. The sheet grows a FOCUS line and a SPELLS
+  icon; the HUD shows the pool while a fight is on.
+- **A minimap you can actually read.** The HUD map goes from a cramped
+  grid to a 5×5 of 15px cells (81×81), and every landmark gets its own
+  pictogram instead of a colored dot: a river bends down its channel, a
+  bridge lays two planks across it, a cabin is a gabled hut with one lit
+  window, a mansion stands taller and wider with two lit windows, a
+  chimney, and an open door, and a cave is a black mouth under a rock
+  brow with a violet glint. The map pause screen draws the same glyphs
+  at the same size, with a legend.
+
+### Changed
+- **The art direction, properly this time.** The logical screen is
+  624×540 at a 2× upscale (was 416×360 at 3×), so a game pixel is 2×2
+  device pixels instead of 3×3 — finer detail, thinner lines. Tree
+  dithering drops from 2×1 double-wide blocks to single pixels (a 6×
+  improvement in horizontal detail), and the whole world scales 1.5× so
+  the framing and the feel are unchanged while everything is drawn
+  finer. The palette is rebuilt as structured ramps — night/void, dirt
+  and clay, dark nature greens, plum→violet, rose→magenta, and a warm
+  gold→gold-rose — and the sprites are redrawn 1.5× larger with a
+  four-tone shading pass lit from a fixed top-right moon, including a
+  gold-rose rim on the crown. The 8px UI font is deliberately *not*
+  scaled, which is what un-cramps the menus. **The void is still the
+  void:** seven ground cells in ten stay pure violet-black, and the
+  floor's noise is smoothed over two octaves so the earth that does show
+  drifts in soft patches instead of tiling the screen into squares.
+- **The game plays the library now, not just a matching set of sounds.**
+  0.15.0 moved the dependency to `8bit-sfx` 1.0.0; this release stops
+  hand-rolling the audio entirely. `vendor/8bit-sfx/` carries a
+  byte-identical slice of the library's synthesis engine — dsp, the
+  ported sounds, and the `rpg` generators — because a no-build static
+  site cannot import from `node_modules`, and the engine renders each
+  cue on demand into a cached `AudioBuffer` instead of driving its own
+  oscillators. All 28 original cues are the library's ports of them; the
+  new ones (battle start/end, turn, learn/cast/fail a spell, ward) come
+  from the same category's procedural bank. `tests/sfx-package.test.mjs`
+  now pins the vendored copy to the installed package byte-for-byte and
+  compares rendered samples for every wired sound, on top of the catalog
+  and synthesis checks it already carried — so the game's sounds and the
+  library's cannot become two different things. (That byte-identity
+  check was also silently skipping: `new URL('.', <absolute path>)`
+  throws, which nulled the package directory and disabled the whole
+  file. It runs now.)
+
 ## [0.15.0] - 2026-08-02
 
 ### Changed

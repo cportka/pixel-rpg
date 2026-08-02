@@ -1,7 +1,10 @@
+// Audio, v0.16: the game no longer synthesizes its own sounds — it names
+// effects in the 8bit-sfx library and plays what the vendored engine renders.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SOUNDS, EVENT_NAMES } from '../src/audio/sfx.js';
 import { AudioPlayer } from '../src/audio/engine.js';
+import { render, rpgNames, SR } from '../vendor/8bit-sfx/index.js';
 import { Game } from '../src/core/game.js';
 
 const STEP = 1 / 60;
@@ -20,44 +23,38 @@ function openGame(seed = 1) {
 
 // --- The sound table --------------------------------------------------------
 
-const WAVES = ['square', 'triangle', 'sawtooth', 'sine'];
-
-test('every sound is a well-formed list of soft, short segments', () => {
-  for (const [name, segments] of Object.entries(SOUNDS)) {
-    assert.ok(Array.isArray(segments) && segments.length > 0, `${name} empty`);
-    for (const s of segments) {
-      assert.ok(s.type === 'tone' || s.type === 'noise', `${name}: type '${s.type}'`);
-      if (s.type === 'tone') assert.ok(WAVES.includes(s.wave), `${name}: wave '${s.wave}'`);
-      assert.ok(s.f0 >= 40 && s.f0 <= 4000, `${name}: f0 ${s.f0}`);
-      if (s.f1 !== undefined) assert.ok(s.f1 >= 40 && s.f1 <= 4000, `${name}: f1 ${s.f1}`);
-      assert.ok(s.d > 0 && s.d <= 1, `${name}: duration ${s.d}`);
-      assert.ok(s.v > 0 && s.v <= 0.2, `${name}: volume ${s.v} (keep it soft)`);
-      if (s.t !== undefined) assert.ok(s.t >= 0 && s.t < 1, `${name}: offset ${s.t}`);
-    }
-    const end = Math.max(...segments.map((s) => (s.t ?? 0) + s.d));
-    assert.ok(end <= 1.2, `${name} runs ${end}s — chip sounds stay short`);
+test('every game event names a real 8bit-sfx effect at a sane gain', () => {
+  const known = new Set(rpgNames());
+  for (const [event, sound] of Object.entries(SOUNDS)) {
+    assert.ok(known.has(sound.name), `${event} -> unknown effect ${sound.name}`);
+    assert.ok(sound.gain > 0 && sound.gain <= 1, `${event}: gain ${sound.gain}`);
   }
+  assert.equal(EVENT_NAMES.length, Object.keys(SOUNDS).length);
 });
 
 test('footsteps are the quietest things in the forest', () => {
-  const stepVol = Math.max(...SOUNDS['step-person'].map((s) => s.v));
-  for (const name of ['meet', 'deliver', 'damage', 'menu-open']) {
-    const vol = Math.max(...SOUNDS[name].map((s) => s.v));
-    assert.ok(stepVol < vol, `${name} should be louder than a footstep`);
+  const step = SOUNDS['step-person'].gain;
+  for (const name of ['meet', 'deliver', 'damage', 'menu-open', 'battle-start']) {
+    assert.ok(step < SOUNDS[name].gain, `${name} should be louder than a footstep`);
   }
 });
 
-// --- The engine (fake AudioContext) ----------------------------------------
+test('the vendored engine renders every effect the game asks for', () => {
+  for (const event of EVENT_NAMES) {
+    const samples = render(SOUNDS[event].name);
+    assert.ok(samples.length > 0, `${event}: empty`);
+    assert.ok(samples.length < SR * 3, `${event}: ${(samples.length / SR).toFixed(2)}s is too long`);
+    let peak = 0;
+    for (const v of samples) peak = Math.max(peak, Math.abs(v));
+    assert.ok(peak > 0.01, `${event}: silent`);
+    assert.ok(peak <= 1.001, `${event}: clips at ${peak}`);
+  }
+});
+
+// --- The player (fake AudioContext) ----------------------------------------
 
 function fakeContext() {
-  const made = { oscillators: 0, noises: 0, gains: 0 };
-  const param = () => ({
-    value: 0,
-    setValueAtTime() {},
-    linearRampToValueAtTime() {},
-    exponentialRampToValueAtTime() {},
-  });
-  const node = () => ({ connect() {} });
+  const made = { sources: 0, gains: 0, buffers: 0, started: 0 };
   const ctx = {
     made,
     currentTime: 0,
@@ -67,80 +64,78 @@ function fakeContext() {
     resume() {},
     createGain() {
       made.gains++;
-      return { ...node(), gain: param() };
-    },
-    createOscillator() {
-      made.oscillators++;
-      return { ...node(), type: '', frequency: param(), start() {}, stop() {} };
+      return { connect() {}, gain: { value: 0 } };
     },
     createBufferSource() {
-      made.noises++;
-      return { ...node(), buffer: null, loop: false, start() {}, stop() {} };
+      made.sources++;
+      return {
+        connect() {},
+        buffer: null,
+        start() {
+          made.started++;
+        },
+      };
     },
-    createBiquadFilter() {
-      return { ...node(), type: '', Q: param(), frequency: param() };
-    },
-    createBuffer(channels, len) {
-      return { getChannelData: () => new Float32Array(len) };
+    createBuffer(channels, len, rate) {
+      made.buffers++;
+      const data = new Float32Array(len);
+      return { length: len, sampleRate: rate, getChannelData: () => data };
     },
   };
   return ctx;
 }
 
-test('the engine synthesizes every sound without throwing', () => {
+test('the player renders, caches, and plays every game sound', () => {
   const ctx = fakeContext();
   const player = new AudioPlayer(() => ctx);
   player.resume();
   for (const name of EVENT_NAMES) player.play(name);
-  assert.ok(ctx.made.oscillators > 0, 'tones were scheduled');
-  assert.ok(ctx.made.noises > 0, 'noise was scheduled');
+  assert.equal(ctx.made.started, EVENT_NAMES.length, 'every event played');
+  assert.equal(ctx.made.buffers, EVENT_NAMES.length, 'one buffer per distinct effect');
+  const before = ctx.made.buffers;
+  for (const name of EVENT_NAMES) player.play(name);
+  assert.equal(ctx.made.buffers, before, 'second pass is served from the cache');
 });
 
 test('muted or unresumed players stay silent, and resume() is idempotent', () => {
   const ctx = fakeContext();
   const player = new AudioPlayer(() => ctx);
   player.play('meet'); // before resume — no context yet
-  assert.equal(ctx.made.oscillators, 0);
+  assert.equal(ctx.made.started, 0);
   player.resume();
   player.resume(); // second resume must not rebuild
   assert.equal(ctx.made.gains, 1, 'one master gain');
   player.muted = true;
   player.play('meet');
-  assert.equal(ctx.made.oscillators, 0, 'muted plays nothing');
+  assert.equal(ctx.made.started, 0, 'muted plays nothing');
+  player.muted = false;
   player.play('not-a-sound'); // unknown names are ignored
+  assert.equal(ctx.made.started, 0);
 });
 
-test('drunk intensity plays louder but never past the safety clamp', () => {
+test('drunk intensity plays louder but never past full scale', () => {
   const ctx = fakeContext();
-  const peaks = [];
-  const origCreateGain = ctx.createGain.bind(ctx);
+  const gains = [];
+  const origGain = ctx.createGain.bind(ctx);
   ctx.createGain = () => {
-    const g = origCreateGain();
-    g.gain.setValueAtTime = (v) => peaks.push(v);
+    const g = origGain();
+    Object.defineProperty(g.gain, 'value', { set: (v) => gains.push(v), get: () => 0 });
     return g;
   };
   const player = new AudioPlayer(() => ctx);
   player.resume();
-  player.play('damage');
-  const sober = Math.max(...peaks);
-  peaks.length = 0;
+  gains.length = 0;
+  player.play('caption'); // a quiet one, with headroom to lean into
+  const sober = gains.at(-1);
   player.intensity = 1.7;
-  player.play('damage');
-  const drunk = Math.max(...peaks);
+  player.play('caption');
+  const drunk = gains.at(-1);
   assert.ok(drunk > sober, 'the colors and sounds lean closer');
-  assert.ok(drunk <= 0.25, 'still inside the clamp');
-  peaks.length = 0;
   player.intensity = 100;
-  player.play('damage');
-  assert.ok(Math.max(...peaks) <= 0.25, 'the clamp is absolute');
-});
-
-test('the noise buffer is deterministic and built once', () => {
-  const player = new AudioPlayer(fakeContext);
-  player.resume();
-  const a = player.noiseBuffer();
-  const b = player.noiseBuffer();
-  assert.equal(a, b);
+  player.play('caption');
+  assert.ok(gains.at(-1) <= 1, 'the clamp is absolute');
+  player.play('damage'); // already at full gain sober — cannot exceed it
+  assert.ok(gains.at(-1) <= 1);
 });
 
 // --- The game emits the right events ---------------------------------------
@@ -151,7 +146,6 @@ test('walking emits paced footsteps for both characters', () => {
   runSeconds(g, 2, { right: true });
   const personSteps = g.events.filter((e) => e === 'step-person').length;
   assert.ok(personSteps >= 3, `person stepped (${personSteps})`);
-  // The dog followed once the leash stretched — it walks too.
   const dogSteps = g.events.filter((e) => e === 'step-dog').length;
   assert.ok(dogSteps >= 1, `dog pattered (${dogSteps})`);
 });
@@ -165,7 +159,6 @@ test('standing still is silent', () => {
 });
 
 test('every emitted event name has a sound', () => {
-  // Play through everything noisy and check each event maps to the table.
   const g = openGame();
   runSeconds(g, 1, { right: true });
   g.update(STEP, { swap: true });
@@ -174,12 +167,14 @@ test('every emitted event name has a sound', () => {
   g.update(STEP, {});
   g.update(STEP, { action: true }); // throw
   runSeconds(g, 15); // full fetch: pickup + deliver
-  g.world.chunkAt(0, 0).dumpsters.push({ x: g.person.x + 10, y: g.person.y });
+  g.world.chunkAt(0, 0).dumpsters.push({ x: g.person.x + 15, y: g.person.y });
   runSeconds(g, 1); // menu opens
   g.update(STEP, { down: true }); // menu-move
   g.rng = () => 0; // failed search: roll + damage
   g.resolveChoice('search');
   runSeconds(g, 0.5);
+  g.learnSpell(); // spell-learn
+  g.castSpell('ember'); // spell-cast
   assert.ok(g.events.length > 0);
   for (const e of g.events) {
     assert.ok(e in SOUNDS, `event '${e}' has no sound`);
@@ -190,7 +185,7 @@ test('captions blip and whimpers whimper', () => {
   const g = new Game(1); // story mode: opening caption already shown
   assert.ok(g.events.includes('caption'), 'the opening line blipped');
   g.world.collides = () => false;
-  g.dog.x = g.person.x + 200;
+  g.dog.x = g.person.x + 300;
   g.dog.y = g.person.y;
   runSeconds(g, 2 * 3.2 + 0.3);
   g.events.length = 0;
@@ -202,7 +197,7 @@ test('captions blip and whimpers whimper', () => {
 test('the big beats emit their signature sounds', () => {
   const g = new Game(1);
   g.world.collides = () => false;
-  g.person.x = g.dog.x - 20;
+  g.person.x = g.dog.x - 30;
   g.person.y = g.dog.y;
   g.events.length = 0;
   g.update(STEP, IDLE);

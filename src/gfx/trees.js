@@ -1,70 +1,65 @@
-// Procedural dithered trees — the signature look of the reference footage:
-// noisy horizontal-banded trunks, canopies of scattered flecks, and a spray
-// of fallen litter at the base. Re-themed neo-noir: smoke and plum purples
-// with magenta ember flecks in a violet-black void.
+// Procedural trees — the signature look, rebuilt for 16-bit in v0.16.
 //
-// The reference's dither is built from 2x1 pixel blocks (classic Atari-style
-// double-wide pixels), so every emitted pixel here sits on an even x and is
-// rendered BLOCK_W wide. This module is pure geometry: treePixels() returns
-// colored block offsets relative to the tree's anchor (trunk base center).
-// The renderer rasterizes and caches them; tests pin determinism and bounds
-// without a canvas.
+// The reference's dither used 2x1 double-wide blocks (an Atari-era
+// affectation): at the old 3x upscale every fleck was six device pixels
+// across, which is most of why the game still read as 8-bit. Blocks are now
+// single pixels, so a canopy has six times the horizontal resolution to
+// describe an edge with.
+//
+// Shading is deliberate rather than random: a 4x4 ordered (Bayer) matrix
+// blends each band into the next, so tiers read as lit planes falling into
+// shadow instead of noise. The moon is high and to the right — canopy tops
+// and right flanks climb the ramp, undersides and left flanks fall.
+//
+// This module is pure geometry: treePixels() returns colored pixel offsets
+// relative to the tree's anchor (trunk base center). The renderer rasterizes
+// and caches them; tests pin determinism and bounds without a canvas.
 
 import { mulberry32, pick } from '../core/rng.js';
 import { PALETTE } from './palette.js';
 
-export const BLOCK_W = 2; // each emitted pixel is a 2x1 block
+export const BLOCK_W = 1; // one pixel per pixel, at last
 export const BLOCK_H = 1;
 
-const TRUNK_COLORS = [
-  PALETTE.plumDeep,
-  PALETTE.purple,
-  PALETTE.violet,
-  PALETTE.smokeDeep,
-  PALETTE.fog,
-];
+// Bark: dirt and wine, dark. Index 0 is the shadow side, up toward the light.
+const BARK_RAMP = [PALETTE.soil, PALETTE.plumDeep, PALETTE.dirt, PALETTE.clay, PALETTE.loam];
 
-const CANOPY_MIX = {
-  // 'ember' — the dominant look: burning violet with magenta flecks.
-  ember: [
-    PALETTE.violet, PALETTE.violet, PALETTE.purple, PALETTE.purple, PALETTE.plumDeep,
-    PALETTE.magenta, PALETTE.smoke, PALETTE.smokeDeep,
-  ],
-  // 'leafy' — smoke-crowned trees with electric flecks.
-  leafy: [
-    PALETTE.smoke, PALETTE.smoke, PALETTE.smokeDeep, PALETTE.smokeDeep,
-    PALETTE.violet, PALETTE.magenta, PALETTE.purple,
-  ],
+// Canopy ramps, darkest first. 'ember' is the violet forest; 'leafy' is the
+// rarer smoke-and-moss crown.
+const CANOPY_RAMPS = {
+  ember: [PALETTE.plumDeep, PALETTE.plum, PALETTE.purple, PALETTE.violet, PALETTE.orchid],
+  leafy: [PALETTE.pine, PALETTE.moss, PALETTE.smokeDeep, PALETTE.fern, PALETTE.smoke],
 };
 
-const LITTER_COLORS = [
-  PALETTE.purple,
-  PALETTE.violet,
-  PALETTE.smoke,
-  PALETTE.smokeDeep,
-  PALETTE.fog,
+// Rare warm flecks caught in the crown.
+const EMBERS = [PALETTE.magenta, PALETTE.pink, PALETTE.gold];
+
+const LITTER_RAMP = [PALETTE.soil, PALETTE.dirt, PALETTE.clay, PALETTE.plumDeep];
+
+// 4x4 Bayer matrix, normalized to [0,1) — the classic ordered dither.
+const BAYER = [
+  [0, 8, 2, 10],
+  [12, 4, 14, 6],
+  [3, 11, 1, 9],
+  [15, 7, 13, 5],
 ];
-
-// 16-bit depth: the moon sits top-right, so the canopy's left flank and each
-// tier's underside step one tone darker, and the top tier's right rim takes
-// the occasional moonlit glint. One lookup, no new geometry.
-const DARKER = new Map([
-  [PALETTE.violet, PALETTE.purple],
-  [PALETTE.purple, PALETTE.plum],
-  [PALETTE.plum, PALETTE.plumDeep],
-  [PALETTE.smoke, PALETTE.smokeDeep],
-  [PALETTE.smokeDeep, PALETTE.fog],
-  [PALETTE.plumDeep, PALETTE.fog],
-]);
-
-const snap = (x) => 2 * Math.round(x / 2);
+const bayer = (x, y) => BAYER[((y % 4) + 4) % 4][((x % 4) + 4) % 4] / 16;
 
 /**
- * Generate a tree's (or bush's) blocks.
+ * Pick a ramp color for a continuous lightness in [0,1], dithering between
+ * the two nearest steps by screen position. This is what makes a gradient
+ * read as one surface rather than as bands.
+ */
+function shade(ramp, level, x, y) {
+  const t = Math.max(0, Math.min(0.999, level)) * (ramp.length - 1);
+  const i = Math.floor(t);
+  return ramp[i + (t - i > bayer(x, y) ? 1 : 0)] ?? ramp[ramp.length - 1];
+}
+
+/**
+ * Generate a tree's (or bush's) pixels.
  * Returns { pixels: [{x, y, c}], minX, minY, maxX, maxY } with offsets
  * relative to the anchor at (0, 0) = trunk base center; negative y is up.
- * Each pixel is a BLOCK_W x BLOCK_H block whose left edge is x (always even);
- * maxX already accounts for block width.
  */
 export function treePixels(tree) {
   const rng = mulberry32(tree.detailSeed);
@@ -72,103 +67,100 @@ export function treePixels(tree) {
 
   const pixels = [];
   const H = tree.size;
-  const trunkH = Math.round(H * 0.62);
-  const baseHalf = Math.max(2, Math.round(H * 0.09));
+  const trunkH = Math.round(H * 0.6);
+  const baseHalf = Math.max(2, Math.round(H * 0.055));
 
-  // Trunk: horizontal dithered bands, narrowing and wobbling as they rise.
+  // Trunk: a round-lit column that narrows as it rises, wandering slightly.
+  // Lightness runs across the trunk (dark left, lit right) and drops toward
+  // the canopy's shadow.
   let wobble = 0;
   for (let y = 0; y >= -trunkH; y--) {
     const t = -y / trunkH; // 0 at base, 1 at top
-    const half = Math.max(1, Math.round(baseHalf * (1 - t * 0.55)));
-    if (rng() < 0.3) wobble += rng() < 0.5 ? -2 : 2;
-    wobble = Math.max(-4, Math.min(4, wobble));
-    const rowColor = pick(rng, TRUNK_COLORS);
-    for (let x = -snap(half); x <= half; x += BLOCK_W) {
-      if (rng() < 0.82) {
-        let c = rng() < 0.25 ? pick(rng, TRUNK_COLORS) : rowColor;
-        // The trunk's left flank falls into shadow; the right edge stays lit.
-        if (x < 0 && DARKER.has(c) && rng() < 0.6) c = DARKER.get(c);
-        pixels.push({ x: x + wobble, y, c });
-      }
+    const half = Math.max(1, Math.round(baseHalf * (1 - t * 0.45)));
+    if (rng() < 0.22) wobble += rng() < 0.5 ? -1 : 1;
+    wobble = Math.max(-3, Math.min(3, wobble));
+    for (let x = -half; x <= half; x++) {
+      const across = (x + half) / (2 * half || 1); // 0 left, 1 right
+      let level = 0.15 + across * 0.75 - t * 0.2;
+      if (rng() < 0.12) level -= 0.25; // bark scarring
+      pixels.push({ x: x + wobble, y, c: shade(BARK_RAMP, level, x + wobble, y) });
     }
   }
 
   // Canopy: stacked jagged tiers — an angular pine silhouette. Each tier
-  // widens linearly to a hard shelf, then the next tier resets narrow; the
-  // rim rows jitter so the edge stays torn rather than geometric-clean.
-  const mix = CANOPY_MIX[tree.variant] ?? CANOPY_MIX.ember;
-  const canopyH = Math.max(8, Math.round(H * 0.55));
+  // widens to a hard shelf; the rows just under a shelf fall into that
+  // tier's own shadow, and the crown of each tier catches the moon.
+  const ramp = CANOPY_RAMPS[tree.variant] ?? CANOPY_RAMPS.ember;
+  const canopyH = Math.max(12, Math.round(H * 0.56));
   const topY = -trunkH - canopyH;
-  const canopyHalf = Math.max(4, Math.round(H * 0.4));
+  const canopyHalf = Math.max(6, Math.round(H * 0.38));
   const tiers = 2 + Math.floor(rng() * 2);
   const tierRows = Math.ceil(canopyH / tiers);
   for (let row = 0; row < canopyH; row++) {
     const tier = Math.floor(row / tierRows);
-    const frac = ((row % tierRows) + 1) / tierRows;
-    const shelfRow = (row % tierRows) === tierRows - 1; // a tier's underside
-    let half = Math.round((canopyHalf * (tier + 1)) / tiers) * frac;
-    if (rng() < 0.4) half += rng() < 0.5 ? -2 : 2; // jagged edge
-    half = Math.max(2, Math.round(half));
+    const inTier = (row % tierRows) / tierRows; // 0 at a tier's crown, 1 at its shelf
+    let half = Math.round(((canopyHalf * (tier + 1)) / tiers) * (inTier + 0.12));
+    if (rng() < 0.3) half += rng() < 0.5 ? -1 : 1; // torn edge
+    half = Math.max(2, half);
     const y = topY + row;
-    for (let x = -snap(half); x <= half; x += BLOCK_W) {
-      // Rim blocks always land so the angles read crisply; the fill dithers.
-      if (Math.abs(x) >= half - 1 || rng() < 0.72) {
-        let c = pick(rng, mix);
-        // Shade the moon-away side and each shelf's underside one tone down.
-        if ((x < -half * 0.3 || shelfRow) && DARKER.has(c) && rng() < 0.8) {
-          c = DARKER.get(c);
-        }
-        // The top tier's upper-right rim catches the moon now and then.
-        if (tier === 0 && row < tierRows && x >= half - 3 && rng() < 0.18) {
-          c = PALETTE.moonlight;
-        }
-        pixels.push({ x, y, c });
+    for (let x = -half; x <= half; x++) {
+      if (Math.abs(x) < half - 1 && rng() < 0.14) continue; // gaps in the mass
+      const across = (x + half) / (2 * half || 1);
+      // Lit on top of a tier and to the right; dark under the shelf.
+      let level = 0.62 * across + 0.42 * (1 - inTier) - 0.12;
+      if (Math.abs(x) >= half - 1) level += 0.14; // the rim reads crisply
+      let c = shade(ramp, level, x, y);
+      if (tier === 0 && inTier < 0.4 && across > 0.72 && rng() < 0.05) {
+        c = PALETTE.moonlight; // the crown catches the moon outright
+      } else if (rng() < 0.012) {
+        c = pick(rng, EMBERS);
       }
+      pixels.push({ x, y, c });
     }
   }
 
   // A few bare branch arms poking out of the canopy.
   const arms = 2 + Math.floor(rng() * 3);
   for (let i = 0; i < arms; i++) {
-    const dir = rng() < 0.5 ? -BLOCK_W : BLOCK_W;
+    const dir = rng() < 0.5 ? -1 : 1;
     let ax = 0;
-    let ay = -trunkH + Math.round(rng() * 4);
-    const len = 2 + Math.floor(rng() * (H * 0.1));
+    let ay = -trunkH + Math.round(rng() * 5);
+    const len = 3 + Math.floor(rng() * (H * 0.12));
     for (let s = 0; s < len; s++) {
       ax += dir;
-      if (rng() < 0.5) ay -= 1;
-      pixels.push({ x: ax, y: ay, c: pick(rng, TRUNK_COLORS) });
+      if (rng() < 0.45) ay -= 1;
+      pixels.push({ x: ax, y: ay, c: shade(BARK_RAMP, dir > 0 ? 0.7 : 0.25, ax, ay) });
     }
   }
 
-  // Fallen litter around the base.
-  const litter = 6 + Math.floor(rng() * 10);
+  // Fallen litter and root flare around the base, on the dirt.
+  const litter = 10 + Math.floor(rng() * 14);
   for (let i = 0; i < litter; i++) {
-    const x = snap((rng() - 0.5) * H * 0.7);
+    const x = Math.round((rng() - 0.5) * H * 0.8);
     const y = -Math.round(rng() * 3) + Math.floor(rng() * 3);
-    pixels.push({ x, y, c: pick(rng, LITTER_COLORS) });
+    pixels.push({ x, y, c: pick(rng, LITTER_RAMP) });
   }
 
   return withBounds(pixels);
 }
 
 function bushPixels(bush, rng) {
-  // Angular bushes: a jagged diamond instead of a soft blob.
+  // Angular bushes: a jagged diamond, lit from the top-right like everything.
   const pixels = [];
-  const mix = CANOPY_MIX[bush.variant] ?? CANOPY_MIX.ember;
-  const rx = Math.max(3, Math.round(bush.size * 0.7));
-  const ry = Math.max(2, Math.round(bush.size * 0.4));
+  const ramp = CANOPY_RAMPS[bush.variant] ?? CANOPY_RAMPS.ember;
+  const rx = Math.max(4, Math.round(bush.size * 0.9));
+  const ry = Math.max(3, Math.round(bush.size * 0.5));
   for (let row = 0; row <= ry * 2; row++) {
     let half = Math.round(rx * (1 - Math.abs(row - ry) / (ry + 0.0001)));
-    if (rng() < 0.35) half += rng() < 0.5 ? -2 : 2;
+    if (rng() < 0.3) half += rng() < 0.5 ? -1 : 1;
     if (half < 1) continue;
     const y = -ry * 2 + row;
-    for (let x = -snap(half); x <= half; x += BLOCK_W) {
-      if (Math.abs(x) >= half - 1 || rng() < 0.7) {
-        let c = pick(rng, mix);
-        if (x < -half * 0.3 && DARKER.has(c) && rng() < 0.8) c = DARKER.get(c);
-        pixels.push({ x, y, c });
-      }
+    const down = row / (ry * 2); // 0 at the crown, 1 at the ground
+    for (let x = -half; x <= half; x++) {
+      if (Math.abs(x) < half - 1 && rng() < 0.12) continue;
+      const across = (x + half) / (2 * half || 1);
+      const level = 0.55 * across + 0.4 * (1 - down) - 0.05;
+      pixels.push({ x, y, c: shade(ramp, level, x, y) });
     }
   }
   return withBounds(pixels);

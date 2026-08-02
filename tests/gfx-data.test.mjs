@@ -40,23 +40,26 @@ test('all sprite maps are rectangular and use palette keys', () => {
 });
 
 test('sprites match the reference proportions', () => {
+  // v0.16 redrew both ~1.5x for the finer screen; the proportions are what
+  // matter, so they are asserted as ratios rather than fixed pixel counts.
   const person = spriteSize(PERSON_FRAMES.stand);
-  assert.ok(person.h >= 16, `person is tall (${person.h}px)`);
-  assert.ok(person.w <= 12, 'person is thin');
+  assert.ok(person.h >= 24, `person is tall (${person.h}px)`);
+  assert.ok(person.h / person.w >= 1.5, 'person is thin (tall relative to wide)');
   const dog = spriteSize(DOG_FRAMES.stand);
-  assert.ok(dog.w >= 12, 'dog is long');
+  assert.ok(dog.w / dog.h >= 1.2, 'dog is long');
   assert.ok(dog.h < person.h, 'dog is shorter than the person');
+  assert.ok(dog.w > person.w, 'and longer than the person is wide');
 });
 
-test('the stride B-frames are exact mirrors of the A-frames', () => {
+test('the stride B-frame silhouettes are exact mirrors of the A-frames', () => {
+  // The shading is lit from a fixed top-right moon, so it does NOT mirror —
+  // only the shape does. (A mirrored light would swing the moon around the
+  // sky every half-stride.)
+  const shape = (map) => map.map((row) => row.replace(/[^.]/g, 'X'));
   for (const pose of ['contact', 'down', 'pass']) {
-    const a = PERSON_FRAMES[`${pose}A`];
-    const b = PERSON_FRAMES[`${pose}B`];
-    assert.deepEqual(
-      b,
-      a.map((row) => [...row].reverse().join('')),
-      `${pose}B mirrors ${pose}A`,
-    );
+    const a = shape(PERSON_FRAMES[`${pose}A`]);
+    const b = shape(PERSON_FRAMES[`${pose}B`]);
+    assert.deepEqual(b, a.map((row) => [...row].reverse().join('')), `${pose}B mirrors ${pose}A`);
   }
 });
 
@@ -330,7 +333,7 @@ test('wrapText splits long captions and never exceeds the width', () => {
 });
 
 test('treePixels is deterministic, block-aligned, and stays near its anchor', () => {
-  const tree = { kind: 'tree', x: 0, y: 0, size: 40, variant: 'ember', detailSeed: 12345 };
+  const tree = { kind: 'tree', x: 0, y: 0, size: 60, variant: 'ember', detailSeed: 12345 };
   const a = treePixels(tree);
   const b = treePixels(tree);
   assert.deepEqual(a, b);
@@ -338,7 +341,7 @@ test('treePixels is deterministic, block-aligned, and stays near its anchor', ()
   const palette = new Set(Object.values(PALETTE));
   for (const p of a.pixels) {
     assert.ok(palette.has(p.c), `off-palette color ${p.c}`);
-    assert.equal(Math.abs(p.x % 2), 0, 'blocks sit on even x (2x1 dither)');
+    assert.equal(BLOCK_W, 1, 'v0.16 retired the 2x1 double-wide dither');
     assert.ok(p.x >= a.minX && p.x + BLOCK_W - 1 <= a.maxX);
     assert.ok(p.y >= a.minY && p.y <= a.maxY);
   }
@@ -347,17 +350,17 @@ test('treePixels is deterministic, block-aligned, and stays near its anchor', ()
 });
 
 test('different detail seeds grow different trees', () => {
-  const base = { kind: 'tree', x: 0, y: 0, size: 40, variant: 'ember' };
+  const base = { kind: 'tree', x: 0, y: 0, size: 60, variant: 'ember' };
   const a = treePixels({ ...base, detailSeed: 1 });
   const b = treePixels({ ...base, detailSeed: 2 });
   assert.notDeepEqual(a.pixels, b.pixels);
 });
 
 test('bushes are squat block clouds', () => {
-  const bush = { kind: 'bush', x: 0, y: 0, size: 10, variant: 'leafy', detailSeed: 77 };
+  const bush = { kind: 'bush', x: 0, y: 0, size: 15, variant: 'leafy', detailSeed: 77 };
   const geo = treePixels(bush);
   assert.ok(geo.pixels.length > 10);
-  assert.ok(geo.minY >= -20 && geo.maxY <= 2, 'bush hugs the ground');
+  assert.ok(geo.minY >= -30 && geo.maxY <= 2, 'bush hugs the ground');
 });
 
 test('inflatables are deterministic per moment and animate over time', () => {
@@ -369,7 +372,7 @@ test('inflatables are deterministic per moment and animate over time', () => {
   const palette = new Set([...Object.values(PALETTE)]);
   for (const p of a.pixels) {
     assert.ok(palette.has(p.c), `off-palette color ${p.c}`);
-    assert.equal(Math.abs(p.x % 2), 0, 'blocks sit on even x');
+    assert.equal(BLOCK_W, 1, 'v0.16 retired the 2x1 double-wide dither');
     assert.ok(p.x >= a.minX && p.x + BLOCK_W - 1 <= a.maxX);
     assert.ok(p.y >= a.minY && p.y <= a.maxY);
   }

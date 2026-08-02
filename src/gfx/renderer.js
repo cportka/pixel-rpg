@@ -28,7 +28,7 @@ import {
   TILE, MANSION_MAP, INTERIOR_W, INTERIOR_H, FURNISH,
 } from '../core/mansion.js';
 import { ICONS } from './icons.js';
-import { MAX_HP, XP_PER_LEVEL } from '../core/game.js';
+import { MAX_HP, XP_PER_LEVEL, BATTLE_MOVE, SPELLS } from '../core/game.js';
 import { isWater, onBridge, regionAt, biomeAt, REGION } from '../core/terrain.js';
 import { hashCoords } from '../core/rng.js';
 import { SCREEN_W, SCREEN_H } from '../core/screen.js';
@@ -40,6 +40,29 @@ export const RENDER_FPS = 15; // presentation cadence, matched to the reference
 
 export const CAPTION_MAX_W = SCREEN_W - 40; // wrap captions to the screen, minus margins
 const BUTTON_PAD = 3; // px of padding inside a touch button
+
+/**
+ * Smooth value noise on a lattice `step` cells across: bilinear between the
+ * four corner hashes, smoothstepped. Straight per-block hashing tiles the
+ * forest floor into visible squares; this fades one patch into the next, so
+ * the dirt shows through the dark in drifts instead of on a grid.
+ */
+export function groundNoise(seed, cx, cy, step) {
+  const gx = Math.floor(cx / step);
+  const gy = Math.floor(cy / step);
+  const fx = (cx - gx * step) / step;
+  const fy = (cy - gy * step) / step;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sy = fy * fy * (3 - 2 * fy);
+  const h = (x, y) => hashCoords(seed, x, y) / 0x100000000;
+  const a = h(gx, gy);
+  const b = h(gx + 1, gy);
+  const top = a + (b - a) * sx;
+  const c = h(gx, gy + 1);
+  const d = h(gx + 1, gy + 1);
+  const bot = c + (d - c) * sx;
+  return top + (bot - top) * sy;
+}
 
 /**
  * Geometry for the open choice menu (pure — the renderer draws it, main.js
@@ -54,6 +77,12 @@ export function sheetLines(game) {
     `HP ${game.hp} OF ${MAX_HP}`,
     `WEIGHT ${game.carriedWeight()} OF ${game.carryCapacity()} LBS`,
   ];
+  if (game.spells.length) {
+    lines.push(`FOCUS ${game.focus} OF ${game.maxFocus()}`);
+    lines.push(
+      `SPELLS: ${SPELLS.filter((s) => game.spells.includes(s.id)).map((s) => s.name).join(', ')}`,
+    );
+  }
   if (game.drunk > 0) lines.push(`DRUNK ${mmss(game.drunk)} (WIS +2)`);
   return lines;
 }
@@ -138,8 +167,63 @@ export function choicePanel(game) {
  * since swap and fetch are locked while alone.
  */
 /** The HUD minimap's screen rect (top-right). main.js hit-tests taps on it. */
+export const HUD_CELL = 15; // px per remembered region on the HUD map
+export const HUD_SPAN = 5; // a 5x5 of regions around you
+// The map screen zooms its cells to fit whatever you remember, between these.
+export const MAP_CELL_MIN = 15;
+export const MAP_CELL_MAX = 60;
 export function hudRect() {
-  return { x: SCREEN_W - 42, y: 3, w: 39, h: 39 };
+  const size = HUD_CELL * HUD_SPAN + 6;
+  return { x: SCREEN_W - size - 4, y: 4, w: size, h: size };
+}
+
+/**
+ * The little pictograms that make a remembered region legible at a glance —
+ * a river runs, a bridge crosses it, a cabin is a gabled hut, a mansion is a
+ * taller one with a gold-lit window, a cave is a black mouth under a rock.
+ * Pure geometry so tests can read them without a canvas; the same list draws
+ * on the HUD and on the full map, and the map screen prints a legend beside
+ * them.
+ */
+export function memoryGlyphs(entry, size) {
+  const out = [];
+  const mid = Math.floor(size / 2);
+  if (entry.water && entry.biome !== 'lake') {
+    // A river: a wandering channel rather than a straight bar.
+    for (let y = 0; y < size; y++) {
+      const bend = Math.round(Math.sin(y * 0.9) * (size > 9 ? 2 : 1));
+      out.push({ x: mid - 1 + bend, y, w: 2, h: 1, c: PALETTE.blue });
+    }
+  }
+  if (entry.bridge) {
+    out.push({ x: mid - 3, y: mid - 1, w: 7, h: 1, c: PALETTE.smoke });
+    out.push({ x: mid - 3, y: mid + 1, w: 7, h: 1, c: PALETTE.smoke });
+  }
+  if (entry.cabin) {
+    // A gabled hut: roof ridge over a small box.
+    out.push({ x: mid - 2, y: mid - 3, w: 5, h: 1, c: PALETTE.smoke });
+    out.push({ x: mid - 3, y: mid - 2, w: 7, h: 1, c: PALETTE.smoke });
+    out.push({ x: mid - 2, y: mid - 1, w: 5, h: 4, c: PALETTE.clay });
+    out.push({ x: mid, y: mid, w: 1, h: 1, c: PALETTE.gold }); // its lit window
+  }
+  if (entry.mansion) {
+    // Taller, wider, two lit windows and a chimney.
+    out.push({ x: mid - 1, y: mid - 5, w: 1, h: 2, c: PALETTE.smokeDeep });
+    out.push({ x: mid - 3, y: mid - 3, w: 7, h: 1, c: PALETTE.smoke });
+    out.push({ x: mid - 4, y: mid - 2, w: 9, h: 1, c: PALETTE.smoke });
+    out.push({ x: mid - 3, y: mid - 1, w: 7, h: 5, c: PALETTE.dirt });
+    out.push({ x: mid - 2, y: mid, w: 1, h: 1, c: PALETTE.gold });
+    out.push({ x: mid + 2, y: mid, w: 1, h: 1, c: PALETTE.gold });
+    out.push({ x: mid, y: mid + 2, w: 1, h: 2, c: PALETTE.goldRose }); // the open door
+  }
+  if (entry.cave) {
+    // A black mouth under a rock brow.
+    out.push({ x: mid - 3, y: mid - 2, w: 7, h: 1, c: PALETTE.smoke });
+    out.push({ x: mid - 4, y: mid - 1, w: 9, h: 1, c: PALETTE.smokeDeep });
+    out.push({ x: mid - 3, y: mid, w: 7, h: 4, c: PALETTE.void });
+    out.push({ x: mid, y: mid + 1, w: 1, h: 1, c: PALETTE.violet }); // the glint
+  }
+  return out;
 }
 
 export function uiButtons(game) {
@@ -292,10 +376,10 @@ export class Renderer {
   drawLeash(game, viewX, viewY) {
     const p = game.person;
     const d = game.dog;
-    const x1 = p.x + (d.x >= p.x ? 3 : -3);
-    const y1 = p.y - 8;
-    const x2 = d.x - d.facing * 5;
-    const y2 = d.y - 5;
+    const x1 = p.x + (d.x >= p.x ? 5 : -5);
+    const y1 = p.y - 13;
+    const x2 = d.x - d.facing * 8;
+    const y2 = d.y - 8;
     const dist = Math.hypot(x2 - x1, y2 - y1);
     if (dist < 4) return;
     const sag = Math.min(6, dist * 0.12);
@@ -326,7 +410,7 @@ export class Renderer {
   drawCaption(text, anchorScreenX, anchorScreenY, color = PALETTE.moonlight) {
     const lines = wrapText(text, CAPTION_MAX_W);
     const lineH = GLYPH_H + LINE_GAP;
-    let top = Math.round(anchorScreenY) - 22 - lines.length * lineH;
+    let top = Math.round(anchorScreenY) - 34 - lines.length * lineH;
     top = Math.max(4, Math.min(top, SCREEN_H - lines.length * lineH - 4));
     lines.forEach((line, i) => {
       const w = measureText(line);
@@ -387,17 +471,30 @@ export class Renderer {
           ctx.fillStyle = PALETTE.smokeDeep;
           ctx.fillRect(sx, sy + 1, B, 1);
         } else {
-          // The forest floor: a dark speck in ~1 of 4 cells, the odd
-          // brighter plum fleck — deterministic per world cell.
+          // The forest floor: mostly void — the dark is the point, and the
+          // owner likes it — with dirt surfacing only in drifts, the way
+          // bare earth shows through leaf litter at night. Three octaves:
+          // two smoothed (so patches fade into each other instead of tiling
+          // the screen into squares) plus a per-cell grain. Seven cells in
+          // ten stay pure void, and most of what's left is only a shade off
+          // it: the world reads as a violet-black emptiness that happens to
+          // have ground in it, not as ground with some dark on top.
           const cellX = Math.floor(wx / B);
           const cellY = Math.floor(wy / B);
-          const h = hashCoords(seed ^ 0x5011f100, cellX, cellY);
-          if ((h & 7) < 2) {
-            const bright = ((h >> 7) & 63) === 0;
-            ctx.fillStyle = bright
-              ? PALETTE.plum
-              : ((h >> 6) & 1) === 0 ? PALETTE.fog : PALETTE.umbra;
-            ctx.fillRect(sx + ((h >> 3) & 3), sy + ((h >> 5) & 3), bright ? 1 : 2, 1);
+          const coarse = groundNoise(seed ^ 0x50113100, cellX, cellY, 9);
+          const mid = groundNoise(seed ^ 0x5011a300, cellX, cellY, 3);
+          const fine = hashCoords(seed ^ 0x5011f100, cellX, cellY) / 0x100000000;
+          const v = coarse * 0.5 + mid * 0.28 + fine * 0.22;
+          if (v >= 0.58) {
+            ctx.fillStyle = v < 0.66 ? PALETTE.night : v < 0.72 ? PALETTE.soil : PALETTE.dirt;
+            ctx.fillRect(sx, sy, B, B);
+          }
+          const h = hashCoords(seed ^ 0x6a1120dd, cellX, cellY);
+          if ((h & 15) === 0) {
+            // Grit: a trodden clay speck, or a fleck of dark growth.
+            const grassy = biomeAt(seed, Math.floor(wx / REGION), Math.floor(wy / REGION)) === 'grass';
+            ctx.fillStyle = (h >> 9) & 1 ? (grassy ? PALETTE.moss : PALETTE.clay) : PALETTE.umbra;
+            ctx.fillRect(sx + ((h >> 4) & 3), sy + ((h >> 6) & 3), 1, 1);
           }
         }
       }
@@ -450,7 +547,7 @@ export class Renderer {
       drawables.push({
         y: d.y,
         draw: () => {
-          const bx = Math.round(d.x - viewX) - 8;
+          const bx = Math.round(d.x - viewX) - Math.floor(DUMPSTER_SPRITE[0].length / 2);
           const by = Math.round(d.y - viewY) - DUMPSTER_SPRITE.length;
           DUMPSTER_SPRITE.forEach((row, ry) => {
             for (let rx = 0; rx < row.length; rx++) {
@@ -476,7 +573,7 @@ export class Renderer {
       drawables.push({
         y: c.y,
         draw: () => {
-          const bx = Math.round(c.x - viewX) - 5;
+          const bx = Math.round(c.x - viewX) - Math.floor(CAT_SPRITE[0].length / 2);
           const by = Math.round(c.y - viewY) - CAT_SPRITE.length;
           CAT_SPRITE.forEach((row, ry) => {
             ctx.fillStyle = catRowColor(ry, this.frame);
@@ -504,7 +601,7 @@ export class Renderer {
         draw: () => {
           const lx = Math.round(l.x - viewX);
           const ly = Math.round(l.y - viewY);
-          drawSpriteWithColors(LAMP_SPRITE, LAMP_COLORS, lx - 5, ly - LAMP_SPRITE.length);
+          drawSpriteWithColors(LAMP_SPRITE, LAMP_COLORS, lx - Math.floor(LAMP_SPRITE[0].length / 2), ly - LAMP_SPRITE.length);
           for (const p of lampGlintPixels(game.time)) {
             ctx.fillStyle = p.c;
             ctx.fillRect(lx + p.x, ly + p.y, 1, 1);
@@ -519,7 +616,7 @@ export class Renderer {
         draw: () => {
           const px = Math.round(pi.x - viewX);
           const py = Math.round(pi.y - viewY);
-          drawSpriteWithColors(PIPE_SPRITE, PIPE_COLORS, px - 5, py - PIPE_SPRITE.length);
+          drawSpriteWithColors(PIPE_SPRITE, PIPE_COLORS, px - Math.floor(PIPE_SPRITE[0].length / 2), py - PIPE_SPRITE.length);
           if (!spent) {
             for (const p of pipeSmokePixels(game.time)) {
               ctx.fillStyle = p.c;
@@ -534,9 +631,9 @@ export class Renderer {
       drawables.push({
         y: z.y,
         draw: () => {
-          const zx = Math.round(z.x - viewX) - 4 + zombieSway(game.time, z.phase);
+          const zx = Math.round(z.x - viewX) - Math.floor(ZOMBIE_SPRITE[0].length / 2) + zombieSway(game.time, z.phase);
           const zy = Math.round(z.y - viewY) - ZOMBIE_SPRITE.length;
-          this.drawShadow(z.x - viewX, Math.round(z.y - viewY), 8);
+          this.drawShadow(z.x - viewX, Math.round(z.y - viewY), 12);
           drawSpriteWithColors(ZOMBIE_SPRITE, ZOMBIE_COLORS, zx, zy);
         },
       });
@@ -625,7 +722,7 @@ export class Renderer {
       drawables.push({
         y: ch.y,
         draw: () => {
-          this.drawShadow(ch.x - viewX, Math.round(ch.y - viewY), ch.kind === 'person' ? 8 : 10);
+          this.drawShadow(ch.x - viewX, Math.round(ch.y - viewY), ch.kind === 'person' ? 12 : 15);
           this.drawSpriteMap(map, Math.round(ch.x - viewX - w / 2), Math.round(ch.y - viewY - h), ch.facing < 0);
         },
       });
@@ -766,7 +863,7 @@ export class Renderer {
       drawables.push({
         y: chr.y,
         draw: () => {
-          this.drawShadow(chr.x - viewX, Math.round(chr.y - viewY), chr.kind === 'person' ? 8 : 10);
+          this.drawShadow(chr.x - viewX, Math.round(chr.y - viewY), chr.kind === 'person' ? 12 : 15);
           this.drawSpriteMap(map, Math.round(chr.x - viewX - w / 2), Math.round(chr.y - viewY - h), chr.facing < 0);
         },
       });
@@ -872,20 +969,86 @@ export class Renderer {
     }
   }
 
+  /**
+   * The world's gear, made unmissable. FREE mode is unadorned — the woods,
+   * and you in them. TURN-BASED locks a rose-gold frame around the screen
+   * with corner brackets, names itself in a banner, and prints whose move it
+   * is plus how many steps you have left. You should never have to wonder
+   * which one you are in.
+   */
+  drawModeFrame(game) {
+    const ctx = this.ctx;
+    if (game.mode !== 'turn') return;
+    const yours = game.turn === 'you';
+    const edge = yours ? PALETTE.goldRose : PALETTE.magenta;
+    const deep = yours ? PALETTE.amber : PALETTE.plum;
+    // A double frame: warm outer line, dark inner line, so it reads against
+    // both the dark forest and a lit interior.
+    ctx.fillStyle = deep;
+    ctx.fillRect(0, 0, SCREEN_W, 3);
+    ctx.fillRect(0, SCREEN_H - 3, SCREEN_W, 3);
+    ctx.fillRect(0, 0, 3, SCREEN_H);
+    ctx.fillRect(SCREEN_W - 3, 0, 3, SCREEN_H);
+    ctx.fillStyle = edge;
+    ctx.fillRect(0, 0, SCREEN_W, 1);
+    ctx.fillRect(0, SCREEN_H - 1, SCREEN_W, 1);
+    ctx.fillRect(0, 0, 1, SCREEN_H);
+    ctx.fillRect(SCREEN_W - 1, 0, 1, SCREEN_H);
+    // Corner brackets — the tell that a fight has the screen.
+    const B = 18;
+    for (const [cx, cy, sx, sy] of [
+      [0, 0, 1, 1], [SCREEN_W - 1, 0, -1, 1], [0, SCREEN_H - 1, 1, -1], [SCREEN_W - 1, SCREEN_H - 1, -1, -1],
+    ]) {
+      for (let i = 0; i < B; i++) {
+        ctx.fillRect(cx + sx * i, cy + sy * 1, 1, 2);
+        ctx.fillRect(cx + sx * 1, cy + sy * i, 2, 1);
+      }
+    }
+    // The banner.
+    const label = yours ? `TURN-BASED - YOUR MOVE` : 'TURN-BASED - THEIR MOVE';
+    const w = measureText(label) + 16;
+    const bx = Math.round((SCREEN_W - w) / 2);
+    ctx.fillStyle = PALETTE.void;
+    ctx.fillRect(bx, 4, w, 15);
+    ctx.fillStyle = edge;
+    ctx.fillRect(bx, 4, w, 1);
+    ctx.fillRect(bx, 18, w, 1);
+    ctx.fillRect(bx, 4, 1, 15);
+    ctx.fillRect(bx + w - 1, 4, 1, 15);
+    this.drawText(label, SCREEN_W / 2, 8, edge);
+    // Steps left, as a little bar under the banner.
+    if (yours) {
+      const frac = Math.max(0, Math.min(1, game.moveLeft / BATTLE_MOVE));
+      const barW = w - 8;
+      ctx.fillStyle = PALETTE.amber;
+      ctx.fillRect(bx + 4, 21, barW, 3);
+      ctx.fillStyle = PALETTE.goldRose;
+      ctx.fillRect(bx + 4, 21, Math.round(barW * frac), 3);
+    }
+  }
+
   /** HUD text, minimap, the open menu, and touch buttons — every scene. */
   drawUi(game) {
     const ctx = this.ctx;
+    this.drawModeFrame(game);
     // HP and level, top-left, dim smoke — HP flushes magenta when hurting.
     // Hidden under full-frame pause screens (which carry the numbers
     // themselves; a 1px sliver of HUD peeking over the panel reads as a bug).
     if (!game.menuPaused()) {
+      const top = game.mode === 'turn' ? 28 : 4;
       const hpText = `HP ${game.hp}`;
-      this.drawShadowedText(hpText, 4 + measureText(hpText) / 2, 3, game.hp <= 3 ? PALETTE.magenta : PALETTE.smoke);
+      this.drawShadowedText(hpText, 6 + measureText(hpText) / 2, top, game.hp <= 3 ? PALETTE.magenta : PALETTE.smoke);
       const lvlText = `LVL ${game.level}  XP ${game.xp}/${XP_PER_LEVEL}`;
-      this.drawShadowedText(lvlText, 4 + measureText(lvlText) / 2, 13, PALETTE.smoke);
+      this.drawShadowedText(lvlText, 6 + measureText(lvlText) / 2, top + 10, PALETTE.smoke);
+      let line = top + 20;
+      if (game.spells.length) {
+        const fText = `FOCUS ${game.focus}/${game.maxFocus()}`;
+        this.drawShadowedText(fText, 6 + measureText(fText) / 2, line, PALETTE.gold);
+        line += 10;
+      }
       if (game.drunk > 0) {
         const dText = `DRUNK ${mmss(game.drunk)}`;
-        this.drawShadowedText(dText, 4 + measureText(dText) / 2, 23, PALETTE.magenta);
+        this.drawShadowedText(dText, 6 + measureText(dText) / 2, line, PALETTE.magenta);
       }
     }
 
@@ -976,11 +1139,11 @@ export class Renderer {
   drawMemoryCell(px, py, size, entry, level) {
     const ctx = this.ctx;
     const TINT = {
-      grass: PALETTE.leaf,
-      oak: PALETTE.purple,
+      grass: PALETTE.moss,
+      oak: PALETTE.plum,
       redwood: PALETTE.plumDeep,
-      lake: PALETTE.blue,
-      mountain: PALETTE.smoke,
+      lake: PALETTE.waterEdge,
+      mountain: PALETTE.smokeDeep,
     };
     if (level === 'outline') {
       ctx.fillStyle = PALETTE.smokeDeep;
@@ -998,29 +1161,9 @@ export class Renderer {
       }
     }
     if (level !== 'fresh') return;
-    const mid = Math.floor(size / 2);
-    if (entry.water && entry.biome !== 'lake') {
-      ctx.fillStyle = PALETTE.blue;
-      ctx.fillRect(px + mid - 1, py, 2, size); // the river runs through it
-    }
-    if (entry.bridge) {
-      ctx.fillStyle = PALETTE.smoke;
-      ctx.fillRect(px + mid - 2, py + mid, 4, 1);
-    }
-    if (entry.cabin) {
-      ctx.fillStyle = PALETTE.magenta;
-      ctx.fillRect(px + mid - 1, py + mid - 1, 2, 2);
-    }
-    if (entry.mansion) {
-      ctx.fillStyle = PALETTE.brass; // the one warm dot on the map
-      ctx.fillRect(px + mid - 1, py + mid - 1, 2, 2);
-      ctx.fillRect(px + mid, py + mid - 2, 1, 1);
-    }
-    if (entry.cave) {
-      ctx.fillStyle = PALETTE.void;
-      ctx.fillRect(px + mid - 1, py + mid - 1, 2, 2);
-      ctx.fillStyle = PALETTE.moonlight;
-      ctx.fillRect(px + mid - 1, py + mid - 2, 2, 1);
+    for (const g of memoryGlyphs(entry, size)) {
+      ctx.fillStyle = g.c;
+      ctx.fillRect(px + g.x, py + g.y, g.w, g.h);
     }
   }
 
@@ -1064,34 +1207,63 @@ export class Renderer {
   drawHud(game) {
     const ctx = this.ctx;
     const r = hudRect();
-    ctx.fillStyle = PALETTE.fog;
+    ctx.fillStyle = PALETTE.void;
     ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.fillStyle = PALETTE.smokeDeep;
+    ctx.fillStyle = PALETTE.purple;
     ctx.fillRect(r.x, r.y, r.w, 1);
     ctx.fillRect(r.x, r.y + r.h - 1, r.w, 1);
     ctx.fillRect(r.x, r.y, 1, r.h);
     ctx.fillRect(r.x + r.w - 1, r.y, 1, r.h);
-    const cell = 7;
+    ctx.fillStyle = PALETTE.smokeDeep;
+    ctx.fillRect(r.x + 2, r.y + 2, r.w - 4, 1);
+    ctx.fillRect(r.x + 2, r.y + r.h - 3, r.w - 4, 1);
+    ctx.fillRect(r.x + 2, r.y + 2, 1, r.h - 4);
+    ctx.fillRect(r.x + r.w - 3, r.y + 2, 1, r.h - 4);
+    const cell = HUD_CELL;
+    const reach = Math.floor(HUD_SPAN / 2);
     const { rx: crx, ry: cry } = regionAt(game.activeChar.x, game.activeChar.y);
-    for (let dy = -2; dy <= 2; dy++) {
-      for (let dx = -2; dx <= 2; dx++) {
+    for (let dy = -reach; dy <= reach; dy++) {
+      for (let dx = -reach; dx <= reach; dx++) {
         const entry = game.memory.get(`${crx + dx},${cry + dy}`);
         if (!entry) continue;
-        this.drawMemoryCell(r.x + 2 + (dx + 2) * cell, r.y + 2 + (dy + 2) * cell, cell, entry, game.memoryLevel(entry));
+        this.drawMemoryCell(
+          r.x + 3 + (dx + reach) * cell,
+          r.y + 3 + (dy + reach) * cell,
+          cell,
+          entry,
+          game.memoryLevel(entry),
+        );
       }
     }
-    ctx.fillStyle = PALETTE.moonlight;
-    ctx.fillRect(r.x + 2 + 2 * cell + 2, r.y + 2 + 2 * cell + 2, 2, 2); // you
+    // You: the same moonlit ring the map screen draws.
+    this.drawYouRing(
+      r.x + 3 + reach * cell + Math.floor(cell / 2),
+      r.y + 3 + reach * cell + Math.floor(cell / 2),
+    );
   }
 
-  /** The full map screen: every remembered region, centered on the person. */
-  drawMemoryMap(game, panel) {
+  /** A moonlit ring: you, on either map. */
+  drawYouRing(x, y, rad = 3) {
     const ctx = this.ctx;
-    const cell = 6;
-    const top = panel.y + 16;
-    const bottom = panel.rows.length ? panel.rows[0].y - 4 : panel.y + panel.h - 4;
-    const cols = Math.floor((panel.w - 8) / cell);
-    const rowsN = Math.floor((bottom - top) / cell);
+    ctx.fillStyle = PALETTE.moonlight;
+    ctx.fillRect(x - 1, y - rad, 3, 1);
+    ctx.fillRect(x - 1, y + rad, 3, 1);
+    ctx.fillRect(x - rad, y - 1, 1, 3);
+    ctx.fillRect(x + rad, y - 1, 1, 3);
+    ctx.fillRect(x, y, 1, 1);
+  }
+
+  /**
+   * The full map screen. It is exactly as big as your memory: the remembered
+   * extent is fitted to the panel and the cells zoom up to fill it, so a
+   * short walk is a handful of large, legible tiles rather than a speck in an
+   * empty room, and a long one zooms back out as the world outgrows the page.
+   */
+  drawMemoryMap(game, panel) {
+    const top = panel.y + 22;
+    const bottom = panel.rows.length ? panel.rows[0].y - 26 : panel.y + panel.h - 26;
+    const availW = panel.w - 8;
+    const availH = bottom - top;
     // Indoors the person's coordinates are interior-space; the map centers
     // on the mansion's spot in the world instead.
     const anchor =
@@ -1099,20 +1271,62 @@ export class Renderer {
         ? { x: game.mansionReturn.px, y: game.mansionReturn.py }
         : game.person;
     const { rx: prx, ry: pry } = regionAt(anchor.x, anchor.y);
-    const rx0 = prx - Math.floor(cols / 2);
-    const ry0 = pry - Math.floor(rowsN / 2);
+    let minX = prx;
+    let maxX = prx;
+    let minY = pry;
+    let maxY = pry;
+    for (const e of game.memory.values()) {
+      if (e.rx < minX) minX = e.rx;
+      if (e.rx > maxX) maxX = e.rx;
+      if (e.ry < minY) minY = e.ry;
+      if (e.ry > maxY) maxY = e.ry;
+    }
+    const fit = Math.floor(Math.min(availW / (maxX - minX + 1), availH / (maxY - minY + 1)));
+    const cell = Math.max(MAP_CELL_MIN, Math.min(MAP_CELL_MAX, fit));
+    const cols = Math.floor(availW / cell);
+    const rowsN = Math.floor(availH / cell);
+    // Centered on the middle of what you remember, so the map doesn't drift
+    // off the page when you walk to one edge of it.
+    const rx0 = Math.round((minX + maxX) / 2) - Math.floor(cols / 2);
+    const ry0 = Math.round((minY + maxY) / 2) - Math.floor(rowsN / 2);
+    const gx = panel.x + 4 + Math.floor((availW - cols * cell) / 2);
+    const gy = top + Math.floor((availH - rowsN * cell) / 2);
     for (const entry of game.memory.values()) {
       if (entry.rx < rx0 || entry.rx >= rx0 + cols || entry.ry < ry0 || entry.ry >= ry0 + rowsN) continue;
       this.drawMemoryCell(
-        panel.x + 4 + (entry.rx - rx0) * cell,
-        top + (entry.ry - ry0) * cell,
+        gx + (entry.rx - rx0) * cell,
+        gy + (entry.ry - ry0) * cell,
         cell,
         entry,
         game.memoryLevel(entry),
       );
     }
-    ctx.fillStyle = PALETTE.moonlight;
-    ctx.fillRect(panel.x + 4 + (prx - rx0) * cell + 2, top + (pry - ry0) * cell + 2, 2, 2);
+    this.drawYouRing(
+      gx + (prx - rx0) * cell + Math.floor(cell / 2),
+      gy + (pry - ry0) * cell + Math.floor(cell / 2),
+      Math.max(3, Math.floor(cell / 5)),
+    );
+
+    // A legend, so the pictograms mean something the first time you look.
+    // Drawn at a fixed size whatever the map is zoomed to.
+    const LC = 15;
+    const legend = [
+      { key: { water: true, biome: 'oak' }, label: 'RIVER' },
+      { key: { bridge: true, biome: 'oak' }, label: 'BRIDGE' },
+      { key: { cabin: true, biome: 'oak' }, label: 'CABIN' },
+      { key: { mansion: true, biome: 'oak' }, label: 'MANSION' },
+      { key: { cave: true, biome: 'mountain' }, label: 'CAVE' },
+    ];
+    const ly = bottom + 10;
+    let lx = panel.x + 12;
+    for (const item of legend) {
+      for (const g of memoryGlyphs(item.key, LC)) {
+        this.ctx.fillStyle = g.c;
+        this.ctx.fillRect(lx + g.x - Math.floor(LC / 2), ly + g.y - Math.floor(LC / 2), g.w, g.h);
+      }
+      this.drawText(item.label, lx + 10 + measureText(item.label) / 2, ly - 4, PALETTE.smoke);
+      lx += 30 + measureText(item.label);
+    }
   }
 
   updateCamera(game, dt = 1 / 60) {

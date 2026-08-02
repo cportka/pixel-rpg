@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   Game, MAX_HP, COLLAPSE_HP, ABILITIES,
-  DC_SEARCH, DC_SMOTHER, DC_GENIE, DC_VISION, DC_COUGH, DRUNK_TIME,
+  DC_SEARCH, DC_SMOTHER, DC_GENIE, DC_VISION, DC_COUGH, DRUNK_TIME, SPELLS,
 } from '../src/core/game.js';
 import { World, generateChunk, CHUNK } from '../src/core/world.js';
 import {
@@ -350,15 +350,34 @@ test('smoking the pipe, high roll: a vision, a long glitch, ten drunk minutes', 
   assert.ok(g.encounterDone.has(choice.key), 'one bowl only');
 });
 
-test('smoking the pipe, low roll: a coughing fit (-1 HP)', () => {
+test('smoking the pipe, low roll: the smoke goes nowhere — and never hurts you', () => {
   const g = encounterGame('pipe');
   walkUntilChoice(g);
   g.hp = 6;
   g.rng = () => 0; // roll 1 <= DC_COUGH
   g.resolveChoice('smoke');
-  assert.equal(g.hp, 5);
-  assert.match(g.caption.text, /^D20: 1 - YOU COUGH FOR A FULL MINUTE/);
-  assert.equal(g.drunk, 0, 'no inebriation from a coughing fit');
+  assert.equal(g.hp, 6, 'the leaf is a teacher, not a wound');
+  assert.match(g.caption.text, /^D20: 1 - THE SMOKE GOES NOWHERE/);
+  assert.ok(g.captionQueue.includes('NO VISION. THE PIPE IS SPENT'));
+  assert.equal(g.drunk, 0, 'no inebriation without a vision');
+  assert.deepEqual(g.spells, [], 'and no spell either');
+});
+
+test('a vision teaches the first spell in the book', () => {
+  const g = encounterGame('pipe');
+  walkUntilChoice(g);
+  g.hp = 6;
+  g.events.length = 0;
+  g.rng = () => 0.99; // roll 20 >= DC_VISION
+  g.resolveChoice('smoke');
+  assert.equal(g.hp, 6, 'still no damage on the way up');
+  assert.deepEqual(g.spells, [SPELLS[0].id], 'the leaf hands over EMBER');
+  assert.equal(g.focus, g.maxFocus(), 'and tops you up');
+  assert.ok(g.events.includes('spell-learn'));
+  assert.ok(
+    g.captionQueue.some((l) => l.startsWith(`YOU LEARN ${SPELLS[0].name}`)),
+    'the vision names what it taught',
+  );
 });
 
 test('smoking the pipe, middle roll: probably oak leaf', () => {

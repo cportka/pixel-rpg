@@ -1,69 +1,86 @@
-// Encounter art: the burning dumpster and the psychedelic cat.
+// Encounter art: the burning dumpster, the psychedelic cat, the genie lamp,
+// the half-burnt pipe, and the zombie.
 //
-// The dumpster is a static sprite with a deterministic time-driven fire on
-// top; the cat is a static silhouette the renderer paints in cycling
-// psychedelic colors. Pure data + geometry — the renderer rasterizes.
+// v0.16 redrew every one of these ~1.5x larger for the finer screen and
+// re-lit them from the top-right against the new palette — dirt and rust
+// where things are old, gold where things burn, rose where things are alive
+// and shouldn't be. Pure data + geometry; the renderer rasterizes.
 
 import { PALETTE } from './palette.js';
 import { BLOCK_W } from './trees.js';
 
-// Dumpster sprite map (16 wide x 10 tall), anchored at its base center.
-// 's' lid, 'S' body, 'p' grooves, 'F' wheels.
+// The dumpster (24 wide x 15 tall), anchored at its base center.
+// 'l' lit lid, 'L' lid shadow, 'S' body, 'h' the moonlit right flank,
+// 'p' rib grooves, 'r' rust bleeding down from them, 'F' wheels.
 export const DUMPSTER_SPRITE = [
-  '.ssssssssssssss.',
-  'ssssssssssssssss',
-  'SSSSpSSSSSSpSSSS',
-  'SSSSpSSSSSSpSSSS',
-  'SSSSpSSSSSSpSSSS',
-  'SSSSpSSSSSSpSSSS',
-  'SSSSpSSSSSSpSSSS',
-  'SSSSpSSSSSSpSSSS',
-  'SSSSSSSSSSSSSSSS',
-  '..FF........FF..',
+  '..llllllllllllllllllll..',
+  '.llllllllllllllllllllll.',
+  'LLLLLLLLLLLLLLLLLLLLLLLL',
+  'SSSSSpSSSSSSSSpSSSSShhhh',
+  'SSSSSpSSSSSSSSpSSSSShhhh',
+  'SSSSSrSSSSSSSSrSSSSShhhh',
+  'SSSSSpSSSSSSSSpSSSSShhhh',
+  'SSSSSpSSSSSSSSpSSSSShhhh',
+  'SSSSSrSSSSSSSSrSSSSShhhh',
+  'SSSSSpSSSSSSSSpSSSSShhhh',
+  'SSSSSpSSSSSSSSpSSSSShhhh',
+  'SSSSSSSSSSSSSSSSSSSShhhh',
+  'LLLLLLLLLLLLLLLLLLLLLLLL',
+  '..FF..............FF....',
+  '..FF..............FF....',
 ];
 
 export const DUMPSTER_COLORS = {
-  s: PALETTE.smoke,
-  S: PALETTE.smokeDeep,
-  p: PALETTE.plumDeep,
+  l: PALETTE.smoke,
+  L: PALETTE.smokeDeep,
+  S: PALETTE.dusk,
+  h: PALETTE.plum,
+  p: PALETTE.soil,
+  r: PALETTE.amber,
   F: PALETTE.fog,
 };
 
-// The cat (11 wide x 8 tall): ears, head, body, curled-up tail, sitting.
+// The cat (16 wide x 12 tall): ears, head, body, curled tail, sitting.
+// The renderer paints it in cycling psychedelic colors, row by row.
 export const CAT_SPRITE = [
-  '.C.C.......',
-  '.CCC......C',
-  '.CCC......C',
-  '..CCCCCCC.C',
-  '..CCCCCCCCC',
-  '..CCCCCCCC.',
-  '..CC...CC..',
-  '..CC...CC..',
+  '..C..C..........',
+  '..CC.CC.......C.',
+  '..CCCCC......CC.',
+  '..CCCCC......CC.',
+  '...CCCC......CC.',
+  '...CCCCCCCCCCCC.',
+  '...CCCCCCCCCCCCC',
+  '...CCCCCCCCCCCC.',
+  '...CCCCCCCCCCC..',
+  '...CCC....CCC...',
+  '...CCC....CCC...',
+  '...CCC....CCC...',
 ];
 
 // The cat shimmers through these, row by row, frame by frame.
 export const PSYCHE_CYCLE = [PALETTE.magenta, PALETTE.violet, PALETTE.blue, PALETTE.pink];
 
-const FLAME_COLORS = [PALETTE.purple, PALETTE.magenta, PALETTE.pink];
+const FLAME_COLORS = [PALETTE.amber, PALETTE.brass, PALETTE.gold, PALETTE.goldRose];
 
 /**
- * Deterministic fire above a dumpster at a moment in time: four flame
- * tongues of oscillating height (2x1 blocks, violet base → pink tip) plus
- * the occasional ember. Offsets are relative to the dumpster's base center;
- * negative y is up. The dumpster is 10 tall, so flames start at y = -10.
+ * Deterministic fire above a dumpster at a moment in time: five tongues of
+ * oscillating height climbing the gold ramp from ember to pale rose, plus
+ * the occasional floating spark. Offsets are relative to the dumpster's base
+ * center; negative y is up. The dumpster is 15 tall, so flames start at -15.
  */
 export function firePixels(time) {
   const pixels = [];
-  const top = -10;
-  for (let tongue = 0; tongue < 4; tongue++) {
-    const x = -6 + tongue * 4;
-    const h = 2 + Math.round(1.5 + 1.5 * Math.sin(time * 6 + tongue * 1.9));
+  const top = -15;
+  for (let tongue = 0; tongue < 5; tongue++) {
+    const x = -8 + tongue * 4;
+    const h = 3 + Math.round(2.5 + 2.5 * Math.sin(time * 6 + tongue * 1.9));
     for (let i = 0; i < h; i++) {
       const band = Math.min(FLAME_COLORS.length - 1, Math.floor((i / h) * FLAME_COLORS.length));
       pixels.push({ x, y: top - i, c: FLAME_COLORS[band] });
+      if (i < h - 2) pixels.push({ x: x + 1, y: top - i, c: FLAME_COLORS[Math.max(0, band - 1)] });
     }
     if (Math.sin(time * 9 + tongue * 2.4) > 0.55) {
-      pixels.push({ x, y: top - h - 2, c: PALETTE.pink }); // an ember floats off
+      pixels.push({ x, y: top - h - 3, c: PALETTE.goldRose }); // a spark floats off
     }
   }
   return pixels;
@@ -74,63 +91,82 @@ export function catRowColor(row, frame) {
   return PSYCHE_CYCLE[(row + frame) % PSYCHE_CYCLE.length];
 }
 
-// An old lamp (10 wide x 6 tall), anchored at its base center.
-// 's' body, 'v' the knob, 'L' the spout.
+// An old lamp (15 wide x 9 tall), anchored at its base center.
+// 'b' lit brass, 'B' brass in shadow, 'v' the knob, 'L' the spout.
 export const LAMP_SPRITE = [
-  '.....v....',
-  '....sss...',
-  'L..ssssss.',
-  'LLssssssss',
-  '.sssssss..',
-  '..sssss...',
+  '........v......',
+  '.......bbb.....',
+  '.....bbbbbbb...',
+  'L...bbbbbbbbbb.',
+  'LL.BbbbbbbbbbbB',
+  'LLBBbbbbbbbbbBB',
+  '.BBBbbbbbbbbBB.',
+  '..BBBbbbbbbBB..',
+  '...BBBBBBBBB...',
 ];
 
 export const LAMP_COLORS = {
-  s: PALETTE.smoke,
-  v: PALETTE.violet,
-  L: PALETTE.smoke,
+  b: PALETTE.brass,
+  B: PALETTE.amber,
+  v: PALETTE.gold,
+  L: PALETTE.amber,
 };
 
-// A pipe (10 wide x 5 tall): long stem, upturned bowl, a pinch of the
-// half-burnt green leaf on top. 'p' stem, 'P' bowl, 'g' the leaf.
+// A pipe (15 wide x 8 tall): long stem, upturned bowl, a pinch of the
+// half-burnt green leaf on top. 'p' stem, 'P' bowl, 'q' bowl shadow,
+// 'g' the leaf.
 export const PIPE_SPRITE = [
-  '.......gg.',
-  '......PPPP',
-  '......PPPP',
-  'ppppppPPP.',
-  '......PP..',
+  '..........ggg..',
+  '.........PPPPP.',
+  '.........PPPPPP',
+  '........qPPPPPP',
+  'pppppppppqPPPP.',
+  'pppppppppqPPP..',
+  '..........qPP..',
+  '...........q...',
 ];
 
 export const PIPE_COLORS = {
-  p: PALETTE.smokeDeep,
-  P: PALETTE.plumDeep,
+  p: PALETTE.clay,
+  P: PALETTE.plum,
+  q: PALETTE.plumDeep,
   g: PALETTE.leaf,
 };
 
-// A zombie (9 wide x 16 tall): arms out, mid-shamble, one magenta eye.
-// 'Z' rotten flesh (the leaf green), 'e' the eye.
+// A zombie (14 wide x 24 tall): arms out, mid-shamble, one magenta eye.
+// 'Z' rotten flesh, 'z' its shadow side, 'e' the eye, 'g' gore.
 export const ZOMBIE_SPRITE = [
-  '.ZZZ.....',
-  '.ZeZ.....',
-  '.ZZZ.....',
-  '..Z......',
-  '.ZZZZ....',
-  '.ZZZZZZZZ',
-  '.ZZZZZZZZ',
-  '.ZZZZ....',
-  '.ZZZZ....',
-  '..ZZZ....',
-  '..ZZZ....',
-  '..Z.Z....',
-  '..Z.Z....',
-  '..Z.ZZ...',
-  '.ZZ..Z...',
-  '.ZZ..ZZ..',
+  '...ZZZZ.......',
+  '..zZZZZ.......',
+  '..zZeZZ.......',
+  '..zZZZZ.......',
+  '...zZZ........',
+  '....Z.........',
+  '..zZZZZ.......',
+  '..zZZZZZZZZZZZ',
+  '.zZZZZZZZZZZZZ',
+  '.zZZZZZg......',
+  '.zZZZZZ.......',
+  '.zZZZZZ.......',
+  '.zZZZZZ.......',
+  '.zZZZZ........',
+  '..zZZZ........',
+  '..zZZZ........',
+  '..zZ.Z........',
+  '..zZ.Z........',
+  '..zZ.zZ.......',
+  '..zZ..Z.......',
+  '.zZZ..zZ......',
+  '.zZ....Z......',
+  'zZZ....zZ.....',
+  'zZZ....zZZ....',
 ];
 
 export const ZOMBIE_COLORS = {
-  Z: PALETTE.leaf,
+  Z: PALETTE.fern,
+  z: PALETTE.moss,
   e: PALETTE.magenta,
+  g: PALETTE.plum,
 };
 
 /** The zombie's shamble: a 1px sway that lurches rather than glides. */
@@ -139,18 +175,20 @@ export function zombieSway(time, phase) {
 }
 
 /**
- * The lamp's come-hither glint: a brief 4-point flash at the knob every
- * couple of seconds. Empty most of the time. Offsets relative to the
- * lamp's base center; the knob sits ~6px up.
+ * The lamp's come-hither glint: a brief gold flash at the knob every couple
+ * of seconds. Empty most of the time. Offsets relative to the lamp's base
+ * center; the knob sits ~9px up.
  */
 export function lampGlintPixels(time) {
   if (Math.sin(time * 2.1) < 0.92) return [];
   return [
-    { x: 0, y: -7, c: PALETTE.moonlight },
-    { x: -1, y: -7, c: PALETTE.violet },
-    { x: 1, y: -7, c: PALETTE.violet },
-    { x: 0, y: -8, c: PALETTE.violet },
-    { x: 0, y: -6, c: PALETTE.violet },
+    { x: 0, y: -10, c: PALETTE.goldRose },
+    { x: -1, y: -10, c: PALETTE.gold },
+    { x: 1, y: -10, c: PALETTE.gold },
+    { x: 0, y: -12, c: PALETTE.gold },
+    { x: 0, y: -8, c: PALETTE.gold },
+    { x: -2, y: -10, c: PALETTE.brass },
+    { x: 2, y: -10, c: PALETTE.brass },
   ];
 }
 
@@ -160,12 +198,12 @@ export function lampGlintPixels(time) {
  */
 export function pipeSmokePixels(time) {
   const pixels = [];
-  for (let wisp = 0; wisp < 2; wisp++) {
-    const rise = (time * 2.2 + wisp * 1.4) % 4;
+  for (let wisp = 0; wisp < 3; wisp++) {
+    const rise = (time * 2.2 + wisp * 1.4) % 6;
     pixels.push({
-      x: 3 + Math.round(Math.sin(time * 2.5 + wisp * 2.1 + rise)),
-      y: -5 - Math.floor(rise),
-      c: PALETTE.smoke,
+      x: 5 + Math.round(Math.sin(time * 2.5 + wisp * 2.1 + rise) * 2),
+      y: -8 - Math.floor(rise),
+      c: wisp === 0 ? PALETTE.smoke : PALETTE.smokeDeep,
     });
   }
   return pixels;

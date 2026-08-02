@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons, choicePanel, CAPTION_MAX_W,
+  Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons, choicePanel, CAPTION_MAX_W, sheetLines, groundNoise,
 } from '../src/gfx/renderer.js';
 import { WALK_CYCLE_FPS } from '../src/gfx/sprites.js';
 import { wrapText } from '../src/gfx/font.js';
@@ -77,10 +77,13 @@ test('captions anchored at screen corners stay fully on screen', () => {
   }
 });
 
-test('the viewport is 416x360 — its common 3x upscale covers 1240x1080', () => {
-  assert.equal(SCREEN_W, 416);
-  assert.equal(SCREEN_H, 360);
-  assert.ok(SCREEN_W * 3 >= 1240 && SCREEN_H * 3 >= 1080, 'the promised minimum');
+test('the viewport is 624x540 — 2x upscale, half the pixel size of v0.14', () => {
+  assert.equal(SCREEN_W, 624);
+  assert.equal(SCREEN_H, 540);
+  // Same physical picture as v0.14's 416x360 at 3x, with 1.5x the detail.
+  assert.equal(SCREEN_W * 2, 1248);
+  assert.equal(SCREEN_H * 2, 1080);
+  assert.ok(SCREEN_W * 2 >= 1240 && SCREEN_H * 2 >= 1080, 'the promised minimum');
 });
 
 test('the mansion interior renders on a fake canvas without throwing', () => {
@@ -286,4 +289,67 @@ test('a full simulated minute renders from every camera state', () => {
     r.render(g);
   }
   assert.ok(canvas.ctx.ops.fillRect > 0);
+});
+
+// --- The two gears, on screen -----------------------------------------------
+
+test('turn-based locks a frame around the screen; free mode draws none', () => {
+  const g = new Game(42, { story: false });
+  const free = fakeCanvas();
+  makeRenderer(free).render(g);
+  const freeEdges = free.ctx.rects.filter(([, , w, h]) => w === SCREEN_W && h === 3).length;
+
+  g.startBattle([{ x: g.person.x + 30, y: g.person.y }]);
+  const turn = fakeCanvas();
+  makeRenderer(turn).render(g);
+  const turnEdges = turn.ctx.rects.filter(([, , w, h]) => w === SCREEN_W && h === 3).length;
+  assert.equal(freeEdges, 0, 'free mode leaves the edges alone');
+  assert.equal(turnEdges, 2, 'turn-based rules a bar across the top and bottom');
+  assert.ok(
+    turn.ctx.rects.some(([x, , w, h]) => x === SCREEN_W - 3 && w === 3 && h === SCREEN_H),
+    'and down both sides',
+  );
+});
+
+test('the move budget shows as a bar that shrinks as you walk', () => {
+  const g = new Game(42, { story: false });
+  g.startBattle([{ x: g.person.x + 30, y: g.person.y }]);
+  const full = fakeCanvas();
+  makeRenderer(full).drawModeFrame(g);
+  g.moveLeft = 0;
+  const spent = fakeCanvas();
+  makeRenderer(spent).drawModeFrame(g);
+  // The bar is drawn twice: the amber trough, then the rose-gold fill on top.
+  const bar = (c) => c.ctx.rects.filter(([, y, , h]) => y === 21 && h === 3);
+  assert.equal(bar(full).length, 2, 'trough and fill');
+  assert.equal(bar(full).at(-1)[2], bar(full)[0][2], 'a full budget fills the trough');
+  assert.equal(bar(spent).at(-1)[2], 0, 'and an empty one empties it');
+});
+
+test('the sheet grows a focus line once the leaf has taught you', () => {
+  const g = new Game(42, { story: false });
+  assert.equal(sheetLines(g).some((l) => l.startsWith('FOCUS')), false);
+  g.learnSpell();
+  const lines = sheetLines(g);
+  assert.ok(lines.some((l) => l === `FOCUS ${g.focus} OF ${g.maxFocus()}`));
+  assert.ok(lines.some((l) => l.startsWith('SPELLS: ')));
+});
+
+test('ground noise is smooth: neighbours differ by a little, not a lot', () => {
+  // Regression (v0.16 art pass): a raw per-block hash tiled the forest floor
+  // into visible squares. Smoothed noise must fade instead of stepping.
+  let biggestStep = 0;
+  for (let y = -60; y < 60; y++) {
+    for (let x = -60; x < 60; x++) {
+      const here = groundNoise(9, x, y, 9);
+      biggestStep = Math.max(biggestStep, Math.abs(groundNoise(9, x + 1, y, 9) - here));
+      biggestStep = Math.max(biggestStep, Math.abs(groundNoise(9, x, y + 1, 9) - here));
+    }
+  }
+  assert.ok(biggestStep < 0.2, `no hard lattice edges (worst neighbour step ${biggestStep.toFixed(3)})`);
+  assert.equal(groundNoise(9, 3, -7, 9), groundNoise(9, 3, -7, 9), 'and deterministic');
+  // It still uses the whole range, so thresholds mean something.
+  const vals = [];
+  for (let i = 0; i < 4000; i++) vals.push(groundNoise(9, i % 200, (i / 200) | 0, 9));
+  assert.ok(Math.min(...vals) < 0.2 && Math.max(...vals) > 0.8, 'full range');
 });

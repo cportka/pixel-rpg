@@ -7,6 +7,7 @@ import {
   DC_FISTS, DC_BONE, ZOMBIE_HP, ZOMBIE_BITE, DRUNK_TIME, DRUNK_WIS_BONUS,
   BONE_WEIGHT, MEAT_WEIGHT,
   START_STAT, XP_PER_LEVEL, LEVEL_POINTS, XP_DOG, XP_ZOMBIE, MEET_RADIUS,
+  SPELLS, FOCUS_BASE, FOCUS_REGEN, BATTLE_RADIUS, BATTLE_LEAVE, BATTLE_MOVE,
 } from '../src/core/game.js';
 import { generateChunk, CHUNK } from '../src/core/world.js';
 import { ZOMBIE_SPRITE, ZOMBIE_COLORS, zombieSway } from '../src/gfx/encounters.js';
@@ -32,20 +33,28 @@ function flatGame() {
 }
 
 /**
- * Walk up to a planted zombie until its menu opens. Sound events are drained
- * per step into g.heard (mirroring main.js) so the cap can't swallow them.
+ * Plant a zombie next to the person and let the world notice it. Since v0.16
+ * a hostile inside BATTLE_RADIUS drops the world into turn-based on its own,
+ * so this just idles until the gear changes. Sound events are drained per
+ * step into g.heard (mirroring main.js) so the cap can't swallow them.
+ *
+ * `dist` under ENCOUNTER_RADIUS (39) means the zombie is in reach, so the
+ * action menu offers fists. `menu: false` leaves the menu closed, for tests
+ * that want to spend the move budget themselves.
  */
-function zombieGame({ bone = false } = {}) {
+function zombieGame({ bone = false, dist = 30, menu = true } = {}) {
   const g = flatGame();
   g.hasBone = bone;
-  g.world.chunkAt(0, 0).zombies.push({ x: 40, y: 0, phase: 0 });
+  g.world.chunkAt(0, 0).zombies.push({ x: g.person.x + dist, y: g.person.y, phase: 0 });
+  g.zombieKey = `z:${g.person.x + dist},${g.person.y}`;
   g.heard = [];
-  const steps = Math.ceil(6 / STEP);
-  for (let i = 0; i < steps && !g.choice; i++) {
-    g.update(STEP, { right: true });
+  const steps = Math.ceil(3 / STEP);
+  for (let i = 0; i < steps && g.mode !== 'turn'; i++) {
+    g.update(STEP, {});
     g.heard.push(...g.events);
     g.events.length = 0;
   }
+  if (menu) g.openBattleMenu();
   return g;
 }
 
@@ -372,15 +381,31 @@ test('the sheet panel lays its icon grid out on screen, no overlaps', () => {
   assert.ok(gridBottom < Math.min(...panel.rows.map((r) => r.y)), 'icons sit above the rows');
 });
 
-// --- The zombie -------------------------------------------------------------
+// --- The zombie, and the two gears of the world -----------------------------
 
-test('a zombie shambles up: groan, menu, no bone option bare-handed', () => {
+test('a hostile close by drops the world into turn-based on its own', () => {
+  const g = zombieGame({ menu: false });
+  assert.equal(g.mode, 'turn', 'the gear changed without being asked');
+  assert.equal(g.turn, 'you', 'and it is your move');
+  assert.equal(g.round, 1);
+  assert.equal(g.moveLeft, BATTLE_MOVE, 'a full step budget');
+  assert.deepEqual(g.battleFoes, [g.zombieKey]);
+  assert.ok(g.heard.includes('battle-start'), 'the mode change is audible');
+  assert.ok(
+    g.captionQueue.includes('TURN-BASED: ONE MOVE, ONE ACTION') || g.caption.text === 'SOMETHING IS CLOSE',
+    'and announced',
+  );
+});
+
+test('the battle menu: no bone option bare-handed, befriend only in round one', () => {
   const g = zombieGame();
-  assert.ok(g.choice, 'the zombie menu opened');
-  assert.equal(g.choice.kind, 'zombie');
-  assert.equal(g.choice.title, 'A ZOMBIE SHAMBLES IN PLACE');
-  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'fists', 'run']);
-  assert.ok(g.heard.includes('zombie'), 'it groaned on approach');
+  assert.equal(g.choice.kind, 'battle');
+  assert.equal(g.choice.title, 'A ZOMBIE IS ON YOU');
+  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'fists', 'wait']);
+  g.resolveChoice('wait');
+  assert.equal(g.round, 2, 'holding your ground still spends the turn');
+  g.openBattleMenu();
+  assert.deepEqual(g.choice.options.map((o) => o.id), ['fists', 'wait'], 'the friendly beat was round one');
 });
 
 test('befriending the zombie just gets you bitten (-2 HP)', () => {
@@ -390,18 +415,20 @@ test('befriending the zombie just gets you bitten (-2 HP)', () => {
   assert.equal(g.hp, 8 - ZOMBIE_BITE);
   assert.equal(g.caption.text, 'THE ZOMBIE DOES NOT WANT FRIENDS');
   assert.ok(g.captionQueue.includes(`IT BITES (-${ZOMBIE_BITE} HP)`));
-  assert.ok(g.choice, 'it is still coming — the fight menu reopens');
-  assert.equal(g.choice.kind, 'zombie');
+  assert.equal(g.choice, null, 'the round is over — you get your move back');
+  assert.equal(g.turn, 'you');
+  assert.equal(g.moveLeft, BATTLE_MOVE);
 });
 
 test('fists: DC 12, 2 damage — two clean hits drop it', () => {
   const g = zombieGame();
-  const key = g.choice.key;
+  const key = g.zombieKey;
   g.rng = () => 0.99; // roll 20
   g.resolveChoice('fists');
   assert.equal(g.caption.text, 'D20: 20 - YOU LAND ONE. IT STAGGERS');
   assert.equal(g.zombieHp.get(key), ZOMBIE_HP - 2);
-  assert.ok(g.choice, 'half-dead is not dead');
+  assert.equal(g.mode, 'turn', 'half-dead is not dead');
+  g.openBattleMenu();
   g.resolveChoice('fists');
   assert.equal(g.caption.text, 'D20: 20 - YOU LAND ONE');
   assert.ok(g.captionQueue.includes('THE ZOMBIE CRUMBLES. THE FOREST EXHALES'));
@@ -410,16 +437,29 @@ test('fists: DC 12, 2 damage — two clean hits drop it', () => {
   assert.equal(g.choice, null);
 });
 
+test('the last hostile down lets the world back into free movement', () => {
+  const g = zombieGame();
+  g.stats.str = 16; // one punch is enough
+  g.rng = () => 0.99;
+  g.resolveChoice('fists');
+  g.events.length = 0;
+  runSeconds(g, 0.4); // the next battle check notices the quiet
+  assert.equal(g.mode, 'free');
+  assert.equal(g.moveLeft, BATTLE_MOVE, 'the budget stops mattering');
+  assert.ok(g.events.includes('battle-end'));
+});
+
 test('the bone is the better club: DC 9, 3 damage, and it bonks', () => {
   const g = zombieGame({ bone: true });
-  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'fists', 'bone', 'run']);
-  const key = g.choice.key;
+  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'fists', 'bone', 'wait']);
+  const key = g.zombieKey;
   g.events.length = 0;
   g.rng = () => 0.45; // roll 10: lands with the bone, would miss bare-handed
   g.resolveChoice('bone');
   assert.ok(g.events.includes('bonk'));
   assert.equal(g.caption.text, 'D20: 10 - BONK! IT STAGGERS');
   assert.equal(g.zombieHp.get(key), ZOMBIE_HP - 3);
+  g.openBattleMenu();
   g.resolveChoice('bone'); // 1 HP left, 3 damage
   assert.equal(g.caption.text, 'D20: 10 - BONK! THE BONE RINGS TRUE');
   assert.ok(g.captionQueue.includes('THE ZOMBIE CRUMBLES. THE FOREST EXHALES'));
@@ -427,7 +467,7 @@ test('the bone is the better club: DC 9, 3 damage, and it bonks', () => {
   assert.ok(DC_BONE < DC_FISTS, 'the club is the easier swing');
 });
 
-test('a miss means teeth: bitten (-2 HP) and the zombie looms again', () => {
+test('a miss means teeth: bitten (-2 HP), and the round rolls on', () => {
   const g = zombieGame();
   g.hp = 9;
   g.rng = () => 0.3; // roll 7 < DC_FISTS
@@ -435,7 +475,8 @@ test('a miss means teeth: bitten (-2 HP) and the zombie looms again', () => {
   assert.equal(g.caption.text, 'D20: 7 - YOU MISS');
   assert.equal(g.hp, 9 - ZOMBIE_BITE);
   assert.ok(g.captionQueue.includes(`IT BITES (-${ZOMBIE_BITE} HP)`));
-  assert.ok(g.choice, 'the fight is not over');
+  assert.equal(g.mode, 'turn', 'the fight is not over');
+  assert.equal(g.round, 2);
 });
 
 test('too weak: the lethal bite samples your brain (-1 INT) and ends the fight', () => {
@@ -473,7 +514,7 @@ test('fist damage is floor(STR / 4); the bone adds one', () => {
 
 test('a mighty punch drops the zombie in one (STR 16 = 4 damage)', () => {
   const g = zombieGame();
-  const key = g.choice.key;
+  const key = g.zombieKey;
   g.stats.str = 16; // +3 to hit, 4 damage
   g.rng = () => 0.8; // roll 17, +3 = 20
   g.resolveChoice('fists');
@@ -482,17 +523,17 @@ test('a mighty punch drops the zombie in one (STR 16 = 4 damage)', () => {
   assert.equal(g.choice, null);
 });
 
-test('a feeble hit bounces off harmlessly — and earns no bite', () => {
+test('a feeble hit bounces off harmlessly — but the zombie still gets its turn', () => {
   const g = zombieGame();
-  const key = g.choice.key;
+  const key = g.zombieKey;
   g.stats.str = 3; // -4 to hit, 0 damage
   g.hp = 9;
   g.rng = () => 0.99; // roll 20, -4 = 16: still a hit
   g.resolveChoice('fists');
   assert.equal(g.caption.text, 'D20: 20-4 - YOUR FISTS BOUNCE OFF HARMLESSLY');
-  assert.equal(g.hp, 9, 'you did, technically, hit it');
   assert.equal(g.zombieHp.get(key) ?? ZOMBIE_HP, ZOMBIE_HP, 'unhurt');
-  assert.ok(g.choice, 'the standoff continues');
+  assert.equal(g.hp, 9 - ZOMBIE_BITE, 'turn-based means it always answers');
+  assert.equal(g.mode, 'turn', 'the standoff continues');
 });
 
 test('the STR detail can punch a zombie in reach', () => {
@@ -539,14 +580,188 @@ test('the ball icon throws through its detail window', () => {
   assert.ok(!g.choice.options.some((o) => o.id === 'ball'), 'no second ball mid-fetch');
 });
 
-test('running away costs nothing — the cooldown covers your exit', () => {
-  const g = zombieGame();
+test('walking is still the way out: distance disengages the battle', () => {
+  const g = zombieGame({ dist: 100, menu: false });
+  assert.equal(g.mode, 'turn');
   g.hp = 8;
-  g.resolveChoice('run');
+  // A turn is 60px of walking; put BATTLE_LEAVE between you a turn at a time.
+  for (let i = 0; i < 8 && g.mode === 'turn'; i++) {
+    runSeconds(g, 1.2, { left: true }); // spends the budget, opens the menu
+    if (g.choice) g.resolveChoice('wait');
+  }
+  assert.equal(g.mode, 'free', 'the woods let go');
+  assert.equal(g.hp, 8, 'nothing could reach you out here');
+  assert.deepEqual(g.battleFoes, []);
+});
+
+test('your move is a budget: spend it and the action menu opens itself', () => {
+  const g = zombieGame({ dist: 100, menu: false });
+  assert.equal(g.moveLeft, BATTLE_MOVE);
+  runSeconds(g, 0.2, { left: true });
+  assert.ok(g.moveLeft > 0 && g.moveLeft < BATTLE_MOVE, 'walking spends it');
+  assert.equal(g.choice, null, 'and you still have your action');
+  runSeconds(g, 2, { left: true });
+  assert.equal(g.moveLeft, 0, 'the budget ran out');
+  assert.ok(g.choice, 'so the action menu opened on its own');
+  assert.equal(g.choice.kind, 'battle');
+  assert.equal(g.choice.title, 'IT SHAMBLES CLOSER', 'out of reach, so no fists');
+  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'wait']);
+});
+
+// --- Magic ------------------------------------------------------------------
+
+/** Everything the game has said, still showing or still queued. */
+function said(g) {
+  return [g.caption && g.caption.text, ...g.captionQueue].filter(Boolean);
+}
+
+test('focus is 3 + WIS, and never drops below one point', () => {
+  const g = flatGame();
+  assert.equal(g.maxFocus(), FOCUS_BASE, 'a WIS of 10 is a flat 3');
+  g.stats.wis = 18;
+  assert.equal(g.maxFocus(), FOCUS_BASE + 4);
+  g.stats.wis = 2; // -4: the pool would go negative
+  assert.equal(g.maxFocus(), 1, 'the dimmest mind still holds one spell');
+});
+
+test('the leaf teaches one spell at a time, in the order of the book', () => {
+  const g = flatGame();
+  assert.deepEqual(g.spells, [], 'you start knowing nothing');
+  for (let i = 0; i < SPELLS.length; i++) {
+    g.focus = 0;
+    g.learnSpell();
+    assert.deepEqual(g.spells, SPELLS.slice(0, i + 1).map((s) => s.id));
+    assert.equal(g.focus, g.maxFocus(), 'a vision fills you back up');
+  }
+  g.learnSpell();
+  assert.equal(g.spells.length, SPELLS.length, 'the book runs out');
+  assert.ok(said(g).includes('THE LEAF HAS NOTHING LEFT TO TEACH'));
+});
+
+test('focus seeps back under the open sky, a point at a time', () => {
+  const g = flatGame();
+  g.spells.push('ember');
+  g.focus = 0;
+  runSeconds(g, FOCUS_REGEN - 1);
+  assert.equal(g.focus, 0, 'not yet');
+  runSeconds(g, 1.1);
+  assert.equal(g.focus, 1);
+  runSeconds(g, FOCUS_REGEN * 3);
+  assert.equal(g.focus, g.maxFocus(), 'and it stops at full');
+});
+
+test('the spell menu is a pause screen, and needs a spell to open', () => {
+  const g = flatGame();
+  g.openSpellMenu();
   assert.equal(g.choice, null);
-  assert.equal(g.hp, 8, 'no parting bite');
-  runSeconds(g, 1.2);
-  assert.equal(g.choice, null, 'cooldown holds while you stand there shaking');
+  assert.equal(g.caption.text, 'YOU KNOW NO SPELLS. THE LEAF KNOWS SOME');
+  g.learnSpell();
+  g.openSpellMenu();
+  assert.equal(g.choice.kind, 'spell');
+  assert.match(g.choice.title, /^FOCUS \d+ OF \d+$/);
+  assert.ok(g.menuPaused(), 'the world waits while you read the book');
+  assert.deepEqual(g.choice.options.map((o) => o.id), [SPELLS[0].id, 'back']);
+});
+
+test('the SPELLS icon joins the sheet only once you know one', () => {
+  const g = flatGame();
+  g.openSheet();
+  assert.equal(g.choice.options.some((o) => o.id === 'spells'), false);
+  g.resolveChoice('close');
+  g.learnSpell();
+  g.openSheet();
+  assert.ok(g.choice.options.some((o) => o.id === 'spells'), 'now it is inventory');
+  g.resolveChoice('spells');
+  assert.equal(g.choice.kind, 'spell');
+  g.resolveChoice('back');
+  assert.equal(g.choice.kind, 'sheet', 'BACK returns you to the sheet');
+});
+
+test('EMBER burns a zombie for 3 and spends a point of focus', () => {
+  const g = zombieGame({ menu: false });
+  g.spells.push('ember');
+  g.focus = 2;
+  g.openBattleMenu();
+  assert.ok(g.choice.options.some((o) => o.id === 'cast'), 'battle offers the book');
+  g.resolveChoice('cast');
+  assert.equal(g.choice.kind, 'spell');
+  g.events.length = 0;
+  g.resolveChoice('ember');
+  assert.equal(g.focus, 1, 'one point burned');
+  assert.ok(g.events.includes('spell-cast'));
+  assert.equal(g.caption.text, 'EMBER BITES. THE ZOMBIE BURNS AND KEEPS COMING');
+  assert.equal(g.zombieHp.get(g.zombieKey), ZOMBIE_HP - 3);
+  assert.equal(g.round, 2, 'casting costs your turn');
+  // 1 HP left: the second ember puts it out.
+  g.openBattleMenu();
+  g.resolveChoice('cast');
+  g.resolveChoice('ember');
+  assert.equal(g.caption.text, 'EMBER TAKES IT. THE ZOMBIE GOES OUT LIKE A CANDLE');
+  assert.ok(g.encounterDone.has(g.zombieKey));
+  assert.equal(g.xp, XP_ZOMBIE, 'a kill is a kill');
+});
+
+test('EMBER with nothing to burn just blooms', () => {
+  const g = flatGame();
+  g.spells.push('ember');
+  g.focus = 3;
+  g.castSpell('ember');
+  assert.equal(g.caption.text, 'EMBER BLOOMS AND FINDS NOTHING TO BURN');
+  assert.equal(g.focus, 2, 'the focus is spent regardless');
+});
+
+test('WARD eats the next bite instead of you', () => {
+  const g = zombieGame({ menu: false });
+  g.spells.push('ward');
+  g.hp = 8;
+  g.openBattleMenu();
+  g.resolveChoice('cast');
+  g.events.length = 0;
+  g.resolveChoice('ward');
+  assert.equal(g.hp, 8, 'nothing got through');
+  assert.equal(g.warded, false, 'the frost was spent doing it');
+  assert.equal(g.caption.text, 'A WARD SETTLES OVER YOU, THIN AS FROST');
+  assert.ok(said(g).includes('THE WARD TAKES THE BITE FOR YOU'));
+  assert.ok(g.events.includes('ward'));
+  // Only the one bite, though.
+  g.openBattleMenu();
+  g.resolveChoice('wait');
+  assert.equal(g.hp, 8 - ZOMBIE_BITE, 'the next one lands');
+});
+
+test('MOONLIGHT costs two and pours three HP back', () => {
+  const g = flatGame();
+  g.spells.push('moonlight');
+  g.focus = 3;
+  g.hp = 4;
+  g.castSpell('moonlight');
+  assert.equal(g.hp, 7);
+  assert.equal(g.focus, 1);
+  assert.equal(g.caption.text, 'YOU DRINK THE MOON (+3 HP)');
+  assert.equal(g.hearts.length, 1, 'a heart floats up');
+});
+
+test('an empty pool scatters the words — and still costs you the turn', () => {
+  const g = zombieGame({ menu: false });
+  g.spells.push('moonlight');
+  g.focus = 1; // MOONLIGHT costs 2
+  g.hp = 8;
+  g.openBattleMenu();
+  g.resolveChoice('cast');
+  g.events.length = 0;
+  g.resolveChoice('moonlight');
+  assert.equal(g.caption.text, 'NOT ENOUGH FOCUS. THE WORDS SCATTER');
+  assert.equal(g.focus, 1, 'nothing spent');
+  assert.ok(g.events.includes('spell-fail'));
+  assert.equal(g.hp, 8 - ZOMBIE_BITE, 'the zombie is not sympathetic');
+});
+
+test('you cannot cast what the leaf has not taught you', () => {
+  const g = flatGame();
+  const focus0 = g.focus;
+  g.castSpell('ember');
+  assert.equal(g.focus, focus0);
+  assert.equal(g.caption, null, 'nothing happens at all');
 });
 
 // --- World generation and art -----------------------------------------------
@@ -598,4 +813,18 @@ test('the zombie sprite is rectangular with known colors, and it lurches', () =>
   const seen = new Set();
   for (let t = 0; t < 4; t += 0.1) seen.add(zombieSway(t, 0));
   assert.deepEqual([...seen].sort(), [0, 1], 'the shamble lurches between two poses');
+});
+
+test('the vision that teaches you also fuels you — until you sober up', () => {
+  const g = flatGame();
+  g.stats.wis = 6; // a sober pool of exactly 1 (a -2 modifier)
+  assert.equal(g.maxFocus(), 1);
+  g.drunk = DRUNK_TIME; // the pipe's ten minutes: WIS +2
+  assert.equal(g.maxFocus(), FOCUS_BASE, 'the colors lend you the points back');
+  g.learnSpell();
+  assert.equal(g.focus, FOCUS_BASE, 'and the vision fills the bigger pool');
+  g.drunk = 0.01;
+  runSeconds(g, 0.1);
+  assert.equal(g.drunk, 0);
+  assert.equal(g.focus, 1, 'sobering up takes the borrowed point back');
 });
