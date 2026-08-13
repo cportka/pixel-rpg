@@ -367,3 +367,61 @@ export const FURNISH_COLORS = {
 export function flameColor(time, phase = 0) {
   return Math.sin(time * 6 + phase) > 0.2 ? PALETTE.goldRose : PALETTE.gold;
 }
+
+// --- The television (v0.17) -------------------------------------------------
+
+// An old set in the mansion's parlor, glowing rose with a channel that never
+// broadcasts anything but heaven. 20 wide x 16 tall, base-center anchored.
+// 'a' antenna, 'C' cabinet, 'c' cabinet shadow, 'S' the rose screen,
+// 's' screen edge, 'k' knobs, 'L' legs.
+export const TELEVISION_SPRITE = [
+  '...a........a.......',
+  '....a......a........',
+  '.....a....a.........',
+  '......a..a..........',
+  '.......aa...........',
+  '.CCCCCCCCCCCCCCCCCC.',
+  'cCssssssssssssssCkCC',
+  'cCsSSSSSSSSSSSSsCkCC',
+  'cCsSSSSSSSSSSSSsCCCC',
+  'cCsSSSSSSSSSSSSsCkCC',
+  'cCsSSSSSSSSSSSSsCkCC',
+  'cCsSSSSSSSSSSSSsCCCC',
+  'cCssssssssssssssCCCC',
+  '.CCCCCCCCCCCCCCCCCC.',
+  '..LL............LL..',
+  '..LL............LL..',
+];
+
+export const TELEVISION_COLORS = {
+  a: PALETTE.smoke,
+  C: PALETTE.clay,
+  c: PALETTE.amber,
+  S: PALETTE.pink,
+  s: PALETTE.magenta,
+  k: PALETTE.gold,
+  L: PALETTE.amber,
+};
+
+/**
+ * The set's living static: warm sparks drifting inside the screen, and a
+ * soft spill of rose on the floor below. Offsets relative to the base
+ * center; the screen interior spans x -7..6, y -9..-4.
+ */
+export function tvGlowPixels(time) {
+  const pixels = [];
+  const tick = Math.floor(time * 10);
+  for (let i = 0; i < 6; i++) {
+    const h = ((tick + i * 37) * 2654435761) >>> 0;
+    const x = -7 + (h % 14);
+    const y = -9 + ((h >> 4) % 6);
+    pixels.push({ x, y, c: (h >> 8) & 1 ? PALETTE.hotRose : PALETTE.goldRose });
+  }
+  // The rose spill on the parquet, breathing slowly.
+  if (Math.sin(time * 1.1) > -0.4) {
+    pixels.push({ x: -4, y: 1, c: PALETTE.plum });
+    pixels.push({ x: 0, y: 1, c: PALETTE.plum });
+    pixels.push({ x: 4, y: 1, c: PALETTE.plum });
+  }
+  return pixels;
+}

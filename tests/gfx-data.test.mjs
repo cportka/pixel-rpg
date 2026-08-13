@@ -51,15 +51,33 @@ test('sprites match the reference proportions', () => {
   assert.ok(dog.w > person.w, 'and longer than the person is wide');
 });
 
-test('the stride B-frame silhouettes are exact mirrors of the A-frames', () => {
+test('B-frames mirror the body but never the hair', () => {
   // The shading is lit from a fixed top-right moon, so it does NOT mirror —
-  // only the shape does. (A mirrored light would swing the moon around the
-  // sky every half-stride.)
+  // only the shape does. And since v0.17 the HAIR does not mirror either:
+  // the swept fall stays swept the same way for the whole stride, instead of
+  // swapping sides every half-cycle. So every row of a B-frame is either
+  // identical to the A row (the head zone, a contiguous prefix) or its exact
+  // mirror (the body below it) — and the legs genuinely mirror.
   const shape = (map) => map.map((row) => row.replace(/[^.]/g, 'X'));
+  const flip = (row) => [...row].reverse().join('');
   for (const pose of ['contact', 'down', 'pass']) {
     const a = shape(PERSON_FRAMES[`${pose}A`]);
     const b = shape(PERSON_FRAMES[`${pose}B`]);
-    assert.deepEqual(b, a.map((row) => [...row].reverse().join('')), `${pose}B mirrors ${pose}A`);
+    let inBody = false;
+    let mirroredRows = 0;
+    a.forEach((row, y) => {
+      // Rows where B matches A are the head zone (symmetric rows satisfy
+      // both readings and stay ambiguous); the first divergence starts the
+      // mirrored body, and from there every row must be an exact mirror.
+      if (!inBody && b[y] === row) return;
+      inBody = true;
+      assert.equal(b[y], flip(row), `${pose} row ${y} mirrors`);
+      if (row !== flip(row)) mirroredRows++;
+    });
+    assert.ok(mirroredRows >= 5, `${pose}: the stride itself really mirrors (${mirroredRows} rows)`);
+    // The signature hair sweep survives the half-cycle un-flipped.
+    const hairRow = a.findIndex((row) => row !== flip(row));
+    assert.equal(b[hairRow], a[hairRow], `${pose}: the hair stays swept the same way`);
   }
 });
 

@@ -80,6 +80,26 @@ from the origin. Ideas, in intended order:
 
 > WE MADE IT. WE'RE HOME.
 
+## The television (v0.17)
+
+Somewhere in the mansion's parlor an old set hums, warm with rose light,
+every channel the same. Step inside and the universe shows you its other
+face: the same woods at a higher level, all rose and gold and warm pastel,
+where the dead are angels who always wanted to be friends, where the
+burning dumpsters were cathedrals all along — gold melted into gold,
+ragas handed from voice to voice without end, a pile of god that only
+grows. The world below is drawn in moonlight on the dark; the world above
+is drawn in ink on the light. Same handwriting.
+
+And at the edge of it runs the Styx, silver and patient, and on the far
+bank waits the dog — three heads up here, because up here there is more
+of him to be glad with — beckoning you back across the bridge. Heaven is
+lovely. Heaven is not home. The dog knows the difference, and that
+knowing is the whole reason he gets three heads.
+
+> CERBERUS CARRIES YOU DOWN, GENTLE AS A MOTHER
+> THE NIGHT AGAIN. IT MISSED YOU
+
 ## Epilogue (future)
 
 After home is found, the forest stays open. The pair can keep walking —

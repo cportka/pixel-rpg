@@ -45,6 +45,9 @@ export const FURNISH = [
   { kind: 'table', x: 540, y: 180, solid: true, w: 27, h: 9 },
   { kind: 'chair', x: 510, y: 183, solid: true, w: 11, h: 6 },
   { kind: 'candelabra', x: 570, y: 90, solid: true, w: 8, h: 5 },
+  // The television (v0.17): the one rose-lit thing in the house. You can
+  // step inside it. The parlor pretends this is normal.
+  { kind: 'television', x: 516, y: 60, solid: true, w: 18, h: 6 },
 ];
 
 /** The map character at an interior world-pixel ('#' outside the grid). */
@@ -98,4 +101,10 @@ export function nearPortrait(x, y) {
 export function nearClock(x, y) {
   const c = FURNISH.find((f) => f.kind === 'clock');
   return Math.abs(x - c.x) < 60 && Math.abs(y - c.y) < 72;
+}
+
+/** Near the television? (Its light reaches further than it should.) */
+export function nearTelevision(x, y) {
+  const t = FURNISH.find((f) => f.kind === 'television');
+  return Math.abs(x - t.x) < 38 && y < t.y + 60;
 }

@@ -70,6 +70,14 @@ export const SOUNDS = {
   'spell-cast': { name: 'rpg_058', gain: 0.9 },
   'spell-fail': { name: 'rpg_072', gain: 0.7 },
   ward: { name: 'rpg_049', gain: 0.9 },
+
+  // v0.17 — the television, and heaven.
+  tv: { name: 'rpg_112', gain: 0.45 }, // rose static, warm and wrong
+  ascend: { name: 'rpg_077', gain: 1 }, // through the glass, up
+  descend: { name: 'rpg_041', gain: 1 }, // Cerberus carries you down
+  raga: { name: 'rpg_133', gain: 0.8 }, // the music that never ends
+  blessing: { name: 'rpg_090', gain: 0.7 }, // an angel notices you
+  gold: { name: 'rpg_055', gain: 0.7 }, // one more course on the pile of god
 };
 
 /** Every event name the game can emit. main.js plays these 1:1. */

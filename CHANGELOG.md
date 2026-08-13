@@ -4,6 +4,50 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.17.0] - 2026-08-13
+
+### Added
+- **The television, and heaven.** The mansion's parlor now holds an old
+  set, glowing rose, never broadcasting anything but one warm channel.
+  **You can step inside.** On the other side is the same universe at a
+  higher level: the whole world re-themed into rose, gold, and warm
+  pastels — cream ground, blush canopies, golden grass, ink figures, a
+  pale silver Styx — implemented as a draw-time palette remap (every
+  night color has a heaven counterpart under the same key), so the entire
+  game re-themes without any art module knowing heaven exists. Heaven is
+  its own plane: its own world (seeded from the night's), its own memory
+  map and encounter state, swapped whole on ascent and descent; your
+  stats, spells, HP, and inventory ride along, because they are the soul.
+- **The zombies are angels up here.** The same encounter spots hold
+  dark-robed figures with gold wings and halos, hovering a slow pixel.
+  Nothing in heaven is hostile — turn-based mode never engages — and
+  **TRY TO BEFRIEND IT finally works**. You can also bask in an angel's
+  light (+1 HP) or ask the way home (one long sleeve points at the Styx).
+- **The dumpsters are cathedrals of melted gold.** Inside, ragas that
+  never end (listening restores your focus, all of it); outside, raga
+  light rises off the roof. You can **ADD TO THE PILE OF GOD** — each
+  donation is melted in and the spire climbs one course higher, visibly.
+- **The dog is Cerberus.** Your companion appears in heaven as a
+  three-headed hound waiting on the far bank of the river Styx, level
+  with a bridge, beckoning you back across. Three-throated howls point
+  the way; reaching him carries you back down, and the night resumes
+  exactly where it paused — beside the humming set. Heaven persists
+  between visits; any television, on either side, leads to the other.
+- New cues from the 8bit-sfx procedural bank: the set's hum, the ascent,
+  the descent, the ragas, an angel's chime, and gold on the pile.
+
+### Changed
+- **The person is lanky now.** Redrawn from a stocky 16x27 to a 14x32
+  anime silhouette — nearly half leg, slim 4px torso, long arms hanging
+  free of the body, a swept fall of hair. The stride keeps 6 frames but
+  is built to BOUNCE: the down beat drops the body two rows, the pass
+  frame stretches tall with the trailing foot flicked up behind, and the
+  contact frame plants wide with the hair streaming. B-frames now mirror
+  the legs and arms but **not the hair** — the sweep stays swept the same
+  way for the whole stride instead of swapping sides every half-cycle.
+  Standing still finally breathes: a two-frame idle sway on its own slow
+  clock, so the person is never a statue.
+
 ## [0.16.0] - 2026-08-02
 
 ### Added

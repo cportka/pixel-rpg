@@ -7,7 +7,7 @@ things dancing where the woods grow deep. Somewhere out there
 waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
 eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.16.0
+**Version:** 0.17.0
 
 ## Play
 
@@ -61,6 +61,20 @@ where magic comes from: it never costs you a hit point, and a vision
 teaches **EMBER**, **WARD**, or **MOONLIGHT**, paid for out of a focus
 pool of `3 + WIS` that seeps back a point every 20 seconds.
 
+**And there is a way up.** The mansion's parlor holds an old television,
+warm with rose light. Step inside it and the whole game inverts into
+heaven: rose, gold, and warm pastels, ink figures on cream light, golden
+grass, blush canopies, a pale silver Styx. The zombies are angels there
+(befriending finally works), the burning dumpsters are cathedrals of
+melted gold where ragas never end and every donation raises the spire one
+course, and the dog is Cerberus — three heads, all glad — waiting on the
+far bank to carry you home. The night waits exactly where you left it.
+
+The person walks lanky now: a 14×32 anime silhouette, half leg, with a
+swept fall of hair that stays swept through the whole stride, a bounce
+built into the walk cycle's down beat, and an idle sway so standing still
+still breathes.
+
 The look is 16-bit — Secret-of-Mana-era shading discipline kept minimal and
 noir, and as of 0.15 drawn at twice the resolution it used to be: a game
 pixel is 2×2 device pixels, tree dithering is single-pixel rather than
@@ -113,11 +127,15 @@ canvas integer-upscaled 2x with `image-rendering: pixelated`.
   - `entities.js` — characters, per-axis collision against tree trunks
     (feet-box, so you can walk behind canopies), follow AI with hysteresis.
   - `game.js` — the story (alone → a friend → home), control swapping,
-    captions, the fetch state machine, spells and focus, and the free /
-    turn-based mode switch.
+    captions, the fetch state machine, spells and focus, the free /
+    turn-based mode switch, and the two planes (night and heaven, swapped
+    whole through the television).
   - `mansion.js` — the one-screen interior, its furnishings and collision.
 - `src/gfx/` — rendering:
-  - `palette.js` — the neo-noir smokey-darks-and-purples palette.
+  - `palette.js` — the neo-noir smokey-darks-and-purples palette, and its
+    heaven counterpart: every night color has a rose/gold/pastel twin under
+    the same key, applied as a draw-time remap so heaven costs the art
+    modules nothing.
   - `sprites.js` — person/dog/ball/heart pixel maps with reference-cadence
     walk cycles.
   - `font.js` — bold variable-width 8px caption font (pure data + geometry),

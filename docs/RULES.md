@@ -219,6 +219,29 @@ legend.
 Nothing is ever forgotten completely. Nothing is ever remembered completely
 either.
 
+## The television, and heaven
+
+The mansion's parlor holds an old television, warm with rose light, every
+channel the same. **STEP INSIDE** and you ascend: the same universe at a
+higher level, everything rose and gold and lovely warm pastels. The rules
+up there:
+
+- **You arrive alone**, west of the **river Styx** — pale, silver, slow.
+- **The zombies are angels.** Nothing is hostile; turn-based mode never
+  engages. **TRY TO BEFRIEND IT works** (it was always going to). BASK IN
+  ITS LIGHT is **+1 HP**; ASK THE WAY HOME points you at the Styx.
+- **The dumpsters are cathedrals of melted gold.** LISTEN TO THE RAGAS
+  restores your **focus** (all of it). ADD TO THE PILE OF GOD melts your
+  offering in, and the spire climbs **one course higher each time** —
+  the temple visibly grows.
+- **The dog is Cerberus** — three heads, all of them glad to see you —
+  waiting on the far bank of the Styx, level with a bridge. His
+  three-throated howl points the way. **Reaching him carries you back
+  down**, and the night resumes exactly where it paused.
+- Your stats, HP, spells, focus, XP, and inventory travel with you; the
+  night world waits unchanged. Heaven remembers you between visits.
+- Heaven has mansions too. Their televisions show the night below. Yes.
+
 ## The mansion
 
 Rarer than the cabins, somewhere in the forest or the grass, stands a
@@ -228,7 +251,8 @@ doorway and you're inside: a library, a grand hall, a parlor, a portrait
 whose eyes follow you (look closer — once), a grandfather clock you can
 hear from across the room, and a locked staircase. Nothing in the mansion
 rolls dice at you. Yet. The door mat at the entrance leads back out to the
-night, exactly where you left it. Fetch is declined indoors.
+night, exactly where you left it. Fetch is declined indoors. The parlor's
+television is the way up (see above).
 
 ## Encounters
 

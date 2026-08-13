@@ -10,10 +10,13 @@
 // fetch, and begins the long walk home together.
 
 import { World, CHUNK } from './world.js';
-import { regionAt, regionLandmarks } from './terrain.js';
+import {
+  regionAt, regionLandmarks, REGION, RIVER_COL, RIVER_W, riverNear, bridgeYNear, isWater,
+} from './terrain.js';
 import { SCREEN_W, SCREEN_H } from './screen.js';
 import {
   SPAWN as MANSION_SPAWN, mansionCollides, onDoor, nearStairs, nearPortrait, nearClock,
+  nearTelevision,
 } from './mansion.js';
 import { mulberry32, hashCoords } from './rng.js';
 import { PERSON, DOG, makeCharacter, moveCharacter, updateFollower, feetBox } from './entities.js';
@@ -22,6 +25,8 @@ export const CAPTION_TTL = 3.2; // seconds a caption stays up
 export const FETCH_TIMEOUT = 25; // seconds before a hopeless fetch resets
 export const MEET_RADIUS = 45; // px at which the person finds the dog
 export const HINT_PERIOD = 12; // seconds between whimper hints while alone
+export const HEAVEN_SEED_SALT = 0x48454156; // 'HEAV' — heaven's world derives from it
+export const BASK_HEAL = 1; // HP an angel's light pools in you
 export const AMBIENT_PERIOD = 26; // seconds between ambient lines when together
 export const TAP_ARRIVE = 5; // px at which a tap-move target counts as reached
 export const TAP_GIVE_UP = 2.5; // seconds without progress before abandoning a tap target
@@ -178,6 +183,14 @@ export class Game {
     this.memory = new Map();
     this.memoryCheck = 0;
 
+    // The two planes (v0.17). 'night' is the world below; 'heaven' waits
+    // behind the mansion television's glass. Each plane keeps its own world,
+    // memory, and encounter state; the one not being lived in sits stashed.
+    this.plane = 'night';
+    this.planeStash = null; // the other plane's snapshot (null until first ascent)
+    this.goldGiven = 0; // courses added to the pile of god (heaven-wide)
+    this.styxSeen = false; // the river announces itself once per ascent
+
     // Magic and battle (v0.16).
     this.spells = []; // spell ids learned, in the order the leaf taught them
     this.focus = this.maxFocus();
@@ -317,11 +330,132 @@ export class Game {
   }
 
   /** Interior beats: the exit door, the portrait, the stairs, the clock. */
+  /** Everything that belongs to one plane and must not leak into the other. */
+  snapshotPlane() {
+    return {
+      world: this.world,
+      memory: this.memory,
+      encounterDone: this.encounterDone,
+      zombieHp: this.zombieHp,
+      choiceCooldown: this.choiceCooldown,
+      px: this.person.x,
+      py: this.person.y,
+      dx: this.dog.x,
+      dy: this.dog.y,
+      together: this.together,
+      location: this.location,
+      mansionKey: this.mansionKey,
+      mansionReturn: this.mansionReturn,
+      ball: this.ball,
+      fetch: this.fetch,
+      styxSeen: this.styxSeen,
+    };
+  }
+
+  restorePlane(snap) {
+    this.world = snap.world;
+    this.memory = snap.memory;
+    this.encounterDone = snap.encounterDone;
+    this.zombieHp = snap.zombieHp;
+    this.choiceCooldown = snap.choiceCooldown;
+    this.person.x = snap.px;
+    this.person.y = snap.py;
+    this.dog.x = snap.dx;
+    this.dog.y = snap.dy;
+    this.together = snap.together;
+    this.location = snap.location;
+    this.mansionKey = snap.mansionKey;
+    this.mansionReturn = snap.mansionReturn;
+    this.ball = snap.ball;
+    this.fetch = snap.fetch;
+    this.styxSeen = snap.styxSeen;
+    this.clearMoveTarget();
+  }
+
+  /**
+   * A fresh heaven, built on first ascent: its own world from a salted seed,
+   * you alone on the west side of the Styx, and Cerberus — the shape your dog
+   * takes up here — waiting on the east bank by the nearest bridge,
+   * beckoning you back down.
+   */
+  freshHeaven() {
+    const hseed = (this.world.seed ^ HEAVEN_SEED_SALT) >>> 0;
+    const world = new World(hseed);
+    const px = 0;
+    const py = 30;
+    // The nearest Styx east of home: its column center, and the bridge you
+    // will cross it on. Cerberus sits past the far bank, level with the deck.
+    const river = riverNear(hseed, RIVER_COL * REGION, py);
+    const by = bridgeYNear(hseed, river.band, py);
+    const spot = { x: river.center + RIVER_W + 36, y: by };
+    return {
+      world,
+      memory: new Map(),
+      encounterDone: new Set(),
+      zombieHp: new Map(),
+      choiceCooldown: null,
+      px,
+      py,
+      dx: spot.x,
+      dy: spot.y,
+      together: false,
+      location: 'world',
+      mansionKey: null,
+      mansionReturn: null,
+      ball: null,
+      fetch: 'idle',
+      styxSeen: false,
+    };
+  }
+
+  /** Step inside the television. (From heaven, any television leads back.) */
+  enterHeaven() {
+    if (this.plane === 'heaven') return this.returnFromHeaven();
+    const night = this.snapshotPlane();
+    this.restorePlane(this.planeStash ?? this.freshHeaven());
+    this.planeStash = night;
+    this.plane = 'heaven';
+    if (this.mode === 'turn') this.endBattle('NOTHING UP HERE WANTS TO FIGHT YOU');
+    this.emit('ascend');
+    this.triggerGlitch(0.9);
+    this.announce([
+      'THE GLASS IS NOT GLASS. YOU STEP THROUGH',
+      'EVERYTHING UP HERE IS ROSE AND GOLD',
+      'A THREE-THROATED HOWL ROLLS ACROSS THE LIGHT',
+    ]);
+    this.hintTimer = HINT_PERIOD - 3; // the first howl points the way soon
+  }
+
+  /** Cerberus carries you back down. Night resumes exactly where it paused. */
+  returnFromHeaven() {
+    if (this.plane !== 'heaven') return;
+    const heaven = this.snapshotPlane();
+    this.restorePlane(this.planeStash);
+    this.planeStash = heaven;
+    this.plane = 'night';
+    // Standing back in front of the set: hold its menu until you walk away.
+    if (this.location === 'mansion') {
+      this.choiceCooldown = { key: `${this.mansionKey}:tv`, x: this.person.x, y: this.person.y };
+    }
+    this.emit('descend');
+    this.triggerGlitch(0.9);
+    this.announce([
+      'CERBERUS CARRIES YOU DOWN, GENTLE AS A MOTHER',
+      'THE NIGHT AGAIN. IT MISSED YOU',
+    ]);
+  }
+
   updateMansion(dt) {
     const p = this.person;
     if (this.active === 'person' && onDoor(p.x, p.y)) {
       this.exitMansion();
       return;
+    }
+    // Re-arm a closed menu once you actually walk away (the television is
+    // the one mansion encounter that comes back).
+    if (this.choiceCooldown) {
+      const cd = this.choiceCooldown;
+      if (Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) this.choiceCooldown = null;
     }
     const pk = `${this.mansionKey}:port`;
     if (!this.choice && !this.encounterDone.has(pk) && nearPortrait(p.x, p.y)) {
@@ -339,6 +473,27 @@ export class Game {
         options: [
           { id: 'look', label: 'LOOK CLOSER' },
           { id: 'away', label: 'LOOK AWAY' },
+        ],
+      });
+      return;
+    }
+    const tk = `${this.mansionKey}:tv`;
+    if (!this.choice && this.choiceCooldown?.key !== tk && nearTelevision(p.x, p.y)) {
+      if (!this.captionSticky) {
+        this.caption = null;
+        this.captionQueue.length = 0;
+      }
+      this.emit('tv');
+      this.openChoice({
+        kind: 'tv',
+        key: tk,
+        x: p.x,
+        y: p.y,
+        title: this.plane === 'heaven' ? 'THE TELEVISION SHOWS THE NIGHT BELOW' : 'AN OLD TELEVISION, WARM WITH ROSE LIGHT',
+        options: [
+          { id: 'inside', label: 'STEP INSIDE' },
+          { id: 'channel', label: 'CHANGE THE CHANNEL' },
+          { id: 'away', label: 'STEP AWAY' },
         ],
       });
       return;
@@ -751,6 +906,18 @@ export class Game {
     this.encounterCheck += dt;
     if (this.encounterCheck >= 0.3) {
       this.encounterCheck = 0;
+      if (this.plane === 'heaven' && !this.styxSeen) {
+        const px = this.person.x;
+        const py = this.person.y;
+        const hs = this.world.seed;
+        if (
+          isWater(hs, px + 60, py) || isWater(hs, px - 60, py) ||
+          isWater(hs, px, py + 60) || isWater(hs, px, py - 60)
+        ) {
+          this.styxSeen = true;
+          this.announce(['THE RIVER STYX, SILVER AND PATIENT', 'CERBERUS WAITS ON THE FAR BANK']);
+        }
+      }
       this.checkEncounters();
     }
 
@@ -856,17 +1023,31 @@ export class Game {
       this.world[method](p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2);
 
     const KINDS = [
-      {
-        method: 'dumpstersInRect',
-        prefix: 'd',
-        kind: 'dumpster',
-        title: 'A DUMPSTER BURNS IN THE DARK',
-        options: [
-          { id: 'search', label: 'SEARCH THE DUMPSTER' },
-          { id: 'putout', label: 'PUT OUT THE FIRE (HOW?)' },
-          { id: 'walkaway', label: 'WALK AWAY' },
-        ],
-      },
+      // In heaven the dumpster spots hold cathedrals instead: same rng draws,
+      // very different landlord.
+      this.plane === 'heaven'
+        ? {
+            method: 'dumpstersInRect',
+            prefix: 'd',
+            kind: 'cathedral',
+            title: 'A CATHEDRAL OF MELTED GOLD',
+            options: [
+              { id: 'listen', label: 'LISTEN TO THE RAGAS' },
+              { id: 'gold', label: 'ADD TO THE PILE OF GOD' },
+              { id: 'walkaway', label: 'STEP BACK INTO THE LIGHT' },
+            ],
+          }
+        : {
+            method: 'dumpstersInRect',
+            prefix: 'd',
+            kind: 'dumpster',
+            title: 'A DUMPSTER BURNS IN THE DARK',
+            options: [
+              { id: 'search', label: 'SEARCH THE DUMPSTER' },
+              { id: 'putout', label: 'PUT OUT THE FIRE (HOW?)' },
+              { id: 'walkaway', label: 'WALK AWAY' },
+            ],
+          },
       {
         method: 'catsInRect',
         prefix: 'c',
@@ -911,11 +1092,29 @@ export class Game {
     }
 
     // Zombies get their own path: options depend on the bone, and they groan.
-    // While turn-based, the round structure owns them instead.
+    // While turn-based, the round structure owns them instead. In heaven the
+    // same spots hold angels, and the angels hold no grudges.
     if (this.mode === 'turn') return;
     for (const z of near('zombiesInRect')) {
       const key = `z:${z.x},${z.y}`;
       if (blocked(key)) continue;
+      if (this.plane === 'heaven') {
+        this.emit('blessing');
+        this.openChoice({
+          kind: 'angel',
+          key,
+          x: z.x,
+          y: z.y,
+          title: 'AN ANGEL CONSIDERS YOU',
+          options: [
+            { id: 'befriend', label: 'TRY TO BEFRIEND IT' },
+            { id: 'bask', label: 'BASK IN ITS LIGHT' },
+            { id: 'ask', label: 'ASK THE WAY HOME' },
+            { id: 'walkaway', label: 'LEAVE IT BE' },
+          ],
+        });
+        return;
+      }
       this.emit('zombie');
       this.openChoice(this.zombieMenu(key, z.x, z.y));
       return;
@@ -1101,6 +1300,55 @@ export class Game {
       if (id !== 'back') this.castSpell(id);
       else if (this.mode === 'turn') this.openBattleMenu();
       else this.openSheet();
+    } else if (c.kind === 'tv') {
+      if (id === 'inside') {
+        this.enterHeaven(); // (from heaven, the set shows the night — and leads there)
+      } else if (id === 'channel') {
+        this.emit('tv');
+        this.announce(['EVERY CHANNEL IS THE SAME WARM LIGHT', 'ONE OF THEM HUMS A LITTLE HIGHER']);
+      }
+      // 'away': the cooldown covers your retreat.
+    } else if (c.kind === 'cathedral') {
+      if (id === 'listen') {
+        this.emit('raga');
+        this.triggerGlitch(0.6);
+        const lines = [
+          'THE RAGAS DO NOT END. THEY HAND EACH OTHER THE MELODY',
+          'THE SINGERS NOD. YOU WERE ALWAYS PART OF THE CHORD',
+        ];
+        if (this.spells.length && this.focus < this.maxFocus()) {
+          this.focus = this.maxFocus();
+          lines.push('YOUR FOCUS RETURNS, ALL OF IT');
+        }
+        this.announce(lines);
+      } else if (id === 'gold') {
+        this.emit('gold');
+        this.goldGiven++;
+        this.announce([
+          'YOU ADD WHAT YOU CAN TO THE PILE OF GOD',
+          'THEY MELT IT IN. THE SPIRE CLIMBS ONE COURSE HIGHER',
+        ]);
+      }
+      // walkaway: the music follows you out anyway.
+    } else if (c.kind === 'angel') {
+      if (id === 'befriend') {
+        this.emit('meet');
+        this.hearts.push(
+          { x: c.x - 6, y: c.y - 30, t: HEART_TTL },
+          { x: c.x + 6, y: c.y - 36, t: HEART_TTL * 1.2 },
+        );
+        this.announce(['IT WAS NEVER GOING TO BITE YOU', 'UP HERE, FRIENDSHIP IS THE RESTING STATE']);
+      } else if (id === 'bask') {
+        this.emit('blessing');
+        this.heal(BASK_HEAL);
+        this.announce([`LIGHT POOLS IN YOUR CHEST (+${BASK_HEAL} HP)`]);
+      } else if (id === 'ask') {
+        this.announce([
+          'ONE LONG SLEEVE POINTS TOWARD THE STYX',
+          'CERBERUS WILL CARRY YOU. HOME IS BELOW',
+        ]);
+      }
+      // walkaway: it was going to let you anyway.
     }
   }
 
@@ -1326,6 +1574,7 @@ export class Game {
   /** Hostiles (living zombies) within a radius of the person. */
   hostilesNear(radius) {
     if (this.location !== 'world') return [];
+    if (this.plane === 'heaven') return []; // angels do not bite
     const p = this.person;
     return this.world
       .zombiesInRect(p.x - radius, p.y - radius, radius * 2, radius * 2)
@@ -1525,19 +1774,28 @@ export class Game {
     }
   }
 
-  /** Alone in the dark: the lost dog waits; soft whimpers point the way. */
+  /**
+   * Alone in the dark: the lost dog waits; soft whimpers point the way.
+   * Alone in heaven: Cerberus waits across the Styx, and his three-throated
+   * howl points the way back down.
+   */
   updateAlone(dt) {
     const dx = this.dog.x - this.person.x;
     const dy = this.dog.y - this.person.y;
     if (Math.hypot(dx, dy) <= MEET_RADIUS) {
-      this.meetDog();
+      if (this.plane === 'heaven') this.returnFromHeaven();
+      else this.meetDog();
       return;
     }
     this.hintTimer += dt;
     if (this.hintTimer >= HINT_PERIOD && !this.caption && this.captionQueue.length === 0) {
       this.hintTimer = 0;
       const compass = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'EAST' : 'WEST') : dy > 0 ? 'SOUTH' : 'NORTH';
-      this.say(`A SOFT WHIMPER DRIFTS FROM THE ${compass}`);
+      this.say(
+        this.plane === 'heaven'
+          ? `A THREE-THROATED HOWL ROLLS FROM THE ${compass}`
+          : `A SOFT WHIMPER DRIFTS FROM THE ${compass}`,
+      );
     }
   }
 

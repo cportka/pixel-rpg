@@ -7,8 +7,12 @@
 // at 60Hz. Trees are rasterized once per identity onto small offscreen
 // canvases and cached; generation is deterministic, so eviction is lossless.
 
-import { PALETTE, SPRITE_COLORS, SPARKLE_TINTS, LEASH_COLORS } from './palette.js';
-import { PERSON_FRAMES, DOG_FRAMES, BALL_SPRITE, HEART_SPRITE, walkFrame, spriteSize } from './sprites.js';
+import {
+  PALETTE, SPRITE_COLORS, SPARKLE_TINTS, LEASH_COLORS, heavenColor, HEAVEN_SPARKLES,
+} from './palette.js';
+import {
+  PERSON_FRAMES, DOG_FRAMES, CERBERUS_FRAMES, BALL_SPRITE, HEART_SPRITE, walkFrame, spriteSize,
+} from './sprites.js';
 import { treePixels, BLOCK_W, BLOCK_H } from './trees.js';
 import { inflatablePixels } from './inflatables.js';
 import { glitchFrame, starPixels, starSize, targetMarkerPixels } from './effects.js';
@@ -16,6 +20,8 @@ import {
   DUMPSTER_SPRITE, DUMPSTER_COLORS, CAT_SPRITE, firePixels, catRowColor,
   LAMP_SPRITE, LAMP_COLORS, PIPE_SPRITE, PIPE_COLORS, lampGlintPixels, pipeSmokePixels,
   ZOMBIE_SPRITE, ZOMBIE_COLORS, zombieSway,
+  ANGEL_SPRITE, ANGEL_COLORS, angelBob,
+  CATHEDRAL_SPRITE, CATHEDRAL_COLORS, templeGrowthPixels, ragaPixels,
 } from './encounters.js';
 import {
   CABIN_SPRITE, CABIN_COLORS, cabinWindowLit, CAVE_SPRITE, CAVE_COLORS, caveGlint,
@@ -23,6 +29,7 @@ import {
   MANSION_SPRITE, MANSION_COLORS, mansionAtticLit,
   CLOCK_SPRITE, PORTRAIT_SPRITE, SHELF_SPRITE, TABLE_SPRITE, CHAIR_SPRITE,
   CANDELABRA_SPRITE, CHANDELIER_SPRITE, FURNISH_COLORS, flameColor,
+  TELEVISION_SPRITE, TELEVISION_COLORS, tvGlowPixels,
 } from './structures.js';
 import {
   TILE, MANSION_MAP, INTERIOR_W, INTERIOR_H, FURNISH,
@@ -250,6 +257,9 @@ export class Renderer {
   constructor(canvas, createCanvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.baseCtx = this.ctx; // the raw context; this.ctx swaps per plane
+    this.heavenCtx = null; // built lazily on first ascent
+    this.plane = 'night';
     this.createCanvas =
       createCanvas ??
       ((w, h) => {
@@ -277,12 +287,53 @@ export class Renderer {
   }
 
   /**
+   * Heaven, at the draw layer (v0.17): a proxy over the 2d context that
+   * remaps every fillStyle through the night→heaven palette table as it is
+   * assigned. One indirection re-themes the whole game — ground, trees,
+   * panels, text, sprites — without any art module knowing heaven exists.
+   * Methods are bound (and cached) so native contexts don't see an illegal
+   * receiver.
+   */
+  wrapHeaven(ctx) {
+    const bound = new Map();
+    return new Proxy(ctx, {
+      get(target, prop) {
+        const v = target[prop];
+        if (typeof v === 'function') {
+          let b = bound.get(prop);
+          if (!b) {
+            b = v.bind(target);
+            bound.set(prop, b);
+          }
+          return b;
+        }
+        return v;
+      },
+      set(target, prop, value) {
+        target[prop] = prop === 'fillStyle' ? heavenColor(value) : value;
+        return true;
+      },
+    });
+  }
+
+  /** Point this.ctx at the right plane's context for this frame. */
+  setPlane(plane) {
+    this.plane = plane;
+    if (plane === 'heaven') {
+      this.heavenCtx ??= this.wrapHeaven(this.baseCtx);
+      this.ctx = this.heavenCtx;
+    } else {
+      this.ctx = this.baseCtx;
+    }
+  }
+
+  /**
    * Rasterize (and cache) a tree's block cloud onto its own canvas.
    * The key includes every field treePixels() reads — detailSeed alone
    * collides across distinct trees (independent 32-bit draws).
    */
   treeSprite(tree) {
-    const key = `${tree.kind}:${tree.variant}:${tree.size}:${tree.detailSeed}`;
+    const key = `${this.plane}:${tree.kind}:${tree.variant}:${tree.size}:${tree.detailSeed}`;
     let entry = this.treeCache.get(key);
     if (!entry) {
       const geo = treePixels(tree);
@@ -291,7 +342,7 @@ export class Renderer {
       const c = this.createCanvas(w, h);
       const g = c.getContext('2d');
       for (const p of geo.pixels) {
-        g.fillStyle = p.c;
+        g.fillStyle = this.plane === 'heaven' ? heavenColor(p.c) : p.c;
         g.fillRect(p.x - geo.minX, p.y - geo.minY, BLOCK_W, BLOCK_H);
       }
       entry = { canvas: c, offX: geo.minX, offY: geo.minY, lastUsed: 0 };
@@ -377,7 +428,7 @@ export class Renderer {
     const p = game.person;
     const d = game.dog;
     const x1 = p.x + (d.x >= p.x ? 5 : -5);
-    const y1 = p.y - 13;
+    const y1 = p.y - 17; // the lanky person's hand rides higher (v0.17)
     const x2 = d.x - d.facing * 8;
     const y2 = d.y - 8;
     const dist = Math.hypot(x2 - x1, y2 - y1);
@@ -410,7 +461,7 @@ export class Renderer {
   drawCaption(text, anchorScreenX, anchorScreenY, color = PALETTE.moonlight) {
     const lines = wrapText(text, CAPTION_MAX_W);
     const lineH = GLYPH_H + LINE_GAP;
-    let top = Math.round(anchorScreenY) - 34 - lines.length * lineH;
+    let top = Math.round(anchorScreenY) - 39 - lines.length * lineH;
     top = Math.max(4, Math.min(top, SCREEN_H - lines.length * lineH - 4));
     lines.forEach((line, i) => {
       const w = measureText(line);
@@ -422,6 +473,7 @@ export class Renderer {
 
   /** Draw one frame of the game. dt is the real time since the last frame. */
   render(game, dt = 1 / RENDER_FPS) {
+    this.setPlane(game.plane ?? 'night');
     const ctx = this.ctx;
     this.frame++;
     if (game.location === 'mansion') {
@@ -514,7 +566,8 @@ export class Renderer {
       if (pts.length === 0) continue;
       const x = Math.round(s.x - viewX);
       const y = Math.round(s.y - viewY);
-      ctx.fillStyle = glow >= 0.9 ? PALETTE.moonlight : SPARKLE_TINTS[s.tint % SPARKLE_TINTS.length];
+      const tints = this.plane === 'heaven' ? HEAVEN_SPARKLES : SPARKLE_TINTS;
+      ctx.fillStyle = glow >= 0.9 ? (this.plane === 'heaven' ? PALETTE.goldRose : PALETTE.moonlight) : tints[s.tint % tints.length];
       for (const p of pts) ctx.fillRect(x + p.x, y + p.y, 1, 1);
     }
 
@@ -547,8 +600,30 @@ export class Renderer {
       drawables.push({
         y: d.y,
         draw: () => {
-          const bx = Math.round(d.x - viewX) - Math.floor(DUMPSTER_SPRITE[0].length / 2);
-          const by = Math.round(d.y - viewY) - DUMPSTER_SPRITE.length;
+          const cxp = Math.round(d.x - viewX);
+          const cyp = Math.round(d.y - viewY);
+          if (this.plane === 'heaven') {
+            // The same spot, the other side of the glass: a cathedral of
+            // melted gold, its spire one course taller per donation, raga
+            // light rising off the roof.
+            const bx = cxp - Math.floor(CATHEDRAL_SPRITE[0].length / 2);
+            const by = cyp - CATHEDRAL_SPRITE.length;
+            CATHEDRAL_SPRITE.forEach((row, ry) => {
+              for (let rx = 0; rx < row.length; rx++) {
+                const ch = row[rx];
+                if (ch === '.') continue;
+                ctx.fillStyle = CATHEDRAL_COLORS[ch];
+                ctx.fillRect(bx + rx, by + ry, 1, 1);
+              }
+            });
+            for (const p of [...templeGrowthPixels(game.goldGiven), ...ragaPixels(game.time)]) {
+              ctx.fillStyle = p.c;
+              ctx.fillRect(cxp + p.x, cyp + p.y, 1, 1);
+            }
+            return;
+          }
+          const bx = cxp - Math.floor(DUMPSTER_SPRITE[0].length / 2);
+          const by = cyp - DUMPSTER_SPRITE.length;
           DUMPSTER_SPRITE.forEach((row, ry) => {
             for (let rx = 0; rx < row.length; rx++) {
               const ch = row[rx];
@@ -558,8 +633,6 @@ export class Renderer {
             }
           });
           if (!game.dumpstersOut.has(key)) {
-            const cxp = Math.round(d.x - viewX);
-            const cyp = Math.round(d.y - viewY);
             for (const p of firePixels(game.time)) {
               ctx.fillStyle = p.c;
               ctx.fillRect(cxp + p.x, cyp + p.y, BLOCK_W, BLOCK_H);
@@ -631,6 +704,14 @@ export class Renderer {
       drawables.push({
         y: z.y,
         draw: () => {
+          if (this.plane === 'heaven') {
+            // The zombie's spot holds an angel up here: it hovers a slow
+            // pixel instead of lurching, and casts no shadow at all.
+            const ax = Math.round(z.x - viewX) - Math.floor(ANGEL_SPRITE[0].length / 2);
+            const ay = Math.round(z.y - viewY) - ANGEL_SPRITE.length + angelBob(game.time, z.phase);
+            drawSpriteWithColors(ANGEL_SPRITE, ANGEL_COLORS, ax, ay);
+            return;
+          }
           const zx = Math.round(z.x - viewX) - Math.floor(ZOMBIE_SPRITE[0].length / 2) + zombieSway(game.time, z.phase);
           const zy = Math.round(z.y - viewY) - ZOMBIE_SPRITE.length;
           this.drawShadow(z.x - viewX, Math.round(z.y - viewY), 12);
@@ -716,8 +797,9 @@ export class Renderer {
       });
     }
     for (const ch of [game.person, game.dog]) {
-      const frames = ch.kind === 'person' ? PERSON_FRAMES : DOG_FRAMES;
-      const map = walkFrame(frames, ch.walking, ch.animTime);
+      const frames =
+        ch.kind === 'person' ? PERSON_FRAMES : this.plane === 'heaven' ? CERBERUS_FRAMES : DOG_FRAMES;
+      const map = walkFrame(frames, ch.walking, ch.animTime, game.time);
       const { w, h } = spriteSize(map);
       drawables.push({
         y: ch.y,
@@ -858,7 +940,7 @@ export class Renderer {
     const cast = game.together ? [game.person, game.dog] : [game.person];
     for (const chr of cast) {
       const frames = chr.kind === 'person' ? PERSON_FRAMES : DOG_FRAMES;
-      const map = walkFrame(frames, chr.walking, chr.animTime);
+      const map = walkFrame(frames, chr.walking, chr.animTime, game.time);
       const { w, h } = spriteSize(map);
       drawables.push({
         y: chr.y,
@@ -928,16 +1010,18 @@ export class Renderer {
       chair: CHAIR_SPRITE,
       candelabra: CANDELABRA_SPRITE,
       chandelier: CHANDELIER_SPRITE,
+      television: TELEVISION_SPRITE,
     };
     const sprite = SPRITES[f.kind];
     if (!sprite) return;
+    const colors = f.kind === 'television' ? TELEVISION_COLORS : FURNISH_COLORS;
     const bx = Math.round(f.x - viewX - sprite[0].length / 2);
     const by = Math.round(f.y - viewY - sprite.length);
     sprite.forEach((row, ry) => {
       for (let rx = 0; rx < row.length; rx++) {
         const ch = row[rx];
         if (ch === '.') continue;
-        ctx.fillStyle = FURNISH_COLORS[ch] ?? PALETTE.smoke;
+        ctx.fillStyle = colors[ch] ?? PALETTE.smoke;
         ctx.fillRect(bx + rx, by + ry, 1, 1);
       }
     });
@@ -966,6 +1050,14 @@ export class Renderer {
       // The pendulum keeps the only honest time in here.
       ctx.fillStyle = PALETTE.brass;
       ctx.fillRect(bx + 3 + (Math.sin(game.time * 2.2) > 0 ? 1 : 0), by + 10, 1, 2);
+    } else if (f.kind === 'television') {
+      // The one rose-lit thing in the house, always on, never broadcasting.
+      const cx = Math.round(f.x - viewX);
+      const cy = Math.round(f.y - viewY);
+      for (const g of tvGlowPixels(game.time)) {
+        ctx.fillStyle = g.c;
+        ctx.fillRect(cx + g.x, cy + g.y, 1, 1);
+      }
     }
   }
 
