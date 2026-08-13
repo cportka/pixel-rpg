@@ -1,153 +1,224 @@
 // Pixel sprites as string maps — one character per pixel, '.' transparent.
 // Keys into SPRITE_COLORS (see palette.js).
 //
-// v0.16 redrew both characters ~1.5x larger for the finer screen: the person
-// is 16x27 (was 11x18), the dog 19x14 (was 13x9), so at the new 2x upscale
-// they occupy the same physical space with half again the detail. Silhouettes
-// are authored in 'X' and shaded procedurally by shadeFrames(), which lights
+// v0.17 redrew the person LANKY: 14x32 (was a stocky 16x27) — an anime
+// silhouette that is nearly half leg, with a swept fall of hair, a slim
+// 4px torso, and long arms that hang free of the body. Silhouettes are
+// authored in 'X' and shaded procedurally by shadeFrames(), which lights
 // them from the top-right: right and top edges take moonlight, the interior
 // takes moonshadow, the left flank falls to deep smoke, and the crown catches
 // a rose-gold rim — the one warm light on a person in a dark wood.
 //
-// The person walks a 6-frame stride: contact (legs split wide, arms
-// counter-swung), down (body bobs as the legs recoil), pass (tall, trailing
-// knee lifted) — then the mirrored half-cycle. B-frames are derived by
-// mirroring the A-frames so the stride stays perfectly symmetric. The dog
-// keeps its 2-frame trot. Both are authored facing right, flipped at draw.
+// The walk is a 6-frame stride built to BOUNCE: contact (feet planted wide,
+// hair trailing, body sunk one row), down (the deep beat — everything drops
+// two more rows as the legs recoil), pass (the tallest frame, trailing foot
+// flicked up behind). B-frames mirror the LEGS AND ARMS of the A-frames but
+// keep the head and hair unmirrored — hair swept back is swept back for the
+// whole stride, it does not swap sides every half-cycle. Standing still has
+// its own two-frame sway, so the person is never a statue. The dog keeps its
+// 2-frame trot. All maps are authored facing right, flipped at draw.
 
-const mirror = (map) => map.map((row) => [...row].reverse().join(''));
+/** Mirror a frame's body while keeping rows above hairEnd (head, hair) as-is. */
+const mirrorBody = (map, hairEnd) =>
+  map.map((row, y) => (y < hairEnd ? row : [...row].reverse().join('')));
 
+// Standing: contrapposto — weight settled, arms hanging long and a little
+// free of the body, the hair swept back off the brow.
 const PERSON_STAND = [
-  '......XXXX......',
-  '.....XXXXXX.....',
-  '.....XXXXXX.....',
-  '.....XXXXXX.....',
-  '......XXXX......',
-  '......XXXX......',
-  '....XXXXXXXX....',
-  '...XXXXXXXXXX...',
-  '..XXXXXXXXXXXX..',
-  '..XXXXXXXXXXXX..',
-  '..XXXXXXXXXXXX..',
-  '..XXXXXXXXXXXX..',
-  '..XXXXXXXXXXXX..',
-  '..XXXXXXXXXXXX..',
-  '...XXXXXXXXXX...',
-  '...XXXXXXXXXX...',
-  '....XXXXXXXX....',
-  '....XXXXXXXX....',
-  '....XXXXXXXX....',
-  '....XXX..XXX....',
-  '....XXX..XXX....',
-  '....XXX..XXX....',
-  '....XXX..XXX....',
-  '....XXX..XXX....',
-  '....XXX..XXX....',
-  '....XXX..XXX....',
-  '...XXXX..XXXX...',
+  '.....XXXXX....',
+  '...XXXXXXXX...',
+  '..XXXXXXXXX...',
+  '...XXXXXXXX...',
+  '....XXXXXXX...',
+  '....XXXXXX....',
+  '.....XXXX.....',
+  '......XX......',
+  '....XXXXXX....',
+  '...XXXXXXXX...',
+  '...X.XXXX.X...',
+  '...X.XXXX.X...',
+  '...X.XXXX.X...',
+  '...X.XXXX.X...',
+  '...X.XXXX.X...',
+  '.....XXXX.....',
+  '.....XXXX.....',
+  '.....XXXX.....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '....XXX.XXX...',
 ];
 
-// Contact: right leg planted far forward, left trailing, arms counter-swung.
+// The idle sway: the head drifts a pixel, one arm floats out — a breath.
+const PERSON_SWAY = [
+  '......XXXXX...',
+  '....XXXXXXXX..',
+  '...XXXXXXXXX..',
+  '....XXXXXXXX..',
+  '.....XXXXXXX..',
+  '.....XXXXXX...',
+  '......XXXX....',
+  '......XX......',
+  '....XXXXXX....',
+  '...XXXXXXXX...',
+  '...X.XXXX.X...',
+  '...X.XXXX.X...',
+  '...X.XXXX..X..',
+  '...X.XXXX..X..',
+  '...X.XXXX..X..',
+  '.....XXXX.....',
+  '.....XXXX.....',
+  '.....XXXX.....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '.....XX.XX....',
+  '....XXX.XXX...',
+];
+
+// Contact: the wide beat — both feet planted far apart, arms counter-swung
+// long, the hair streaming back, the whole figure sunk one row.
 const PERSON_CONTACT_A = [
-  '......XXXX......',
-  '.....XXXXXX.....',
-  '.....XXXXXX.....',
-  '.....XXXXXX.....',
-  '......XXXX......',
-  '......XXXX......',
-  '....XXXXXXXX....',
-  '...XXXXXXXXXX...',
-  '..XXXXXXXXXXXX..',
-  '..XXXXXXXXXXX.X.',
-  '.X.XXXXXXXXXX.XX',
-  '.X.XXXXXXXXXX..X',
-  'XX.XXXXXXXXXX...',
-  '...XXXXXXXXXX...',
-  '...XXXXXXXXXX...',
-  '...XXXXXXXXXX...',
-  '....XXXXXXXX....',
-  '....XXXXXXXX....',
-  '....XXX..XXX....',
-  '...XXX....XXX...',
-  '..XXX......XXX..',
-  '..XXX......XXX..',
-  '.XXX........XXX.',
-  '.XXX........XXX.',
-  'XXX..........XXX',
-  'XXX..........XXX',
-  'XXX..........XXX',
+  '..............',
+  '.....XXXXX....',
+  '..XXXXXXXXX...',
+  '.XXXXXXXXXX...',
+  '....XXXXXXX...',
+  '.....XXXXXX...',
+  '.....XXXXX....',
+  '......XXX.....',
+  '.......XX.....',
+  '.....XXXXXX...',
+  '....XXXXXXXX..',
+  '...X..XXXX.X..',
+  '..X...XXXX..X.',
+  '..X...XXXX..X.',
+  '...X..XXXX..X.',
+  '......XXXX....',
+  '......XXXX....',
+  '......XXXX....',
+  '.....XXX.XX...',
+  '....XXX..XXX..',
+  '....XX....XX..',
+  '...XXX....XXX.',
+  '...XX......XX.',
+  '..XXX......XXX',
+  '..XX........XX',
+  '.XXX........XX',
+  '.XX.........XX',
+  '.XX.........XX',
+  'XXX.........XX',
+  'XX..........XX',
+  'XX..........XX',
+  'XXX........XXX',
 ];
 
-// Down: the body drops as the legs pull back under it.
+// Down: the deep beat of the bounce — the body drops two more rows and the
+// legs recoil under it. This frame is what makes the walk springy.
 const PERSON_DOWN_A = [
-  '................',
-  '......XXXX......',
-  '.....XXXXXX.....',
-  '.....XXXXXX.....',
-  '.....XXXXXX.....',
-  '......XXXX......',
-  '......XXXX......',
-  '....XXXXXXXX....',
-  '...XXXXXXXXXX...',
-  '..XXXXXXXXXXXX..',
-  '..XXXXXXXXXXX.X.',
-  '..XXXXXXXXXXX.XX',
-  '..XXXXXXXXXXXX..',
-  '..XXXXXXXXXXXX..',
-  '...XXXXXXXXXX...',
-  '...XXXXXXXXXX...',
-  '....XXXXXXXX....',
-  '....XXXXXXXX....',
-  '....XXX..XXX....',
-  '...XXX...XXX....',
-  '...XXX....XXX...',
-  '..XXX.....XXX...',
-  '..XXX.....XXXX..',
-  '..XXX......XXX..',
-  '..XXX......XXX..',
-  '..XXX......XXX..',
-  '..XXX......XXX..',
+  '..............',
+  '..............',
+  '..............',
+  '.....XXXXX....',
+  '...XXXXXXXX...',
+  '..XXXXXXXXX...',
+  '...XXXXXXXX...',
+  '....XXXXXXX...',
+  '.....XXXXX....',
+  '......XXX.....',
+  '.......XX.....',
+  '.....XXXXXX...',
+  '....XXXXXXXX..',
+  '....X.XXXX.X..',
+  '....X.XXXX.X..',
+  '....X.XXXX.X..',
+  '......XXXX....',
+  '......XXXX....',
+  '......XXXX....',
+  '.....XXX.XX...',
+  '.....XX..XX...',
+  '....XXX..XXX..',
+  '....XX....XX..',
+  '....XX....XX..',
+  '...XXX....XX..',
+  '...XX.....XXX.',
+  '...XX......XX.',
+  '...XX......XX.',
+  '...XX......XX.',
+  '...XX......XX.',
+  '..XXX......XX.',
+  '..XXX.....XXX.',
 ];
 
-// Pass: tall again, planted leg under the body, trailing knee lifted.
+// Pass: the tall beat — planted leg straight under the hips, the trailing
+// foot flicked up behind, the figure at full stretch.
 const PERSON_PASS_A = [
-  '......XXXX......',
-  '.....XXXXXX.....',
-  '.....XXXXXX.....',
-  '.....XXXXXX.....',
-  '......XXXX......',
-  '......XXXX......',
-  '....XXXXXXXX....',
-  '...XXXXXXXXXX...',
-  '..XXXXXXXXXXXX..',
-  '..XXXXXXXXXXXX..',
-  '..XXXXXXXXXXXX..',
-  '..XXXXXXXXXXXX..',
-  '..XXXXXXXXXXXX..',
-  '..XXXXXXXXXXXX..',
-  '...XXXXXXXXXX...',
-  '...XXXXXXXXXX...',
-  '....XXXXXXXX....',
-  '....XXXXXXXX....',
-  '....XXXXXXXX....',
-  '...XXXX..XXX....',
-  '..XXX....XXX....',
-  '.....X...XXX....',
-  '.........XXX....',
-  '.........XXX....',
-  '.........XXX....',
-  '.........XXX....',
-  '........XXXX....',
+  '.....XXXXX....',
+  '...XXXXXXXX...',
+  '..XXXXXXXXX...',
+  '...XXXXXXXX...',
+  '....XXXXXXX...',
+  '....XXXXXX....',
+  '.....XXXX.....',
+  '......XX......',
+  '....XXXXXX....',
+  '...XXXXXXXX...',
+  '...X.XXXX.X...',
+  '...X.XXXX.X...',
+  '...X.XXXX.X...',
+  '...X.XXXX.X...',
+  '.....XXXX.....',
+  '.....XXXX.....',
+  '.....XXXX.....',
+  '.....XXXX.....',
+  '....XXX.XX....',
+  '....XX..XX....',
+  '...XXX..XX....',
+  '...XX...XX....',
+  '..XXX...XX....',
+  '..XX....XX....',
+  '........XX....',
+  '........XX....',
+  '........XX....',
+  '........XX....',
+  '........XX....',
+  '........XX....',
+  '........XX....',
+  '.......XXXX...',
 ];
+
+// Where each frame's un-mirrored zone ends (hair + head + neck rows): the
+// body below mirrors for the B half-cycle, the hair above does not.
+const HAIR_END = { contact: 9, down: 11, pass: 8 };
 
 export const PERSON_FRAMES = {
   stand: PERSON_STAND,
+  sway: PERSON_SWAY,
   contactA: PERSON_CONTACT_A,
   downA: PERSON_DOWN_A,
   passA: PERSON_PASS_A,
-  contactB: mirror(PERSON_CONTACT_A),
-  downB: mirror(PERSON_DOWN_A),
-  passB: mirror(PERSON_PASS_A),
+  contactB: mirrorBody(PERSON_CONTACT_A, HAIR_END.contact),
+  downB: mirrorBody(PERSON_DOWN_A, HAIR_END.down),
+  passB: mirrorBody(PERSON_PASS_A, HAIR_END.pass),
 };
 
 export const DOG_FRAMES = {
@@ -204,6 +275,63 @@ export const DOG_FRAMES = {
   ],
 };
 
+// Cerberus (v0.17): what the dog is in heaven — the same good boy, three
+// heads fanned toward you, beckoning back across the Styx. 24x15, trot
+// cadence borrowed from the dog.
+export const CERBERUS_FRAMES = {
+  stand: [
+    '..............XX...XX...',
+    '.....X.......XXXX.XXXX..',
+    '.....XX......XXXXX.XXXXX',
+    '......XX.....XXXXXXXXXXX',
+    '.......X..XX.XXXXXXXXXX.',
+    '.......XXXXX.XXXXXXXXXXX',
+    '.......XXXXXXXXXXXXXXXX.',
+    '.......XXXXXXXXXXXXXX...',
+    '.......XXXXXXXXXXXXX....',
+    '.......XXXXXXXXXXXX.....',
+    '.......XXXXXXXXXXX......',
+    '.......XXX.....XXX......',
+    '.......XXX.....XXX......',
+    '.......XXX.....XXX......',
+    '.......XXX.....XXX......',
+  ],
+  walkA: [
+    '..............XX...XX...',
+    '.....X.......XXXX.XXXX..',
+    '.....XX......XXXXX.XXXXX',
+    '......XX.....XXXXXXXXXXX',
+    '.......X..XX.XXXXXXXXXX.',
+    '.......XXXXX.XXXXXXXXXXX',
+    '.......XXXXXXXXXXXXXXXX.',
+    '.......XXXXXXXXXXXXXX...',
+    '.......XXXXXXXXXXXXX....',
+    '......XXXXXXXXXXXXX.....',
+    '......XXXXXXXXXXXX......',
+    '......XXX.......XXX.....',
+    '.....XXX.........XXX....',
+    '....XXX...........XXX...',
+    '....XX.............XXX..',
+  ],
+  walkB: [
+    '..............XX...XX...',
+    '.....X.......XXXX.XXXX..',
+    '.....XX......XXXXX.XXXXX',
+    '......XX.....XXXXXXXXXXX',
+    '.......X..XX.XXXXXXXXXX.',
+    '.......XXXXX.XXXXXXXXXXX',
+    '.......XXXXXXXXXXXXXXXX.',
+    '.......XXXXXXXXXXXXXX...',
+    '.......XXXXXXXXXXXXX....',
+    '.......XXXXXXXXXXXX.....',
+    '.......XXXXXXXXXXX......',
+    '........XXX...XXX.......',
+    '........XXX...XXX.......',
+    '.........XX...XX........',
+    '.........XX...XX........',
+  ],
+};
+
 /**
  * The 16-bit shading pass. The moon sits high and to the right, so:
  * right and top edges take moonlight, the body interior takes moonshadow,
@@ -230,11 +358,10 @@ export function shadeFrames(map) {
   );
 }
 
-for (const key of Object.keys(PERSON_FRAMES)) {
-  PERSON_FRAMES[key] = shadeFrames(PERSON_FRAMES[key].map((row) => row.replaceAll('X', 'W')));
-}
-for (const key of Object.keys(DOG_FRAMES)) {
-  DOG_FRAMES[key] = shadeFrames(DOG_FRAMES[key].map((row) => row.replaceAll('X', 'W')));
+for (const frames of [PERSON_FRAMES, DOG_FRAMES, CERBERUS_FRAMES]) {
+  for (const key of Object.keys(frames)) {
+    frames[key] = shadeFrames(frames[key].map((row) => row.replaceAll('X', 'W')));
+  }
 }
 
 export const BALL_SPRITE = [
@@ -260,9 +387,20 @@ export const HEART_SPRITE = [
 // chunky instead of fluttering.
 export const WALK_CYCLE_FPS = 7.5;
 
-/** Walk cycle: pick a frame set's frame from an animation clock. */
-export function walkFrame(frames, walking, animTime) {
-  if (!walking) return frames.stand;
+// The idle sway alternates at this rate — a slow breath, not a march.
+export const IDLE_SWAY_HZ = 1.25;
+
+/**
+ * Walk cycle: pick a frame set's frame from an animation clock. Standing
+ * still is its own two-frame sway (when the set has one): pass idleTime —
+ * a clock that keeps running while the character is planted, e.g. game
+ * time — so the sway breathes even though animTime is frozen.
+ */
+export function walkFrame(frames, walking, animTime, idleTime = 0) {
+  if (!walking) {
+    if (frames.sway && Math.floor(idleTime * IDLE_SWAY_HZ) % 2 === 1) return frames.sway;
+    return frames.stand;
+  }
   const seq = frames.contactA
     ? [frames.contactA, frames.downA, frames.passA, frames.contactB, frames.downB, frames.passB]
     : [frames.walkA, frames.walkB];

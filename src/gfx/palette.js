@@ -85,3 +85,82 @@ export const SPARKLE_TINTS = [PALETTE.moonlight, PALETTE.violet, PALETTE.gold];
 
 // The dotted leash cycles through these as its dots march.
 export const LEASH_COLORS = [PALETTE.magenta, PALETTE.violet, PALETTE.orchid];
+
+// --- HEAVEN (v0.17) ---------------------------------------------------------
+//
+// The higher level behind the television glass: the same world, inverted into
+// warm light. Every night color has a heaven counterpart under the SAME key,
+// and the renderer remaps colors at draw time — so heaven costs the art
+// modules nothing. Design rules of the inversion:
+//
+//   - the void becomes warm cream: the world is bright now, not dark
+//   - MOON inverts to ink-rosewood: figures are dark strokes on the light,
+//     the way the night drew them light on the dark
+//   - GOLD stays gold (only warmer) — the one constant across both planes
+//   - the plum/violet canopies turn dusty rose and blush pink
+//   - water goes pale silver: the Styx is the coldest thing in heaven
+//   - umbra lands DARKER than the ground, so shadows still ground things
+export const HEAVEN = {
+  // NIGHT → warm cream
+  void: '#f6e8da',
+  night: '#f2e1d0',
+  umbra: '#e3cbb9', // the shadow tone: darker than the ground it falls on
+  fog: '#f3e2d1', // panel fill: a lighter cream so chrome still lifts
+  dusk: '#ecd5c5',
+
+  // DIRT → sun-warmed sand, a whisper above the cream
+  soil: '#f0dfc7',
+  dirt: '#ecd7ba',
+  clay: '#e3c6a1',
+  loam: '#d6b183',
+
+  // NATURE → golden grass
+  pine: '#e7d5ae',
+  moss: '#ecdcb8',
+  fern: '#f1e3c2',
+  leaf: '#c9a84c',
+
+  // PLUM → dusty rose, blush
+  plumDeep: '#d69a86',
+  plum: '#eba9a2',
+  purple: '#f5b3b8',
+  violet: '#fbc9cd',
+  orchid: '#ffdfe0',
+
+  // ROSE — still hot; embers stay embers
+  magenta: '#e26a95',
+  pink: '#f27ba6',
+  hotRose: '#ff9cc0',
+
+  // GOLD — warmer than ever; heaven runs on it
+  amber: '#c08a3e',
+  brass: '#d9a83f',
+  gold: '#f2c14e',
+  goldRose: '#ffe2a0',
+
+  // MOON → ink: figures and words are dark up here
+  moonlight: '#432437',
+  moonshadow: '#7a4a55',
+  smoke: '#b0877b',
+  smokeDeep: '#a1746b',
+
+  // WATER → the pale silver Styx
+  waterDeep: '#cfd9e8',
+  waterEdge: '#e0e6ef',
+  blue: '#93a6d9',
+
+  // Interiors
+  parquet: '#eadbc8',
+};
+
+// The draw-time remap: night hex → heaven hex. Unknown colors pass through.
+const NIGHT_TO_HEAVEN = new Map(Object.keys(PALETTE).map((k) => [PALETTE[k], HEAVEN[k]]));
+
+/** The heaven counterpart of a night color (identity for unmapped colors). */
+export function heavenColor(c) {
+  return NIGHT_TO_HEAVEN.get(c) ?? c;
+}
+
+// Sparkles get their own heaven tints rather than the remap: moonlight maps
+// to ink up there, and heaven's motes should be gold dust, not soot.
+export const HEAVEN_SPARKLES = [HEAVEN.gold, HEAVEN.hotRose, HEAVEN.goldRose];
