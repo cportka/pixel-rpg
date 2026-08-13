@@ -12,3 +12,25 @@
 
 export const SCREEN_W = 624;
 export const SCREEN_H = 540;
+
+// Below this coverage, crisp-but-small loses to filling the screen: if the
+// integer scale would use less than 85% of what the window could hold, take
+// the fractional scale instead. Phones (raw ~1.9 → floored to a postage
+// stamp) and maximized desktops (raw ~2.7 → stuck at 2x with huge borders)
+// are exactly the cases this rescues; a window that already sits near an
+// integer keeps perfectly uniform pixels.
+export const FIT_COVERAGE = 0.85;
+
+/**
+ * The upscale factor for a window of availW x availH device pixels (v0.18).
+ * Integer when an integer covers enough of the window (uniform game pixels),
+ * fractional when flooring would waste real estate, and always fractional
+ * below 1x so tiny embeds shrink instead of cropping.
+ */
+export function fitScale(availW, availH, screenW = SCREEN_W, screenH = SCREEN_H) {
+  const raw = Math.min(availW / screenW, availH / screenH);
+  if (raw <= 0) return 0.01; // a zero-sized window measures mid-layout; keep sane
+  if (raw < 1) return raw;
+  const whole = Math.floor(raw);
+  return whole / raw >= FIT_COVERAGE ? whole : raw;
+}

@@ -9,7 +9,7 @@ import {
   DUMPSTER_SPRITE, DUMPSTER_COLORS, CAT_SPRITE, PSYCHE_CYCLE, firePixels, catRowColor,
   LAMP_SPRITE, LAMP_COLORS, PIPE_SPRITE, PIPE_COLORS, lampGlintPixels, pipeSmokePixels,
 } from '../src/gfx/encounters.js';
-import { targetMarkerPixels } from '../src/gfx/effects.js';
+import { targetMarkerPixels, MARKER_NEON } from '../src/gfx/effects.js';
 import { PALETTE } from '../src/gfx/palette.js';
 
 const STEP = 1 / 60;
@@ -72,19 +72,34 @@ test('the cat shimmers through the psychedelic cycle', () => {
   assert.notEqual(catRowColor(0, 0), catRowColor(1, 0), 'rows band differently');
 });
 
-test('the move marker pulses three converging arrowheads', () => {
-  assert.deepEqual(targetMarkerPixels(0.2), targetMarkerPixels(0.2));
+test('the move marker is a neon ring collapsing onto the target', () => {
+  assert.deepEqual(targetMarkerPixels(0.2), targetMarkerPixels(0.2), 'deterministic');
   assert.notDeepEqual(targetMarkerPixels(0), targetMarkerPixels(0.31), 'it pulses');
-  const pts = targetMarkerPixels(0);
-  assert.equal(pts.length, 12, '3 arrowheads x 4 pixels');
-  assert.equal(pts.filter((p) => p.apex).length, 3);
-  assert.ok(pts.some((p) => p.y < 0), 'one arrow above');
-  assert.ok(pts.some((p) => p.x < 0 && p.y > 0), 'one lower-left');
-  assert.ok(pts.some((p) => p.x > 0 && p.y > 0), 'one lower-right');
-  for (const p of pts) {
-    const apexDist = Math.hypot(p.x, p.y);
-    assert.ok(apexDist <= 10, 'marker stays tight around the target');
+  const early = targetMarkerPixels(0.01); // ring freshly snapped out
+  const late = targetMarkerPixels(0.55); // most of the way collapsed
+  const spread = (pts) => Math.max(...pts.map((p) => Math.abs(p.x)));
+  assert.ok(spread(early) > spread(late), 'the ring contracts toward the tap');
+  for (const t of [0.05, 0.2, 0.4]) {
+    const pts = targetMarkerPixels(t);
+    const neon = new Set([...MARKER_NEON.ring, MARKER_NEON.trail, MARKER_NEON.core, MARKER_NEON.ping]);
+    for (const p of pts) {
+      assert.ok(neon.has(p.c), `every pixel is neon (got ${p.c})`);
+      assert.ok(Math.abs(p.x) <= 14 && Math.abs(p.y) <= 10, 'stays tight around the target');
+    }
+    assert.ok(
+      Math.max(...pts.map((p) => Math.abs(p.y))) < Math.max(...pts.map((p) => Math.abs(p.x))),
+      'squashed into a ground ellipse, not a floating circle',
+    );
+    assert.ok(pts.some((p) => p.x === 0 && p.y === 0), 'a hot core at the tap point');
+    assert.ok(pts.some((p) => p.c === MARKER_NEON.trail), 'the magenta ghost trails it');
+    for (const c of MARKER_NEON.ring) {
+      assert.ok(pts.some((p) => p.c === c), 'both rim neons present');
+    }
   }
+  assert.ok(
+    targetMarkerPixels(0.05).some((p) => p.c === MARKER_NEON.ping),
+    'a moonlit ping greets each fresh ring',
+  );
 });
 
 // --- World generation -------------------------------------------------------

@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.18.0] - 2026-08-13
+
+### Changed
+- **The forced-landscape lock is gone.** Portrait phones no longer get a
+  rotated canvas and an orientation-lock request; the game simply fills
+  whatever orientation the device is in, and pointer input is plain
+  again (no axis remap).
+- **Scaling fits every screen, including maximized windows.** The old
+  policy floored the upscale to an integer, which drew a postage stamp
+  on portrait phones (raw ~1.9x floored to 1x) and left a maximized
+  1440p desktop stuck at 2x with huge borders (raw ~2.67x). The new
+  `fitScale()` keeps integer scales when they fill at least 85% of the
+  window (uniform pixels win when they can) and goes fractional when
+  flooring would waste the screen. The fit also re-runs on every way the
+  space can change — resize, fullscreen, device rotation, the mobile URL
+  bar (via visualViewport), and monitor/DPI moves — and the page sizes
+  itself in dvh with viewport-fit=cover for notched phones.
+- **The tap-to-move marker went neon.** The three grey-violet arrowheads
+  are replaced by a neon ring on the ground: a perspective-squashed
+  ellipse collapsing onto the tap point, electric blue and violet
+  shimmering around the rim, a sparse magenta ghost ring trailing a step
+  behind, and a hot-rose core that flashes a moonlit ping each time the
+  ring snaps back out. (Through the heaven remap it lands periwinkle and
+  blush — still the loudest thing on the cream.)
+
 ## [0.17.0] - 2026-08-13
 
 ### Added
