@@ -7,7 +7,7 @@ things dancing where the woods grow deep. Somewhere out there
 waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
 eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.17.0
+**Version:** 0.18.0
 
 ## Play
 
@@ -48,8 +48,10 @@ weight (STR×10 + CON×20 lbs), an icon-based inventory whose icons open
 little explanation windows, a meaty bone that doubles as a club, ten-minute
 pipe inebriation, spells and focus, turn-based fights, and
 collapse-and-rescue — lives in `docs/RULES.md`. The viewport is 624×540
-world pixels (2× upscale = 1248×1080), and on portrait phones the game
-locks itself horizontal.
+world pixels, upscaled to fit whatever window it finds itself in — an
+integer multiple when that fills the screen (uniform crisp pixels), a
+fractional fit when flooring would waste it (phones, maximized windows).
+Portrait and landscape both just work; nothing rotates or locks.
 
 **The world has two gears.** Wander freely until something hostile gets
 within 120px: the screen locks into a rose-gold frame with corner

@@ -571,12 +571,12 @@ export class Renderer {
       for (const p of pts) ctx.fillRect(x + p.x, y + p.y, 1, 1);
     }
 
-    // Tap-to-move marker: three arrowheads pulsing in toward the target.
+    // Tap-to-move marker: a neon ring collapsing onto the target.
     if (game.moveTarget) {
       const mx = Math.round(game.moveTarget.x - viewX);
       const my = Math.round(game.moveTarget.y - viewY);
       for (const p of targetMarkerPixels(game.time)) {
-        ctx.fillStyle = p.apex ? PALETTE.moonlight : LEASH_COLORS[p.tri % LEASH_COLORS.length];
+        ctx.fillStyle = p.c;
         ctx.fillRect(mx + p.x, my + p.y, 1, 1);
       }
     }

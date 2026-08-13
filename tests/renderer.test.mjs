@@ -8,6 +8,7 @@ import {
 import { WALK_CYCLE_FPS } from '../src/gfx/sprites.js';
 import { wrapText } from '../src/gfx/font.js';
 import { Game } from '../src/core/game.js';
+import { fitScale } from '../src/core/screen.js';
 
 function fakeCanvas(w = SCREEN_W, h = SCREEN_H) {
   const ctx = {
@@ -352,4 +353,28 @@ test('ground noise is smooth: neighbours differ by a little, not a lot', () => {
   const vals = [];
   for (let i = 0; i < 4000; i++) vals.push(groundNoise(9, i % 200, (i / 200) | 0, 9));
   assert.ok(Math.min(...vals) < 0.2 && Math.max(...vals) > 0.8, 'full range');
+});
+
+// --- The fit policy (v0.18) -------------------------------------------------
+
+test('fitScale: integers when they fill enough, fractional when they would not', () => {
+  // A window sitting right on an integer keeps uniform pixels.
+  assert.equal(fitScale(SCREEN_W * 2, SCREEN_H * 2), 2, 'exact 2x stays 2x');
+  assert.equal(fitScale(SCREEN_W * 2 + 40, SCREEN_H * 2 + 40), 2, 'a little slack still floors');
+  // A maximized 1440p desktop: raw ~2.67 — flooring to 2 wastes a quarter of
+  // the screen, so the scale goes fractional and fills it.
+  const maximized = fitScale(2560, 1440);
+  assert.ok(Math.abs(maximized - 1440 / SCREEN_H) < 1e-9, `2560x1440 fills (${maximized})`);
+  // A portrait phone (390x844 css at dpr 3): raw ~1.87 — the old floor-to-1
+  // drew a postage stamp; now it fills the width.
+  const phone = fitScale(390 * 3, 844 * 3);
+  assert.ok(Math.abs(phone - (390 * 3) / SCREEN_W) < 1e-9, `portrait fills (${phone})`);
+  assert.ok(phone > 1.8, 'nearly double the old size');
+  // Landscape phone: raw ~2.17 — close enough to 2x to keep crisp pixels.
+  assert.equal(fitScale(844 * 3, 390 * 3), 2, 'landscape keeps uniform pixels');
+  // Tiny embeds shrink fractionally instead of cropping.
+  const tiny = fitScale(320, 280);
+  assert.ok(tiny < 1 && tiny > 0.4, `sub-1x shrinks (${tiny})`);
+  // Degenerate mid-layout measurements stay sane.
+  assert.ok(fitScale(0, 0) > 0);
 });

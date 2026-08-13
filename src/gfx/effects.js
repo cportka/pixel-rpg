@@ -76,33 +76,54 @@ export function starSize(sparkle) {
 // Symmetric rounding (Math.round biases toward +Infinity for -.5).
 const sround = (v) => (v < 0 ? -Math.round(-v) : Math.round(v));
 
+// The marker's neon set: electric blue and violet trade places around the
+// ring, a magenta ghost trails it, and the core burns hot rose under a
+// moonlit ping. (Through the heaven remap these land periwinkle and blush —
+// still the loudest thing on the cream.)
+export const MARKER_NEON = {
+  ring: [PALETTE.blue, PALETTE.violet],
+  trail: PALETTE.magenta,
+  core: PALETTE.hotRose,
+  ping: PALETTE.moonlight,
+};
+
 /**
- * The tap-to-move destination marker: three small arrowheads spaced 120°
- * apart, apexes pointing at the target, marching inward on a loop — a pixel
- * take on the BG3 pulse. Returns [{x, y, tri, apex}] offsets from the
- * target; tri (0..2) picks a color, apex marks each arrowhead's tip.
+ * The tap-to-move destination marker (v0.18): a neon ring on the ground.
+ * A ground-perspective ellipse collapses onto the tap point — blue and
+ * violet shimmering around the rim, a sparse magenta ghost ring trailing a
+ * step behind — over a hot-rose core that flashes a moonlit ping each time
+ * the ring snaps back out. Deterministic per time; returns [{x, y, c}]
+ * offsets from the target.
  */
 export function targetMarkerPixels(time) {
-  const r = 7 - Math.floor((time * 10) % 5); // 7 → 3, then snaps out again
-  const dirs = [
-    [0, -1],
-    [-0.866, 0.5],
-    [0.866, 0.5],
-  ];
+  const phase = (time * 1.6) % 1; // one collapse ~0.6s
+  const shimmer = Math.floor(time * 12); // the rim's two neons trade places
+  const rx = sround(10 - phase * 7); // 10 → 3, then snaps out again
+  const ry = Math.max(2, sround(rx * 0.55)); // squashed: it lies on the ground
+  const seen = new Set();
   const out = [];
-  dirs.forEach(([dx, dy], tri) => {
-    const ax = sround(dx * r);
-    const ay = sround(dy * r);
-    const bx = sround(dx * (r + 2));
-    const by = sround(dy * (r + 2));
-    const px = sround(-dy);
-    const py = sround(dx);
-    out.push(
-      { x: ax, y: ay, tri, apex: true },
-      { x: bx, y: by, tri, apex: false },
-      { x: bx + px, y: by + py, tri, apex: false },
-      { x: bx - px, y: by - py, tri, apex: false },
-    );
-  });
+  const put = (x, y, c) => {
+    const key = `${x},${y}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ x, y, c });
+  };
+  for (let i = 0; i < 16; i++) {
+    const a = (i * Math.PI) / 8;
+    put(sround(Math.cos(a) * rx), sround(Math.sin(a) * ry), MARKER_NEON.ring[(i + shimmer) % 2]);
+  }
+  // The ghost ring: every other point, one step out, already fading.
+  for (let i = 0; i < 16; i += 2) {
+    const a = (i * Math.PI) / 8;
+    put(sround(Math.cos(a) * (rx + 3)), sround(Math.sin(a) * (ry + 2)), MARKER_NEON.trail);
+  }
+  // The core, and the ping that greets each fresh ring.
+  put(0, 0, MARKER_NEON.core);
+  if (phase < 0.3) {
+    put(1, 0, MARKER_NEON.ping);
+    put(-1, 0, MARKER_NEON.ping);
+    put(0, 1, MARKER_NEON.ping);
+    put(0, -1, MARKER_NEON.ping);
+  }
   return out;
 }
