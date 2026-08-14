@@ -97,35 +97,53 @@ The half-burnt green leaf **never costs you a hit point**. It is a teacher,
 not a wound. Smoking it is one WIS check:
 
 - **15 or better** — a vision. It teaches you the next spell in the book,
-  fills your focus pool, and leaves the colors leaned in for ten minutes.
+  rests your slots, and leaves the colors leaned in for ten minutes.
 - **7 or worse** — `THE SMOKE GOES NOWHERE`. No vision, no damage, and the
   bowl is spent anyway.
 - **Anything between** — probably oak leaf.
 
 One bowl per pipe, so each one you find is one chance at one spell.
 
-## Spells and focus
+## Spells, levels, and slots
 
-**Focus** is your spell pool: **3 + WIS modifier**, never below 1. Casting
-spends it; standing under the open sky puts a point back every **20
-seconds**. Both show on the character sheet (and in the HUD while a fight
-is on) once you know a spell.
+Spells come in **levels** (v0.21), and casting one spends a **slot** of
+that level. Slots do not trickle back — only a **rest** returns them: a
+bed, the cabin's warm stove, the cathedral's ragas, prayer at the altar,
+a singer's melody, or sitting with God. Your mind sets the shelves:
 
-The book, in the order the leaf teaches it:
-
-| Spell | Focus | Effect |
+| Slot level | How many | Fed by |
 | --- | --- | --- |
-| **EMBER** | 1 | A rose-gold flame: **3 damage** to the nearest hostile. |
-| **WARD** | 1 | The next bite finds nothing. |
-| **MOONLIGHT** | 2 | Drink the moon: **+3 HP**. |
+| **1** | `2 + INT mod` (never below 1) | Intelligence |
+| **2** | `1 + WIS mod` (never below 0) | Wisdom |
+| **3** | `CHA mod` (never below 0) | Charisma |
 
-Casting with an empty pool scatters the words — and in a fight it still
-costs you the turn. Spells are cast from the SPELLS icon on the inventory
-screen, or as your action in a turn-based fight.
+The island shrine's calm adds **one level-1 slot, always**. JUST BREATHE
+(spell menu) recovers one level-1 slot — once per rest. An empty shelf can
+borrow: a **bigger slot burns for a smaller spell**. Casting with nothing
+left scatters the words — and in a fight it still costs you the turn.
+
+The book, in the order the leaf teaches it — plus Queebee's scroll-spells,
+which the leaf never teaches:
+
+| Spell | Level | Source | Effect |
+| --- | --- | --- | --- |
+| **EMBER** | 1 | the leaf | A rose-gold flame: **3 damage**. |
+| **WARD** | 1 | the leaf | The next bite finds nothing. |
+| **MOONLIGHT** | 2 | the leaf | Drink the moon: **+3 HP**. |
+| **BOLT** | 1 | scroll | A violet dart: **2 + INT mod damage**. |
+| **MEND** | 1 | scroll | Small stitches of light: **+2 HP**. |
+| **SHIELD** | 2 | scroll | A ward that takes **two** bites. |
+| **STARFALL** | 3 | scroll | **4 damage to every foe in reach**. |
+
+**Scrolls** (Queebee's shop, Queue Town) can be **CAST once, free** — no
+slot, and the scroll burns — or **INSCRIBED**: spend a blank page (1c) or
+use the blank book (8c, pages forever) plus the scroll, and the spell
+joins your list permanently. Both live under the SCROLLS icon.
 
 Because the pipe's ten minutes lend you **+2 WIS**, the vision that teaches
-you a spell also *widens* your pool while it lasts, and fills it. When the
-world settles back down it takes the borrowed points back with it.
+you a spell also *widens* the level-2 shelf while it lasts (a vision is a
+rest, so it fills everything too). Sobering up takes the borrowed slots
+back.
 
 ## Inebriation
 
@@ -135,8 +153,8 @@ Rolling 15+ on the pipe grants a vision and **10:00 of drunkenness**
 - Colors lean closer — the stars glow, the screen breathes.
 - Sounds play louder.
 - **WIS checks get +2** — wisdom flows easier, oddly.
-- **Your focus pool grows with it** (it is `3 + WIS`), and shrinks back
-  when you sober up.
+- **Your level-2 slot shelf grows with it** (it is `1 + WIS mod`), and
+  shrinks back when you sober up.
 
 When it runs out: `THE WORLD SETTLES BACK DOWN`.
 
@@ -188,7 +206,9 @@ Your action menu in a fight:
 - **OFFER DIRECTIONS** — minotaur only. WIS vs DC 13: you cannot lead him
   out of the maze, but you can point him somewhere kinder. If it lands the
   fight **ends** — full XP, no blood, the kindest resolution the game has.
-- **CAST A SPELL** — if you know one and have the focus.
+- **CAST A SPELL** — if you know one and a slot remains.
+- **SWING THE SWORD** (in reach, if bought) — STR vs DC 9, fists +3.
+- **FLICK THE WAND** (in reach, if bought) — **INT** vs DC 10, 2 + INT mod.
 - **HOLD YOUR GROUND** — spend the turn doing nothing. Sometimes correct.
 
 You can also start a swing from the inventory screen if a foe is in reach.
@@ -256,7 +276,7 @@ without it is **0.45×**. She floats. Somehow, she floats.
 
 - **GOOD DOG** — every completed game of fetch: +1 HP.
 - **The meaty bone** — gnaw the meat off the dumpster bone: +2 HP, once.
-- **MOONLIGHT** — 2 focus, +3 HP, as often as the pool allows.
+- **MOONLIGHT** — level 2, +3 HP, one slot at a time.
 - **Heal draught** — 3 coins at Pirts': +3 HP in a bottle. Tastes like
   starlight and cough syrup.
 - **Light a candle** — 1 coin at the cathedral altar: +1 HP.
@@ -314,7 +334,7 @@ up there:
 - **God is a cricket** by a lake in a redwood grove, occasionally menaced
   by frogs on lilypads. Finding God is **+3 XP**. You can ASK THE BIG
   QUESTION (chirp; somehow that covers it), CONFESS (you are not forgiven —
-  you are something better, heard), **SIT WITH GOD A WHILE** (your focus
+  you are something better, heard), **SIT WITH GOD A WHILE** (a full rest — every slot
   returns, all of it), SHOO THE FROGS (**+1 XP**, once; God did not need
   the help and appreciates it anyway), or LEAVE QUIETLY.
 - **The zombies are angels.** Nothing *native* is hostile; turn-based mode
@@ -325,17 +345,17 @@ up there:
   this life, he is heaven's one fight (see The foes). WIS gets you past him
   kindest.
 - **The island shrine.** Swim or sail to the island and its shrine takes
-  offerings: **1 coin** buys **THE ISLANDER'S CALM — +2 max focus,
+  offerings: **1 coin** buys **THE ISLANDER'S CALM — one extra slot,
   always**. Once; the calm is already yours after that.
 - **The dumpsters are cathedrals of melted gold.** LISTEN TO THE RAGAS
-  restores your **focus** (all of it). ADD TO THE PILE OF GOD melts your
+  is a **rest** (every slot returns). ADD TO THE PILE OF GOD melts your
   offering in, and the spire climbs **one course higher each time** —
   the temple visibly grows.
 - **The dog is Cerberus** — three heads, all of them glad to see you —
   waiting on the far bank of the Styx, level with a bridge. His
   three-throated howl points the way. **Reaching him carries you back
   down**, and the night resumes exactly where it paused.
-- Your stats, HP, spells, focus, XP, and inventory travel with you; the
+- Your stats, HP, spells, slots, XP, and inventory travel with you; the
   night world waits unchanged. Heaven remembers you between visits.
 - Heaven has mansions too. Their televisions show the night below. Yes.
 
@@ -379,14 +399,41 @@ and every roofed place is a room now:
   **telescope**. Aim it where you like; it is already aimed **at the
   island**.
 - **The cathedral nave** (heaven) — walk into a cathedral of melted gold:
-  an **altar** (PRAY refills your focus; LIGHT A CANDLE is 1 coin, +1 HP),
+  an **altar** (PRAY is a rest; LIGHT A CANDLE is 1 coin, +1 HP),
   the **pile of god** indoors at last, and **singers** along the west wall
-  handing each other the melody forever (LISTEN refills your focus; ask
+  handing each other the melody forever (LISTEN is a rest; ask
   the melody's name — it is yours, sung slowly).
 - **The cabin's one room** — a stove with one warm coal, a cot, a lantern,
   and **an axe on the wall pegs, free to take**. Exactly the kind of thing
   a person building a boat in another world entirely might want.
 - **The bail-bonds office** — the detective, his desk, the corkboard.
+
+## Queue Town
+
+Rare in the night's **redwood** regions: the dark wizard town. Five grumpy
+wizards idle among two crooked towers — none hostile, all extensively
+unimpressed (SAY HELLO, ASK ABOUT THE TOWN, COMPLIMENT THE HAT — the hat
+preens — ASK ABOUT SPELLS). Two shops stand open:
+
+- **Cortie's** (the sword-sign): **SWORD — 15c** (STR, DC 9, fists +3) and
+  **WAND — 20c** (**INT**, DC 10, 2 + INT mod — the weapon that answers to
+  the mind).
+- **Queebee's** (the scroll-sign): **scrolls** — BOLT 4c, MEND 4c, SHIELD
+  7c, STARFALL 12c — plus **blank pages (1c)** and **the blank book (8c)**.
+  Cast a scroll once free, or inscribe it forever.
+
+## Clicking the world (v0.21)
+
+Nothing friendly interrupts you anymore. Every encounter — dumpsters,
+cats, lamps, pipes, signs, shrines, ghosts, merchants, wizards, interior
+spots, the portrait, the television — waits to be **clicked** (or answered
+with the action key, which talks to whatever is in front of you). Hovering
+an interactable makes it **glow and pulse**; clicking out of reach walks
+you over and opens it on arrival; clicking again re-opens it immediately —
+no cooldowns. The only things that still interrupt: **hostiles** (the
+world drops turn-based), the dog, and **God**, who was expecting you.
+Zombies **lock on** within 150px and shamble toward you (36 px/s), closing
+26px per round in a fight.
 
 ## Encounters
 
@@ -394,7 +441,7 @@ Walking up to an encounter opens a choice menu — arrows/tap to pick,
 Space/E or tap to confirm. **Every encounter now offers at least four
 options** (the v0.20 audit): warm your hands at the burning dumpster,
 stare back at the cat, polish the lamp on your sleeve, sniff the pipe,
-shamble alongside the zombie, JUST BREATHE in the spell menu (+1 focus —
+shamble alongside the zombie, JUST BREATHE in the spell menu (+1 slot —
 the cheapest spell, and still nobody casts it), and so on. Walking away is
 always one of the choices, and leaving re-arms the encounter unless it
 resolved for good. The psychedelic cat resolves for good no matter what

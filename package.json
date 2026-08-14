@@ -1,7 +1,7 @@
 {
   "name": "pixel-rpg",
-  "version": "0.20.0",
-  "description": "A pixelated RPG — a person and their dog wander a procedurally generated magical forest.",
+  "version": "0.21.0",
+  "description": "A pixelated RPG \u2014 a person and their dog wander a procedurally generated magical forest.",
   "type": "module",
   "scripts": {
     "test": "bash tests/run-tests.sh",

@@ -3061,8 +3061,9 @@ export class Game {
       return;
     }
     this.slots[lv] -= 1;
-    if (lv > spell.level) this.say('A BIGGER SLOT BURNS FOR A SMALLER SPELL');
     this.castSpellEffect(id);
+    // Queued after the effect's announce, or that would wipe it.
+    if (lv > spell.level) this.say('A BIGGER SLOT BURNS FOR A SMALLER SPELL');
     if (this.mode === 'turn') this.endPlayerTurn();
   }
 

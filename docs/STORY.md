@@ -170,6 +170,33 @@ it hurts.
 
 > GOOD TIP, HE SAYS. THE DEVIL ALWAYS LIKED A VIEW
 
+## Queue Town (v0.21)
+
+Deep in the redwoods, where the trees wear their ridiculous garlands of
+light, the night keeps a town that never died because it never hurried:
+QUEUE TOWN, the wizard town, named for the waiting. Wizards queue for
+everything. Power, mostly. The queue is the discipline; the grumpiness is
+the uniform. None of them will hurt you. All of them will disapprove of
+you, gently, forever — unless you compliment the hat. The hat preens. It
+is a very good hat and it knows it.
+
+Two shops stay lit. CORTIE — broad as a door, leather apron over robes,
+a whetstone that never stops — sells honest steel and crooked little
+lightning rods. A blade wants strength, he says. A wand wants brains.
+Both, ideally. QUEEBEE — tall as a shelf, spectacles like two gold
+coins, one sleeve forever ink-stained — sells rolled thunder tied in
+violet ribbon. Paper remembers what minds forget, she says. Cast a
+scroll and it burns telling you its one secret. Inscribe it — a page, or
+the blank book, and letter by burning letter — and the secret is yours
+for good. Her ledger lists every name that ever learned. Yours is not in
+it. Yet, says the handwriting.
+
+Magic itself turns out to be a kind of waiting too: the mind holds only
+so many castings between rests — the head's shelves, filled by
+intelligence, wisdom, charm — and sleep, warm stoves, ragas, prayer, and
+God refill them. The wizards knew this all along. That is what the queue
+was for.
+
 ## Epilogue (future)
 
 After home is found, the forest stays open. The pair can keep walking —
