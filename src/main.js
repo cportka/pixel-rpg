@@ -2,12 +2,42 @@
 
 import { Game } from './core/game.js';
 import { Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons, choicePanel, hudRect } from './gfx/renderer.js';
-import { fitScale } from './core/screen.js';
+import { setScreenSize, viewFor } from './core/screen.js';
 import { AudioPlayer } from './audio/engine.js';
 
 const canvas = document.getElementById('screen');
-canvas.width = SCREEN_W;
-canvas.height = SCREEN_H;
+
+// The viewport is dynamic (v0.19): no fixed aspect. viewFor() picks both
+// the upscale and the LOGICAL size for the real window, so the canvas fills
+// it edge to edge — a wide monitor sees more forest sideways, a portrait
+// phone sees more of it ahead, and nothing letterboxes. Computed in DEVICE
+// pixels so fractional devicePixelRatio still gets uniform game pixels
+// under image-rendering: pixelated. Runs BEFORE the Game is built, so the
+// lost dog can spawn outside the real opening view, whatever its size.
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  // visualViewport tracks the space the page REALLY has on mobile (URL bar
+  // sliding in and out, pinch state); innerWidth/Height is the fallback.
+  const vw = window.visualViewport?.width ?? innerWidth;
+  const vh = window.visualViewport?.height ?? innerHeight;
+  const view = viewFor(vw * dpr, vh * dpr, dpr);
+  if (canvas.width !== view.w || canvas.height !== view.h) {
+    setScreenSize(view.w, view.h);
+    canvas.width = view.w;
+    canvas.height = view.h;
+  }
+  canvas.style.width = `${(view.w * view.scale) / dpr}px`;
+  canvas.style.height = `${(view.h * view.scale) / dpr}px`;
+}
+// Every way the available space can change: window resize/maximize,
+// fullscreen toggles, device rotation, the mobile URL bar, and the window
+// moving to a monitor with a different devicePixelRatio.
+addEventListener('resize', fit);
+addEventListener('orientationchange', fit);
+document.addEventListener('fullscreenchange', fit);
+window.visualViewport?.addEventListener('resize', fit);
+matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener?.('change', fit);
+fit();
 
 const params = new URLSearchParams(location.search);
 const seed = params.has('seed') ? Number(params.get('seed')) >>> 0 : (Date.now() & 0xffffffff) >>> 0;
@@ -34,35 +64,6 @@ if (enc === 'dumpster' || enc === 'cat' || enc === 'lamp' || enc === 'pipe' || e
   game.checkEncounters();
 }
 
-// Upscale to fit the window — computed in DEVICE pixels so fractional
-// devicePixelRatio (125%/150% displays) still gets uniform game pixels under
-// image-rendering: pixelated. The scale policy lives in fitScale(): integer
-// when an integer fills enough of the window, fractional when flooring would
-// waste it (phones, maximized desktops), fractional below 1x so tiny embeds
-// shrink instead of cropping.
-//
-// v0.18 retired the forced-landscape rotation: the game now simply fills
-// whatever orientation the device is in. Portrait gets the full width;
-// nothing is rotated, locked, or remapped.
-function fit() {
-  const dpr = window.devicePixelRatio || 1;
-  // visualViewport tracks the space the page REALLY has on mobile (URL bar
-  // sliding in and out, pinch state); innerWidth/Height is the fallback.
-  const vw = window.visualViewport?.width ?? innerWidth;
-  const vh = window.visualViewport?.height ?? innerHeight;
-  const scale = fitScale(vw * dpr, vh * dpr);
-  canvas.style.width = `${(SCREEN_W * scale) / dpr}px`;
-  canvas.style.height = `${(SCREEN_H * scale) / dpr}px`;
-}
-// Every way the available space can change: window resize/maximize,
-// fullscreen toggles, device rotation, the mobile URL bar, and the window
-// moving to a monitor with a different devicePixelRatio.
-addEventListener('resize', fit);
-addEventListener('orientationchange', fit);
-document.addEventListener('fullscreenchange', fit);
-window.visualViewport?.addEventListener('resize', fit);
-matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener?.('change', fit);
-fit();
 
 // 8-bit sound: the context wakes on the first input (browser autoplay
 // rules); M toggles mute, ?mute=1 starts muted.

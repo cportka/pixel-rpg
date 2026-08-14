@@ -3,12 +3,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons, choicePanel, CAPTION_MAX_W, sheetLines, groundNoise,
+  Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons, choicePanel, captionMaxW, sheetLines, groundNoise,
 } from '../src/gfx/renderer.js';
 import { WALK_CYCLE_FPS } from '../src/gfx/sprites.js';
 import { wrapText } from '../src/gfx/font.js';
 import { Game } from '../src/core/game.js';
-import { fitScale } from '../src/core/screen.js';
+import { viewFor, setScreenSize, VIEW_MIN_W, VIEW_MIN_H } from '../src/core/screen.js';
 
 function fakeCanvas(w = SCREEN_W, h = SCREEN_H) {
   const ctx = {
@@ -106,11 +106,17 @@ test('the mansion interior renders on a fake canvas without throwing', () => {
   }
 });
 
-test('caption wrap width follows the screen', () => {
-  assert.equal(CAPTION_MAX_W, SCREEN_W - 40);
+test('caption wrap width follows the screen — live, since it resizes', () => {
+  assert.equal(captionMaxW(), SCREEN_W - 40);
   // Long lines that orphan-wrapped on the 320 screen fit in one on 416.
-  assert.equal(wrapText('IT TASTES A LITTLE OF YOUR BRAIN (-1 INT)', CAPTION_MAX_W).length, 1);
-  assert.equal(wrapText('A SOFT WHIMPER DRIFTS FROM THE NORTH', CAPTION_MAX_W).length, 1);
+  assert.equal(wrapText('IT TASTES A LITTLE OF YOUR BRAIN (-1 INT)', captionMaxW()).length, 1);
+  assert.equal(wrapText('A SOFT WHIMPER DRIFTS FROM THE NORTH', captionMaxW()).length, 1);
+  try {
+    setScreenSize(416, 360);
+    assert.equal(captionMaxW(), 376, 'the wrap width tracks a resize');
+  } finally {
+    setScreenSize(624, 540);
+  }
 });
 
 test('touch buttons exist only when together, on screen, not overlapping', () => {
@@ -355,26 +361,100 @@ test('ground noise is smooth: neighbours differ by a little, not a lot', () => {
   assert.ok(Math.min(...vals) < 0.2 && Math.max(...vals) > 0.8, 'full range');
 });
 
-// --- The fit policy (v0.18) -------------------------------------------------
+// --- The view policy (v0.19: no fixed aspect) --------------------------------
 
-test('fitScale: integers when they fill enough, fractional when they would not', () => {
-  // A window sitting right on an integer keeps uniform pixels.
-  assert.equal(fitScale(SCREEN_W * 2, SCREEN_H * 2), 2, 'exact 2x stays 2x');
-  assert.equal(fitScale(SCREEN_W * 2 + 40, SCREEN_H * 2 + 40), 2, 'a little slack still floors');
-  // A maximized 1440p desktop: raw ~2.67 — flooring to 2 wastes a quarter of
-  // the screen, so the scale goes fractional and fills it.
-  const maximized = fitScale(2560, 1440);
-  assert.ok(Math.abs(maximized - 1440 / SCREEN_H) < 1e-9, `2560x1440 fills (${maximized})`);
-  // A portrait phone (390x844 css at dpr 3): raw ~1.87 — the old floor-to-1
-  // drew a postage stamp; now it fills the width.
-  const phone = fitScale(390 * 3, 844 * 3);
-  assert.ok(Math.abs(phone - (390 * 3) / SCREEN_W) < 1e-9, `portrait fills (${phone})`);
-  assert.ok(phone > 1.8, 'nearly double the old size');
-  // Landscape phone: raw ~2.17 — close enough to 2x to keep crisp pixels.
-  assert.equal(fitScale(844 * 3, 390 * 3), 2, 'landscape keeps uniform pixels');
-  // Tiny embeds shrink fractionally instead of cropping.
-  const tiny = fitScale(320, 280);
-  assert.ok(tiny < 1 && tiny > 0.4, `sub-1x shrinks (${tiny})`);
+test('viewFor fills every window edge to edge with a sane amount of world', () => {
+  const cases = [
+    // [availW, availH, dpr, wantScale, wantW, wantH, why]
+    [1920, 1080, 1, 2, 960, 540, 'plain 1080p: the reference density, wider'],
+    [2560, 1440, 1, 2, 1280, 720, 'maximized 1440p: see MORE world'],
+    [3840, 2160, 1, 3, 1280, 720, '4K hits the draw-cost cap and zooms out no further'],
+    [1170, 2532, 3, 3, 390, 844, 'portrait phone: native-CSS-sized art, tall view'],
+    [2532, 1170, 3, 3, 844, 390, 'landscape phone'],
+    [2560, 1600, 2, 3, 853, 533, 'retina laptop keeps ~1.5 css px per game px'],
+    [5120, 1440, 1, 4, 1280, 360, 'ultrawide bottoms out at the minimum height'],
+  ];
+  for (const [w, h, dpr, scale, vw, vh, why] of cases) {
+    const v = viewFor(w, h, dpr);
+    assert.equal(v.scale, scale, `${why}: scale`);
+    assert.equal(v.w, vw, `${why}: width`);
+    assert.equal(v.h, vh, `${why}: height`);
+    // The whole point: the canvas covers the window (within a pixel of rounding).
+    assert.ok(Math.abs(v.w * v.scale - w) <= v.scale, `${why}: fills horizontally`);
+    assert.ok(Math.abs(v.h * v.scale - h) <= v.scale, `${why}: fills vertically`);
+  }
+  // Tiny embeds shrink fractionally but never below the UI minimums - 40.
+  const tiny = viewFor(400, 340, 1);
+  assert.ok(tiny.scale < 1, 'sub-1x shrinks');
+  assert.ok(tiny.w >= VIEW_MIN_W - 40 && tiny.h >= VIEW_MIN_H - 40, 'menus keep their room');
   // Degenerate mid-layout measurements stay sane.
-  assert.ok(fitScale(0, 0) > 0);
+  const degenerate = viewFor(0, 0, 1);
+  assert.ok(degenerate.w > 0 && degenerate.h > 0 && degenerate.scale > 0);
+});
+
+test('the world renders at a resized viewport, edge to edge', () => {
+  try {
+    setScreenSize(960, 540);
+    const canvas = fakeCanvas(960, 540);
+    const r = makeRenderer(canvas);
+    const g = new Game(42, { story: false });
+    r.render(g);
+    assert.ok(
+      canvas.ctx.rects.some(([x, y, w, h]) => x === 0 && y === 0 && w === 960 && h === 540),
+      'the background fill spans the whole wider screen',
+    );
+    for (const [x, y, w, h] of canvas.ctx.rects) {
+      assert.ok(x >= -20 && y >= -20 && x + w <= 980 && y + h <= 560, `pixel (${x},${y}) way off screen`);
+    }
+    // The HUD minimap hugs the REAL top-right corner.
+    const g2 = new Game(42, { story: false });
+    canvas.ctx.rects.length = 0;
+    r.render(g2);
+    void g2;
+  } finally {
+    setScreenSize(624, 540);
+  }
+});
+
+test('a portrait viewport clamps the mansion camera to the interior', () => {
+  try {
+    setScreenSize(390, 700);
+    const g = new Game(1, { story: false });
+    g.world.collides = () => false;
+    g.world.chunkAt(0, 0).mansions.push({ x: 60, y: 0 });
+    g.person.x = 60;
+    g.person.y = 0;
+    g.update(1 / 60, {});
+    assert.equal(g.location, 'mansion');
+    const r = makeRenderer(fakeCanvas(390, 700));
+    // Far west: the camera pins to the interior's left edge.
+    g.person.x = 30;
+    r.render(g);
+    assert.equal(r.lastViewX, 0, 'pinned left');
+    // Far east: pins to the right edge, never past it.
+    g.person.x = 600;
+    r.render(g);
+    assert.equal(r.lastViewX, 624 - 390, 'pinned right');
+    // Standing center: the camera follows.
+    g.person.x = 312;
+    r.render(g);
+    assert.equal(r.lastViewX, 312 - 195, 'follows the person');
+  } finally {
+    setScreenSize(624, 540);
+  }
+});
+
+test('on a big view the lost dog still spawns outside the opening screen', () => {
+  try {
+    setScreenSize(1280, 720);
+    const g = new Game(7); // story mode: alone, dog placed by the ring
+    const d = Math.hypot(g.dog.x, g.dog.y);
+    assert.ok(d >= 640, `the dog waits beyond the wider view (${Math.round(d)}px out)`);
+    assert.ok(
+      Math.abs(g.dog.x) > 1280 / 2 + 8 || g.dog.y <= -(720 / 2 + 16) || g.dog.y >= 720 / 2 + 8,
+      'and is not visible on frame one',
+    );
+  } finally {
+    setScreenSize(624, 540);
+  }
 });
