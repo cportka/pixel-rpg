@@ -30,13 +30,31 @@ import {
   CLOCK_SPRITE, PORTRAIT_SPRITE, SHELF_SPRITE, TABLE_SPRITE, CHAIR_SPRITE,
   CANDELABRA_SPRITE, CHANDELIER_SPRITE, FURNISH_COLORS, flameColor,
   TELEVISION_SPRITE, TELEVISION_COLORS, tvGlowPixels,
+  BED_SPRITE, NIGHTSTAND_SPRITE, TELESCOPE_SPRITE, DESK2_SPRITE, PORTRAIT2_SPRITE,
 } from './structures.js';
+import {
+  GHOST_SPRITES, ghostMosh, moshTint, PIRTS_SPRITE, PIRTS_COLORS,
+  DETECTIVE_SPRITE, DETECTIVE_COLORS, RUIN_SPRITES, TOWN_SIGN_SPRITE, TOWN_SIGN_COLORS,
+  OFFICE_FURNISH as OFFICE_FURNISH_ART, CABIN_FURNISH as CABIN_FURNISH_ART,
+} from './town.js';
+import {
+  MINOTAUR_FRAMES, MINOTAUR_COLORS, CRICKET_SPRITE, CRICKET_COLORS, cricketChirp,
+  FROG_SPRITE, FROG_COLORS, LILYPAD_SPRITE, LILYPAD_COLORS, frogMenace,
+  SIGNPOST_SPRITE, SIGNPOST_COLORS, signArrowPixels, BOAT_SPRITE, BOAT_COLORS,
+  SHRINE_SPRITE, SHRINE_COLORS,
+  CATHEDRAL_FURNISH as CATHEDRAL_FURNISH_ART, pileGrowthPixels,
+} from './creatures.js';
 import {
   TILE, MANSION_MAP, INTERIOR_W, INTERIOR_H, FURNISH,
 } from '../core/mansion.js';
+import { INTERIORS } from '../core/interiors.js';
 import { ICONS } from './icons.js';
-import { MAX_HP, XP_PER_LEVEL, BATTLE_MOVE, SPELLS } from '../core/game.js';
-import { isWater, onBridge, regionAt, biomeAt, REGION } from '../core/terrain.js';
+import {
+  MAX_HP, XP_PER_LEVEL, BATTLE_MOVE, SPELLS, minotaurPos, ghostPos,
+} from '../core/game.js';
+import {
+  isWater, onBridge, regionAt, biomeAt, REGION, godSpot, lilypadsAt,
+} from '../core/terrain.js';
 import { hashCoords } from '../core/rng.js';
 import { SCREEN_W, SCREEN_H } from '../core/screen.js';
 
@@ -86,6 +104,7 @@ export function sheetLines(game) {
     `LVL ${game.level}  XP ${game.xp} OF ${XP_PER_LEVEL}`,
     `HP ${game.hp} OF ${MAX_HP}`,
     `WEIGHT ${game.carriedWeight()} OF ${game.carryCapacity()} LBS`,
+    `COINS ${game.coins}  WOOD ${game.wood}`,
   ];
   if (game.spells.length) {
     lines.push(`FOCUS ${game.focus} OF ${game.maxFocus()}`);
@@ -198,7 +217,7 @@ export function hudRect() {
 export function memoryGlyphs(entry, size) {
   const out = [];
   const mid = Math.floor(size / 2);
-  if (entry.water && entry.biome !== 'lake') {
+  if (entry.water && entry.biome !== 'lake' && !entry.island) {
     // A river: a wandering channel rather than a straight bar.
     for (let y = 0; y < size; y++) {
       const bend = Math.round(Math.sin(y * 0.9) * (size > 9 ? 2 : 1));
@@ -233,6 +252,27 @@ export function memoryGlyphs(entry, size) {
     out.push({ x: mid - 3, y: mid, w: 7, h: 4, c: PALETTE.void });
     out.push({ x: mid, y: mid + 1, w: 1, h: 1, c: PALETTE.violet }); // the glint
   }
+  if (entry.town) {
+    // The ghost town: two leaning facades, dark windows, an empty street.
+    out.push({ x: mid - 4, y: mid - 2, w: 4, h: 4, c: PALETTE.dusk });
+    out.push({ x: mid + 1, y: mid - 3, w: 4, h: 5, c: PALETTE.plumDeep });
+    out.push({ x: mid - 3, y: mid - 1, w: 1, h: 1, c: PALETTE.void });
+    out.push({ x: mid + 2, y: mid - 2, w: 1, h: 1, c: PALETTE.void });
+    out.push({ x: mid - 5, y: mid + 2, w: 11, h: 1, c: PALETTE.soil }); // main street
+  }
+  if (entry.island) {
+    // Land in the ring of sea, with the shrine's stone on it.
+    out.push({ x: mid - 4, y: mid - 2, w: 9, h: 1, c: PALETTE.waterEdge });
+    out.push({ x: mid - 4, y: mid + 2, w: 9, h: 1, c: PALETTE.waterEdge });
+    out.push({ x: mid - 3, y: mid - 1, w: 7, h: 3, c: PALETTE.loam });
+    out.push({ x: mid, y: mid, w: 1, h: 1, c: PALETTE.smoke }); // the shrine
+  }
+  if (entry.god) {
+    // God is here: a small gold cross of light on the lake shore.
+    out.push({ x: mid + 2, y: mid - 1, w: 1, h: 3, c: PALETTE.gold });
+    out.push({ x: mid + 1, y: mid, w: 3, h: 1, c: PALETTE.gold });
+    out.push({ x: mid + 2, y: mid, w: 1, h: 1, c: PALETTE.goldRose });
+  }
   return out;
 }
 
@@ -250,6 +290,46 @@ export function uiButtons(game) {
   }
   return buttons;
 }
+
+// One lookup for every generic-interior furnishing: mansion2's pieces are
+// authored in structures.js against the mansion FURNISH_COLORS ramp; the
+// cathedral's live in creatures.js; the cabin's and office's in town.js.
+// ('rug' is absent on purpose — it reuses the mansion's dithered-oval code.)
+const INTERIOR_FURNISH_ART = {
+  bed: { map: BED_SPRITE, colors: FURNISH_COLORS },
+  nightstand: { map: NIGHTSTAND_SPRITE, colors: FURNISH_COLORS },
+  telescope: { map: TELESCOPE_SPRITE, colors: FURNISH_COLORS },
+  desk2: { map: DESK2_SPRITE, colors: FURNISH_COLORS },
+  portrait2: { map: PORTRAIT2_SPRITE, colors: FURNISH_COLORS },
+  ...CATHEDRAL_FURNISH_ART,
+  ...CABIN_FURNISH_ART,
+  ...OFFICE_FURNISH_ART,
+};
+
+// Per-style interior dressing (night PALETTE keys only — the cathedral sits
+// in heaven, where the standard draw-time remap brightens these to gold).
+const INTERIOR_STYLES = {
+  mansion: {
+    floor: PALETTE.parquet, seam: PALETTE.umbra,
+    wallFace: PALETTE.plumDeep, wallTrim: PALETTE.smokeDeep, wallCap: PALETTE.umbra,
+    stud: PALETTE.umbra, mat: PALETTE.plumDeep, matTrim: PALETTE.brass,
+  },
+  cathedral: {
+    floor: PALETTE.amber, seam: PALETTE.brass,
+    wallFace: PALETTE.brass, wallTrim: PALETTE.gold, wallCap: PALETTE.amber,
+    stud: PALETTE.amber, mat: PALETTE.gold, matTrim: PALETTE.goldRose,
+  },
+  cabin: {
+    floor: PALETTE.dirt, seam: PALETTE.soil,
+    wallFace: PALETTE.clay, wallTrim: PALETTE.loam, wallCap: PALETTE.soil,
+    stud: PALETTE.soil, mat: PALETTE.soil, matTrim: PALETTE.brass,
+  },
+  office: {
+    floor: PALETTE.dusk, seam: PALETTE.umbra,
+    wallFace: PALETTE.plumDeep, wallTrim: PALETTE.smokeDeep, wallCap: PALETTE.umbra,
+    stud: PALETTE.umbra, mat: PALETTE.soil, matTrim: PALETTE.brass,
+  },
+};
 
 export class Renderer {
   /**
@@ -479,8 +559,12 @@ export class Renderer {
     this.setPlane(game.plane ?? 'night');
     const ctx = this.ctx;
     this.frame++;
-    if (game.location === 'mansion') {
-      this.renderMansionScene(game);
+    if (game.location !== 'world') {
+      // Any roofed place. The ground-floor mansion keeps its bespoke scene
+      // (byte-identical to before v0.20); every other interior renders from
+      // its INTERIORS spec.
+      if (game.location === 'mansion') this.renderMansionScene(game);
+      else this.renderInteriorScene(game);
       this.drawUi(game);
       this.finishFrame(game);
       return;
@@ -536,20 +620,28 @@ export class Renderer {
           // have ground in it, not as ground with some dark on top.
           const cellX = Math.floor(wx / B);
           const cellY = Math.floor(wy / B);
-          const coarse = groundNoise(seed ^ 0x50113100, cellX, cellY, 9);
-          const mid = groundNoise(seed ^ 0x5011a300, cellX, cellY, 3);
-          const fine = hashCoords(seed ^ 0x5011f100, cellX, cellY) / 0x100000000;
-          const v = coarse * 0.5 + mid * 0.28 + fine * 0.22;
-          if (v >= 0.58) {
-            ctx.fillStyle = v < 0.66 ? PALETTE.night : v < 0.72 ? PALETTE.soil : PALETTE.dirt;
-            ctx.fillRect(sx, sy, B, B);
-          }
-          const h = hashCoords(seed ^ 0x6a1120dd, cellX, cellY);
-          if ((h & 15) === 0) {
-            // Grit: a trodden clay speck, or a fleck of dark growth.
-            const grassy = biomeAt(seed, Math.floor(wx / REGION), Math.floor(wy / REGION)) === 'grass';
-            ctx.fillStyle = (h >> 9) & 1 ? (grassy ? PALETTE.moss : PALETTE.clay) : PALETTE.umbra;
-            ctx.fillRect(sx + ((h >> 4) & 3), sy + ((h >> 6) & 3), 1, 1);
+          const biome = biomeAt(seed, Math.floor(wx / REGION), Math.floor(wy / REGION));
+          if (biome === 'desert' || biome === 'beach' || biome === 'glacier' || biome === 'island') {
+            // Heaven's sun-struck grounds (v0.20) get their own treatment;
+            // the heaven remap does the brightening. Night biomes never
+            // reach this branch, so their floors stay byte-identical.
+            this.drawHeavenGround(biome, seed, sx, sy, cellX, cellY, B);
+          } else {
+            const coarse = groundNoise(seed ^ 0x50113100, cellX, cellY, 9);
+            const mid = groundNoise(seed ^ 0x5011a300, cellX, cellY, 3);
+            const fine = hashCoords(seed ^ 0x5011f100, cellX, cellY) / 0x100000000;
+            const v = coarse * 0.5 + mid * 0.28 + fine * 0.22;
+            if (v >= 0.58) {
+              ctx.fillStyle = v < 0.66 ? PALETTE.night : v < 0.72 ? PALETTE.soil : PALETTE.dirt;
+              ctx.fillRect(sx, sy, B, B);
+            }
+            const h = hashCoords(seed ^ 0x6a1120dd, cellX, cellY);
+            if ((h & 15) === 0) {
+              // Grit: a trodden clay speck, or a fleck of dark growth.
+              const grassy = biome === 'grass';
+              ctx.fillStyle = (h >> 9) & 1 ? (grassy ? PALETTE.moss : PALETTE.clay) : PALETTE.umbra;
+              ctx.fillRect(sx + ((h >> 4) & 3), sy + ((h >> 6) & 3), 1, 1);
+            }
           }
         }
       }
@@ -660,13 +752,14 @@ export class Renderer {
         },
       });
     }
-    const drawSpriteWithColors = (sprite, colors, bx, by) => {
+    const drawSpriteWithColors = (sprite, colors, bx, by, flip = false) => {
+      const sw = sprite[0].length;
       sprite.forEach((row, ry) => {
         for (let rx = 0; rx < row.length; rx++) {
           const ch = row[rx];
           if (ch === '.') continue;
           ctx.fillStyle = colors[ch];
-          ctx.fillRect(bx + rx, by + ry, 1, 1);
+          ctx.fillRect(bx + (flip ? sw - 1 - rx : rx), by + ry, 1, 1);
         }
       });
     };
@@ -799,16 +892,222 @@ export class Renderer {
         },
       });
     }
+
+    // --- The ghost town (night, v0.20). Every accessor is empty on heaven
+    // seeds, so none of this needs a plane check.
+    for (const ru of game.world.ruinsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      const art = RUIN_SPRITES[ru.variant % RUIN_SPRITES.length];
+      drawables.push({
+        y: ru.y,
+        draw: () => drawSpriteWithColors(
+          art.map, art.colors,
+          Math.round(ru.x - viewX) - Math.floor(art.map[0].length / 2),
+          Math.round(ru.y - viewY) - art.map.length,
+        ),
+      });
+    }
+    for (const ts of game.world.townsignsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      drawables.push({
+        y: ts.y,
+        draw: () => drawSpriteWithColors(
+          TOWN_SIGN_SPRITE, TOWN_SIGN_COLORS,
+          Math.round(ts.x - viewX) - Math.floor(TOWN_SIGN_SPRITE[0].length / 2),
+          Math.round(ts.y - viewY) - TOWN_SIGN_SPRITE.length,
+        ),
+      });
+    }
+    for (const p of game.world.pirtsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      drawables.push({
+        y: p.y,
+        draw: () => {
+          // Pirts bobs, slow and deterministic — dead, but open for business.
+          const bob = Math.sin(game.time * 0.9 + p.x * 0.05) > 0 ? 0 : 1;
+          drawSpriteWithColors(
+            PIRTS_SPRITE, PIRTS_COLORS,
+            Math.round(p.x - viewX) - Math.floor(PIRTS_SPRITE[0].length / 2),
+            Math.round(p.y - viewY) - PIRTS_SPRITE.length + bob,
+          );
+        },
+      });
+    }
+    for (const gh of game.world.ghostsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      const pos = ghostPos(gh, game.time);
+      drawables.push({
+        y: pos.y,
+        draw: () => this.drawGhost(game, gh, pos, viewX, viewY),
+      });
+    }
+    for (const o of game.world.officesInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      drawables.push({
+        y: o.y,
+        draw: () => {
+          // The bail-bonds office wears the general store's bones — but its
+          // window burns amber (someone still works here) and its doorway
+          // stands open, aligned with the 8px gap world.collides carves.
+          const art = RUIN_SPRITES[0];
+          const ox = Math.round(o.x - viewX);
+          const oy = Math.round(o.y - viewY);
+          const bx = ox - Math.floor(art.map[0].length / 2);
+          const by = oy - art.map.length;
+          drawSpriteWithColors(art.map, art.colors, bx, by);
+          ctx.fillStyle = PALETTE.amber;
+          ctx.fillRect(bx + 6, by + 11, 4, 5);
+          ctx.fillStyle = PALETTE.gold;
+          ctx.fillRect(bx + 7, by + 12, 2, 2);
+          ctx.fillStyle = PALETTE.void;
+          ctx.fillRect(ox - 4, oy - 9, 9, 9); // the doorway, carved open
+          ctx.fillStyle = PALETTE.gold;
+          ctx.fillRect(ox - 2, oy - 1, 5, 1); // lamplight under the door
+          ctx.fillStyle = PALETTE.brass;
+          ctx.fillRect(ox + 6, oy - 8, 3, 4); // the plate that says BB
+        },
+      });
+    }
+
+    // --- Heaven's residents (v0.20): signposts to God, God, the frogs who
+    // menace Him, the minotaur pacing his maze, the island shrine.
+    const god = this.plane === 'heaven' ? godSpot(seed) : null;
+    for (const s of game.world.signsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      drawables.push({
+        y: s.y,
+        draw: () => {
+          const sx = Math.round(s.x - viewX);
+          const sy = Math.round(s.y - viewY);
+          drawSpriteWithColors(
+            SIGNPOST_SPRITE, SIGNPOST_COLORS,
+            sx - Math.floor(SIGNPOST_SPRITE[0].length / 2), sy - SIGNPOST_SPRITE.length,
+          );
+          if (god) {
+            for (const px of signArrowPixels(Math.atan2(god.y - s.y, god.x - s.x))) {
+              ctx.fillStyle = px.c;
+              ctx.fillRect(sx + px.x, sy + px.y, 1, 1);
+            }
+          }
+        },
+      });
+    }
+    const inView = (p, pad = 24) =>
+      p.x >= viewX - pad && p.x <= viewX + SCREEN_W + pad &&
+      p.y >= viewY - pad && p.y <= viewY + SCREEN_H + pad;
+    if (god && inView(god)) {
+      drawables.push({
+        y: god.y,
+        draw: () => {
+          const gx = Math.round(god.x - viewX);
+          const gy = Math.round(god.y - viewY);
+          drawSpriteWithColors(
+            CRICKET_SPRITE, CRICKET_COLORS,
+            gx - Math.floor(CRICKET_SPRITE[0].length / 2), gy - CRICKET_SPRITE.length,
+          );
+          for (const n of cricketChirp(game.time)) {
+            ctx.fillStyle = n.c;
+            ctx.fillRect(gx + n.x, gy + n.y, 1, 1);
+          }
+        },
+      });
+    }
+    if (god) {
+      for (const pad of lilypadsAt(seed)) {
+        if (!inView(pad)) continue;
+        drawables.push({
+          y: pad.y,
+          draw: () => {
+            const lx = Math.round(pad.x - viewX);
+            const ly = Math.round(pad.y - viewY);
+            drawSpriteWithColors(
+              LILYPAD_SPRITE, LILYPAD_COLORS,
+              lx - Math.floor(LILYPAD_SPRITE[0].length / 2), ly - LILYPAD_SPRITE.length,
+            );
+            // The frog rides its pad, facing God (authored facing left).
+            const fy = ly - 3;
+            drawSpriteWithColors(
+              FROG_SPRITE, FROG_COLORS,
+              lx - Math.floor(FROG_SPRITE[0].length / 2), fy - FROG_SPRITE.length,
+            );
+            for (const t of frogMenace(game.time, pad.phase).tongue) {
+              ctx.fillStyle = t.c;
+              ctx.fillRect(lx + t.x, fy + t.y, 1, 1);
+            }
+          },
+        });
+      }
+    }
+    for (const m of game.world.minotaursInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      const pos = minotaurPos(m, game.time);
+      drawables.push({
+        y: pos.y,
+        draw: () => {
+          // The walk cycle follows the lissajous: when its velocity dies at
+          // a turning point, he stands; otherwise the hooves alternate.
+          const ahead = minotaurPos(m, game.time + 0.1);
+          const speed = Math.hypot(ahead.x - pos.x, ahead.y - pos.y) / 0.1;
+          const frame =
+            speed < 4 ? 'stand' : Math.floor(game.time * 6) % 2 === 0 ? 'walkA' : 'walkB';
+          const map = MINOTAUR_FRAMES[frame];
+          this.drawShadow(pos.x - viewX, Math.round(pos.y - viewY), 16);
+          drawSpriteWithColors(
+            map, MINOTAUR_COLORS,
+            Math.round(pos.x - viewX) - Math.floor(map[0].length / 2),
+            Math.round(pos.y - viewY) - map.length,
+            pos.facing < 0,
+          );
+        },
+      });
+    }
+    for (const sh of game.world.shrinesInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      drawables.push({
+        y: sh.y,
+        draw: () => drawSpriteWithColors(
+          SHRINE_SPRITE, SHRINE_COLORS,
+          Math.round(sh.x - viewX) - Math.floor(SHRINE_SPRITE[0].length / 2),
+          Math.round(sh.y - viewY) - SHRINE_SPRITE.length,
+        ),
+      });
+    }
     for (const ch of [game.person, game.dog]) {
       const frames =
         ch.kind === 'person' ? PERSON_FRAMES : this.plane === 'heaven' ? CERBERUS_FRAMES : DOG_FRAMES;
       const map = walkFrame(frames, ch.walking, ch.animTime, game.time);
       const { w, h } = spriteSize(map);
+      // Only the person ever takes to the water; the dog never swims.
+      const afloat = game.swimming && ch.kind === 'person';
       drawables.push({
         y: ch.y,
         draw: () => {
-          this.drawShadow(ch.x - viewX, Math.round(ch.y - viewY), ch.kind === 'person' ? 12 : 15);
-          this.drawSpriteMap(map, Math.round(ch.x - viewX - w / 2), Math.round(ch.y - viewY - h), ch.facing < 0);
+          const cxp = Math.round(ch.x - viewX);
+          const cyp = Math.round(ch.y - viewY);
+          if (afloat && game.hasBoat) {
+            // The boat rides under them: no submersion, just passage.
+            drawSpriteWithColors(
+              BOAT_SPRITE, BOAT_COLORS,
+              cxp - Math.floor(BOAT_SPRITE[0].length / 2), cyp - BOAT_SPRITE.length + 2,
+              ch.facing < 0,
+            );
+            this.drawSpriteMap(map, Math.round(ch.x - viewX - w / 2), cyp - h - 3, ch.facing < 0);
+            return;
+          }
+          if (afloat) {
+            // Swimming: half the figure below the waterline, and slow
+            // deterministic ripple rings spreading from it.
+            const half = Math.ceil(h / 2);
+            this.drawSpriteMap(
+              map.slice(0, half),
+              Math.round(ch.x - viewX - w / 2), cyp - half, ch.facing < 0,
+            );
+            for (const [lead, tint] of [[0, PALETTE.waterEdge], [0.5, PALETTE.blue]]) {
+              const ph = (game.time * 1.2 + lead) % 1;
+              const rad = 4 + Math.round(ph * 5);
+              const ry = Math.max(1, Math.round(rad / 2));
+              ctx.fillStyle = tint;
+              ctx.fillRect(cxp - rad, cyp, 1, 1);
+              ctx.fillRect(cxp + rad, cyp, 1, 1);
+              ctx.fillRect(cxp - 1, cyp - ry, 2, 1);
+              ctx.fillRect(cxp - 1, cyp + ry, 2, 1);
+            }
+            return;
+          }
+          this.drawShadow(ch.x - viewX, cyp, ch.kind === 'person' ? 12 : 15);
+          this.drawSpriteMap(map, Math.round(ch.x - viewX - w / 2), cyp - h, ch.facing < 0);
         },
       });
     }
@@ -1067,6 +1366,305 @@ export class Renderer {
       for (const g of tvGlowPixels(game.time)) {
         ctx.fillStyle = g.c;
         ctx.fillRect(cx + g.x, cy + g.y, 1, 1);
+      }
+    }
+  }
+
+  /**
+   * Any generic interior (v0.20): mansion2, the cathedral nave, the cabin,
+   * the bail-bonds office — one renderer driven by INTERIORS[kind]. Tiles:
+   * '#' wall, '.' floor, 'D' the way out, 'S' the stairwell, 'W' window
+   * tiles that spill moonlight bands. Per-style dressing comes from
+   * INTERIOR_STYLES; the cathedral draws in night gold and lets the heaven
+   * remap brighten it.
+   */
+  renderInteriorScene(game) {
+    const ctx = this.ctx;
+    const kind = game.location;
+    const spec = INTERIORS[kind];
+    const T = spec.tile;
+    const iw = spec.map[0].length * T;
+    const ih = spec.map.length * T;
+    const style = INTERIOR_STYLES[spec.style] ?? INTERIOR_STYLES.mansion;
+    // Same camera policy as the mansion: centered while the interior fits,
+    // following (clamped) when the view is narrower.
+    const follow = (screen, interior, focus) =>
+      screen >= interior
+        ? -Math.round((screen - interior) / 2)
+        : Math.round(Math.min(Math.max(focus - screen / 2, 0), interior - screen));
+    const viewX = follow(SCREEN_W, iw, game.person.x);
+    const viewY = follow(SCREEN_H, ih, game.person.y);
+    this.lastViewX = viewX;
+    this.lastViewY = viewY;
+    this.lastLocation = kind;
+    this.camInit = false; // snap the outdoor camera when we step back out
+
+    ctx.fillStyle = PALETTE.void;
+    ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+
+    const cellAt = (cx, cy) =>
+      cy >= 0 && cy < spec.map.length && cx >= 0 && cx < spec.map[0].length
+        ? spec.map[cy][cx]
+        : '#';
+    for (let cy = 0; cy < spec.map.length; cy++) {
+      for (let cx = 0; cx < spec.map[0].length; cx++) {
+        const ch = spec.map[cy][cx];
+        const sx = cx * T - viewX;
+        const sy = cy * T - viewY;
+        if (ch === '.' || ch === 'D' || ch === 'W') {
+          // The floor: long planks — a course line every 8px with a
+          // half-staggered end seam, in the style's wood.
+          ctx.fillStyle = style.floor;
+          ctx.fillRect(sx, sy, T, T);
+          ctx.fillStyle = style.seam;
+          for (let py = 0; py < T; py += 8) {
+            ctx.fillRect(sx, sy + py, T, 1);
+            const seam = ((cy * T + py) / 8) % 2 === 0 ? 0 : 8;
+            ctx.fillRect(sx + seam, sy + py, 1, 8);
+          }
+          if (ch === 'D') {
+            ctx.fillStyle = style.mat;
+            ctx.fillRect(sx + 1, sy + 2, T - 2, T - 2); // the door mat
+            ctx.fillStyle = style.matTrim;
+            ctx.fillRect(sx + 1, sy + 2, T - 2, 1);
+          }
+          if (ch === 'W') {
+            // Moonlight through the window above, banded across the boards.
+            for (let py = 1; py < T; py += 3) {
+              ctx.fillStyle = py % 2 === 1 ? PALETTE.moonshadow : PALETTE.smoke;
+              ctx.fillRect(sx + 3 + (py % 3), sy + py, T - 8, 1);
+            }
+          }
+        } else if (ch === 'S') {
+          // The stairwell: treads climbing brighter toward the top — the
+          // mansion's stairs, minus the bars (the lock rusted through).
+          const TREADS = [PALETTE.smokeDeep, PALETTE.plum, PALETTE.smoke, PALETTE.moonshadow];
+          for (let step = 0; step < 4; step++) {
+            ctx.fillStyle = TREADS[step];
+            ctx.fillRect(sx, sy + T - (step + 1) * (T / 4), T, T / 4);
+            ctx.fillStyle = PALETTE.umbra;
+            ctx.fillRect(sx, sy + T - (step + 1) * (T / 4) + T / 4 - 1, T, 1);
+          }
+        } else {
+          // Wall: paneled face where it fronts the room, dark cap elsewhere.
+          const below = cellAt(cx, cy + 1);
+          if (below !== '#') {
+            ctx.fillStyle = style.wallFace;
+            ctx.fillRect(sx, sy, T, T);
+            ctx.fillStyle = style.wallTrim;
+            ctx.fillRect(sx, sy, T, 2);
+            ctx.fillRect(sx, sy + T - 3, T, 1);
+            ctx.fillStyle = style.stud;
+            ctx.fillRect(sx + (cx % 2 ? 4 : Math.floor(T * 0.6)), sy + 4, 1, T - 8);
+            if (below === 'W') {
+              // The window itself, set into the wall over its moonlit tile.
+              ctx.fillStyle = PALETTE.smokeDeep;
+              ctx.fillRect(sx + 4, sy + 4, T - 8, T - 8);
+              ctx.fillStyle = PALETTE.moonshadow;
+              ctx.fillRect(sx + 5, sy + 5, T - 10, T - 10);
+              ctx.fillStyle = PALETTE.smokeDeep;
+              ctx.fillRect(sx + Math.floor(T / 2), sy + 5, 1, T - 10); // the mullion
+            }
+          } else {
+            ctx.fillStyle = style.wallCap;
+            ctx.fillRect(sx, sy, T, T);
+          }
+        }
+      }
+    }
+
+    // Tap-to-move works indoors too — show its marker on the boards.
+    if (game.moveTarget) {
+      const mx = Math.round(game.moveTarget.x - viewX);
+      const my = Math.round(game.moveTarget.y - viewY);
+      for (const p of targetMarkerPixels(game.time)) {
+        ctx.fillStyle = p.apex ? PALETTE.moonlight : LEASH_COLORS[p.tri % LEASH_COLORS.length];
+        ctx.fillRect(mx + p.x, my + p.y, 1, 1);
+      }
+    }
+    if (game.leashActive() && game.together) this.drawLeash(game, viewX, viewY);
+
+    // Furnishings and the pair, y-sorted.
+    const drawables = [];
+    for (const f of spec.furnish) {
+      drawables.push({
+        y: f.y,
+        draw: () => this.drawInteriorFurnish(game, f, viewX, viewY),
+      });
+    }
+    if (kind === 'office') {
+      // The detective stands at his desk — scenery with a case, not an
+      // entity. Drawn just behind the desk so its edge overlaps his coat.
+      drawables.push({
+        y: 119,
+        draw: () => {
+          const dx = 206 - viewX;
+          const dy = 119 - viewY;
+          this.drawShadow(dx, dy, 10);
+          DETECTIVE_SPRITE.forEach((row, ry) => {
+            for (let rx = 0; rx < row.length; rx++) {
+              const c = row[rx];
+              if (c === '.') continue;
+              ctx.fillStyle = DETECTIVE_COLORS[c];
+              ctx.fillRect(dx - Math.floor(DETECTIVE_SPRITE[0].length / 2) + rx, dy - DETECTIVE_SPRITE.length + ry, 1, 1);
+            }
+          });
+        },
+      });
+    }
+    const cast = game.together ? [game.person, game.dog] : [game.person];
+    for (const chr of cast) {
+      const frames =
+        chr.kind === 'person' ? PERSON_FRAMES : this.plane === 'heaven' ? CERBERUS_FRAMES : DOG_FRAMES;
+      const map = walkFrame(frames, chr.walking, chr.animTime, game.time);
+      const { w, h } = spriteSize(map);
+      drawables.push({
+        y: chr.y,
+        draw: () => {
+          this.drawShadow(chr.x - viewX, Math.round(chr.y - viewY), chr.kind === 'person' ? 12 : 15);
+          this.drawSpriteMap(map, Math.round(chr.x - viewX - w / 2), Math.round(chr.y - viewY - h), chr.facing < 0);
+        },
+      });
+    }
+    drawables.sort((a, b) => a.y - b.y);
+    for (const d of drawables) d.draw();
+
+    if (game.caption) {
+      const a = game.activeChar;
+      this.drawCaption(
+        game.caption.text,
+        a.x - viewX,
+        a.y - viewY,
+        game.drunk > 0 ? PALETTE.magenta : PALETTE.moonlight,
+      );
+    }
+  }
+
+  /** One generic-interior furnishing, with its moving parts. */
+  drawInteriorFurnish(game, f, viewX, viewY) {
+    const ctx = this.ctx;
+    if (f.kind === 'rug') {
+      // The upstairs rug is the downstairs rug: same worn oval.
+      this.drawFurnish(game, f, viewX, viewY);
+      return;
+    }
+    const art = INTERIOR_FURNISH_ART[f.kind];
+    if (!art) return;
+    const bx = Math.round(f.x - viewX - art.map[0].length / 2);
+    const by = Math.round(f.y - viewY - art.map.length);
+    art.map.forEach((row, ry) => {
+      for (let rx = 0; rx < row.length; rx++) {
+        const ch = row[rx];
+        if (ch === '.') continue;
+        ctx.fillStyle = art.colors[ch] ?? PALETTE.smoke;
+        ctx.fillRect(bx + rx, by + ry, 1, 1);
+      }
+    });
+    if (f.kind === 'pile') {
+      // The pile of god grows with every donation, freshest coins brightest.
+      const px = Math.round(f.x - viewX);
+      const py = Math.round(f.y - viewY);
+      for (const p of pileGrowthPixels(game.goldGiven)) {
+        ctx.fillStyle = p.c;
+        ctx.fillRect(px + p.x, py + p.y, 1, 1);
+      }
+    } else if (f.kind === 'portrait2') {
+      // The eyes follow up here too. Of course they do.
+      const off = Math.max(-1, Math.min(1, Math.sign(game.person.x - f.x)));
+      ctx.fillStyle = PALETTE.moonlight;
+      ctx.fillRect(bx + 6 + off, by + 4, 1, 1);
+      ctx.fillRect(bx + 11 + off, by + 4, 1, 1);
+    } else if (f.kind === 'nightstand') {
+      // The candle on it keeps the flame idiom of the house below.
+      ctx.fillStyle = flameColor(game.time, f.x);
+      ctx.fillRect(bx + 4, by, 2, 1);
+    } else if (f.kind === 'brazier') {
+      // The brazier's crown flickers gold-to-rose like every flame here.
+      ctx.fillStyle = flameColor(game.time, f.x);
+      ctx.fillRect(bx + 4, by, 2, 1);
+    } else if (f.kind === 'singer') {
+      // The note that never stops leaving: it climbs and resets, forever.
+      const lift = Math.floor((game.time * 2 + f.y) % 4);
+      ctx.fillStyle = PALETTE.gold;
+      ctx.fillRect(bx + art.map[0].length - 1, by + 1 - lift, 1, 1);
+    }
+  }
+
+  /**
+   * One ghost, datamoshed: ghostMosh() drops the signal for beats (nobody
+   * there) and tears the body into displaced row-bands; moshTint() flickers
+   * the smoke to static-blue or still-alive magenta. Hostile tempers keep
+   * magenta eyes whatever their variant says.
+   */
+  drawGhost(game, gh, pos, viewX, viewY) {
+    const ctx = this.ctx;
+    const mosh = ghostMosh(game.time, gh.phase);
+    if (!mosh.visible) return; // the stream died for this beat
+    const art = GHOST_SPRITES[gh.variant % GHOST_SPRITES.length];
+    const tint = moshTint(game.time, gh.phase);
+    const bx = Math.round(pos.x - viewX) - Math.floor(art.map[0].length / 2);
+    const by = Math.round(pos.y - viewY) - art.map.length;
+    for (let ry = 0; ry < art.map.length; ry++) {
+      let dx = 0;
+      for (const b of mosh.bands) {
+        if (ry >= b.y0 && ry < b.y1) dx += b.dx;
+      }
+      const row = art.map[ry];
+      for (let rx = 0; rx < row.length; rx++) {
+        const ch = row[rx];
+        if (ch === '.') continue;
+        ctx.fillStyle =
+          ch === 'e'
+            ? gh.temper === 'hostile' ? PALETTE.magenta : art.colors.e
+            : ch === 's' ? tint : art.colors[ch];
+        ctx.fillRect(bx + rx + dx, by + ry, 1, 1);
+      }
+    }
+  }
+
+  /**
+   * Heaven's sun-struck grounds (v0.20), one 4px cell at a time. Drawn in
+   * night keys — clay/loam for sand, the water ramp for ice, the nature
+   * greens for the island — and brightened by the standard heaven remap.
+   */
+  drawHeavenGround(biome, seed, sx, sy, cellX, cellY, B) {
+    const ctx = this.ctx;
+    const coarse = groundNoise(seed ^ 0x50113100, cellX, cellY, 9);
+    const fine = hashCoords(seed ^ 0x5011f100, cellX, cellY) / 0x100000000;
+    const v = coarse * 0.65 + fine * 0.35;
+    if (biome === 'desert' || biome === 'beach') {
+      // Dunes: clay and loam drifts (heaven turns them to golden sand).
+      if (v >= 0.42) {
+        ctx.fillStyle = v < 0.55 ? PALETTE.dirt : v < 0.7 ? PALETTE.clay : PALETTE.loam;
+        ctx.fillRect(sx, sy, B, B);
+      }
+      const h = hashCoords(seed ^ (biome === 'beach' ? 0x6b3a11e5 : 0x6d357a2b), cellX, cellY);
+      if ((h & 15) === 0) {
+        // A shell fleck on the beach; a sun-bleached grain in the desert.
+        ctx.fillStyle = (h >> 9) & 1 ? PALETTE.loam : biome === 'beach' ? PALETTE.waterEdge : PALETTE.clay;
+        ctx.fillRect(sx + ((h >> 4) & 3), sy + ((h >> 6) & 3), 1, 1);
+      }
+    } else if (biome === 'glacier') {
+      // Ice sheets off the water ramp: pale silver once remapped.
+      if (v >= 0.48) {
+        ctx.fillStyle = v < 0.62 ? PALETTE.waterDeep : PALETTE.waterEdge;
+        ctx.fillRect(sx, sy, B, B);
+      }
+      const h = hashCoords(seed ^ 0x61ac1e50, cellX, cellY);
+      if ((h & 15) === 0) {
+        ctx.fillStyle = PALETTE.blue; // a crevasse glint
+        ctx.fillRect(sx + ((h >> 4) & 3), sy + ((h >> 6) & 3), 1, 1);
+      }
+    } else {
+      // The island: a dense green paradise (golden grass, once remapped).
+      if (v >= 0.4) {
+        ctx.fillStyle = v < 0.58 ? PALETTE.moss : PALETTE.fern;
+        ctx.fillRect(sx, sy, B, B);
+      }
+      const h = hashCoords(seed ^ 0x151a4dd1, cellX, cellY);
+      if ((h & 15) === 0) {
+        ctx.fillStyle = (h >> 9) & 1 ? PALETTE.leaf : PALETTE.pine;
+        ctx.fillRect(sx + ((h >> 4) & 3), sy + ((h >> 6) & 3), 1, 1);
       }
     }
   }

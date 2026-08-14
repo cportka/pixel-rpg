@@ -139,8 +139,10 @@ export function signAt(seed, rx, ry) {
   if (biomeAt(seed, rx, ry) === 'island') return null;
   const h = hashCoords((seed ^ SALT_SIGN) >>> 0, rx, ry);
   if (h % 5 !== 0) return null;
-  const x = rx * REGION + 120 + ((h >> 8) % (REGION - 240));
-  const y = ry * REGION + 120 + ((h >> 16) % (REGION - 240));
+  // Unsigned shifts: a signed >> could go negative and post the sign a few
+  // hundred px into the neighboring region.
+  const x = rx * REGION + 120 + ((h >>> 8) % (REGION - 240));
+  const y = ry * REGION + 120 + ((h >>> 16) % (REGION - 240));
   if (isWater(seed, x, y)) return null;
   return { x, y };
 }
@@ -197,14 +199,20 @@ export function townAt(seed, rx, ry) {
       temper: roll < 0.3 ? 'hostile' : roll < 0.6 ? 'sullen' : 'drifting',
     });
   }
+  // The essential fixtures refuse to drown: each falls back toward the
+  // town center (which the early isWater check guarantees is dry).
+  const dryPick = (...spots) => {
+    for (const [x, y] of spots) if (!isWater(seed, x, y)) return { x, y };
+    return { x: cx, y: cy };
+  };
   return {
     cx,
     cy,
     ruins,
     ghosts: ghosts.filter((g) => !isWater(seed, g.x, g.y)),
-    pirts: { x: cx + 8, y: cy + 42 },
-    sign: { x: cx - 45, y: cy + 118 },
-    office: { x: cx + 245, y: cy + 150 },
+    pirts: dryPick([cx + 8, cy + 42], [cx, cy + 20]),
+    sign: dryPick([cx - 45, cy + 118], [cx - 20, cy + 60]),
+    office: dryPick([cx + 245, cy + 150], [cx + 120, cy + 80]),
   };
 }
 

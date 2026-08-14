@@ -324,7 +324,7 @@ test('with the bone and its meat, the sheet grows item icons — and the gnaw', 
 test('sheet header lines show level, XP, HP, weight, and drunkenness', () => {
   const g = flatGame();
   const lines = sheetLines(g);
-  assert.equal(lines.length, 3, 'sober: level, HP, weight');
+  assert.equal(lines.length, 4, 'sober: level, HP, weight, pockets (v0.20)');
   assert.equal(lines[0], `LVL 1  XP 0 OF ${XP_PER_LEVEL}`);
   assert.equal(lines[1], `HP ${g.hp} OF ${MAX_HP}`);
   assert.equal(lines[2], 'WEIGHT 0 OF 300 LBS');
@@ -357,7 +357,7 @@ test('the sheet panel lays its icon grid out on screen, no overlaps', () => {
   g.drunk = 60;
   g.openSheet();
   const panel = choicePanel(g);
-  assert.equal(panel.body.length, 4, 'LVL, HP, WEIGHT, DRUNK');
+  assert.equal(panel.body.length, 5, 'LVL, HP, WEIGHT, COINS/WOOD, DRUNK');
   assert.equal(panel.icons.length, ABILITIES.length + 3, 'six stats + bone, meat, ball');
   assert.ok(panel.x >= 0 && panel.y >= 0 && panel.x + panel.w <= SCREEN_W && panel.y + panel.h <= SCREEN_H);
   for (const cell of panel.icons) {

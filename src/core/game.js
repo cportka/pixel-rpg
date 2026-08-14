@@ -511,7 +511,7 @@ export class Game {
    */
   freshHeaven() {
     const hseed = (this.world.seed ^ HEAVEN_SEED_SALT) >>> 0;
-    const world = new World(hseed);
+    const world = new World(hseed, 'heaven'); // the heaven deck: island, signs, the minotaur
     const px = 0;
     const py = 30;
     // The nearest Styx east of home: its column center, and the bridge you
@@ -2694,6 +2694,7 @@ export class Game {
     this.turn = 'you';
     this.battleFoes = [];
     this.warded = false;
+    this.dazed = false; // thrown dirt does not carry to the next fight
     this.emit('battle-end');
     this.say(line);
   }

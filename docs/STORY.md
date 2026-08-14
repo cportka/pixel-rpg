@@ -100,6 +100,76 @@ knowing is the whole reason he gets three heads.
 > CERBERUS CARRIES YOU DOWN, GENTLE AS A MOTHER
 > THE NIGHT AGAIN. IT MISSED YOU
 
+## Heaven, wider (v0.20)
+
+Heaven turned out to be bigger than the first visit let on. Past the
+Styx the light keeps going: golden deserts, warm beaches, glaciers that
+glow like held breath, and water you can simply walk into — heaven's
+water is warm, and it does not mind. Far out past all of it, an island,
+for the swimmers and the boat-builders and nobody else.
+
+Hand-painted signs stand here and there in the grass, gold paint, steady
+hand, all pointing the same way.
+
+> GOD, IT SAYS. THEN AN ARROW
+
+Follow enough of them and you come to a lake ringed by redwoods, and on
+its east shore, God. God is a cricket. God has always been a cricket —
+not hiding, not testing you, just existing, the way everything in heaven
+exists: thoroughly. Frogs watch from their lilypads, menacing in the way
+of frogs, which is to say patiently. You can ask the big question. You
+can confess. You can shoo the frogs, which God did not need and
+appreciates anyway. Mostly you can sit, and the sitting is the answer.
+
+> YOU SIT. GOD EXISTS. YOU EXIST
+>
+> CHIRP.
+>
+> SOMEHOW THAT COVERS IT
+
+And somewhere in all that light, rare as an honest lead, paces the one
+red thing in heaven: **the minotaur**. He is not guarding anything. There
+is no maze — that is the problem. The maze is consciousness with no
+exit, and he walks it forever, checking every gap twice, like a man who
+lost his keys, always searching, always wondering what to do next.
+
+> WHAT DO I DO NEXT, HE ASKS THE AIR
+>
+> EVERY DOOR I FIND IS ANOTHER ROOM OF ME
+
+He fights like a wall looking for a door. But he can be given
+directions — not out, there is no out — just somewhere kinder. Point at
+nothing, confidently. It is the truest thing anyone has told him.
+
+> A MAZE IS JUST A PATH THAT LOVES YOU TOO MUCH TO END
+>
+> HE WANDERS ON. LIGHTER. STILL LOST. LESS ALONE
+
+## The ghost town (v0.20)
+
+Down in the night, some regions hold their breath. A ghost town: ruins
+leaning into each other, a sign nobody straightens, and the ghosts still
+running their old routines in four glitching frames apiece — buffering
+their grief, datamoshing through doorways that stopped being doorways.
+Some drift. Some sulk. Some have decided the living owe them, one coin
+at a time.
+
+Only one business stayed open. **Pirts, merchant (deceased)** — spirit
+spelled sideways, mostly — buys bones and planks and stories, sells
+draughts and rope and a ghost-press book about boats, and has jokes,
+because somebody in this town has to. Says a lot about Pirts.
+
+On the outskirts, a light still burns in the **bail-bonds office**. The
+detective works the case of where in the devil the Devil is. The Devil
+skipped bail; big surprise. Every lead burns — that is usually the lead.
+His corkboard is red string chasing a suspect who is extremely the
+Devil; one note just says CHECK HEAVEN? in shaky pen, and one string
+leads to a mirror. You decide not to ask. Bring him something true — the
+mansion, the attic light, nobody home — and he writes it down slow, like
+it hurts.
+
+> GOOD TIP, HE SAYS. THE DEVIL ALWAYS LIKED A VIEW
+
 ## Epilogue (future)
 
 After home is found, the forest stays open. The pair can keep walking —

@@ -27,6 +27,10 @@ pauses the world; there is no walking away from self-improvement).
 | --- | --- |
 | Finding the friendly lost dog | **4** |
 | Putting a zombie back down | **1** |
+| Laying a ghost to rest | **1** |
+| The minotaur — beaten, or better, directed | **5** |
+| Finding God (the signs all pointed here) | **3** |
+| Shooing the frogs off God (once) | **1** |
 
 Current level and XP show top-left under your HP, and on the sheet.
 
@@ -47,8 +51,10 @@ frozen while any of it is open — the drunk countdown included.
 
 You can carry **STR × 10 + CON × 20 lbs** — a starting body manages
 **60 lbs** (the sheet reads `WEIGHT 7 OF 60 LBS` once you're hauling the
-meaty bone). The bone weighs 5 lbs; the meat on it another 2. The forest
-travels light, for now — but the rule is watching, and levels raise it.
+meaty bone). The bone weighs 5 lbs; the meat on it another 2. The v0.20
+gear weighs in too: each plank of **wood 1 lb**, the **axe 6**, the
+**rope 2**, the boat **manual 1**. The forest travels light, for now — but
+the rule is watching, and a boat's worth of planks is 24 lbs of watching.
 
 ## The one die: d20
 
@@ -66,6 +72,10 @@ DC. The roll is always shown in the caption, tabletop style — `D20: 14+2 - ...
 | Smoke the pipe | WIS | ≤7 | A coughing fit: **−1 HP** | — |
 | Punch the zombie | STR | 12 | **⌊STR / 4⌋ damage** | It bites: **−2 HP** |
 | Swing the bone | STR | 9 | **⌊STR / 4⌋ + 1 damage**, BONK | It bites: **−2 HP** |
+| Swing the axe | STR | 11 | **⌊STR / 4⌋ + 2 damage** | They answer |
+| Throw dirt in its eyes | DEX | 10 | **Their answer goes wide** for a round | The night throws it back |
+| Offer the minotaur directions | WIS | 13 | The fight ends kindly — **5 XP**, he wanders on | The words come out as walls |
+| Chop a tree (axe in hand) | STR | 8 | **1 plank** (2 on 11+, 3 on 14+) | Bark 1, axe 0 |
 
 Damage scales with raw strength: fists deal `floor(STR / 4)` (a STR-16
 brawler one-punches a zombie; a STR-3 waif's landed hits bounce off
@@ -153,23 +163,44 @@ Put **200px** between you and the last hostile and the woods let go:
 door ends it too — `THE DOOR SHUTS THE FIGHT OUTSIDE`. Nothing hostile
 gets in.
 
-## The zombie
+## The foes
 
-A rare encounter. It shambles in place and it does not want friends. Your
-action menu in a fight:
+Everything that answers on its turn, v0.20 edition:
 
-- **TRY TO BEFRIEND IT** — round one only. It bites you (**−2 HP**).
+| Foe | HP | Damage | XP | Coins | The catch |
+| --- | --- | --- | --- | --- | --- |
+| **The zombie** | 4 | 2 | 1 | 1 | Does not want friends |
+| **The hostile ghost** | 2 | 1 | 1 | 2 | Passes through you and **steals a coin** with every hit |
+| **The red minotaur** | 8 | 3 | 5 | 5 | Fights like a wall looking for a door |
+
+Your action menu in a fight:
+
+- **TRY TO BEFRIEND IT** — round one only. It answers with its teeth
+  (or its horns, or its static).
 - **ATTACK WITH FISTS** — STR vs DC 12, ⌊STR / 4⌋ damage. Needs it in reach.
 - **SWING THE BONE** — STR vs DC 9, ⌊STR / 4⌋ + 1 damage (only with the bone).
+- **SWING THE AXE** — STR vs DC 11, ⌊STR / 4⌋ + 2 damage (only with the axe).
+- **SHOUT SOMETHING BRAVE** — the woods swallow it whole. It moves you,
+  slightly. Costs the turn.
+- **THROW DIRT IN ITS EYES** — DEX vs DC 10. Land it and **their answer
+  goes wide for a round** — the first DEX check in the game, at last.
+- **STUDY IT** — learn something true and useless. Costs the turn.
+- **OFFER DIRECTIONS** — minotaur only. WIS vs DC 13: you cannot lead him
+  out of the maze, but you can point him somewhere kinder. If it lands the
+  fight **ends** — full XP, no blood, the kindest resolution the game has.
 - **CAST A SPELL** — if you know one and have the focus.
 - **HOLD YOUR GROUND** — spend the turn doing nothing. Sometimes correct.
 
-You can also start a swing from the inventory screen if a zombie is in
-reach. The zombie has **4 HP**. It answers on its turn no matter what you
-did on yours — a miss, a bounced punch, and a friendly overture all end the
-same way. If a bite drops you to 0, it also samples your brain: **−1 INT**
-(never below 1), and you come back at 5 HP. Walking away is always
-available: it is not fast, and 200px is 200px.
+You can also start a swing from the inventory screen if a foe is in reach.
+They answer on their turn no matter what you did on yours — a miss, a
+bounced punch, and a friendly overture all end the same way. If a hit drops
+you to 0, the zombie samples your brain and the maze goes dark a moment:
+**−1 INT** (never below 1), and you come back at 5 HP. Walking away is
+always available: none of them are fast, and 200px is 200px.
+
+The minotaur is rare (heaven, roughly one region in fifty-three) and paces
+a slow endless loop around his den — about 90px of maze in every direction.
+He is the only red thing in heaven. That is on purpose.
 
 ## Damage
 
@@ -177,14 +208,58 @@ available: it is not fast, and 200px is 200px.
 - **Cat scratch** (doing anything but talking to the psychedelic cat): −1 HP.
 - **Zombie bite** (its turn, whatever you did on yours): −2 HP, unless a
   WARD is up.
+- **Ghost pass-through** — −1 HP, and it takes **a coin** with it.
+- **Minotaur horns** — −3 HP. The wall found its door and it was you.
 
 The pipe is not on this list. It never was supposed to be.
+
+## Coins and planks
+
+v0.20 gives the soul pocket change. **Coins** ride with you everywhere —
+through the television, both directions. Where they come from:
+
+- A successful dumpster search: **+2 coins**, fire-warm, under the bone.
+- Loot — the zombie drops **1**, a ghost **2**, the minotaur **5**.
+- Tipping the detective something true: **+3 coins**, once.
+- Selling to Pirts (see below).
+
+**Planks** come off trees. With the axe in hand and a tree in reach,
+**CHOP A TREE** — STR vs DC 8: **1 plank**, **2** on an 11+, **3** on a
+14+. Each plank weighs 1 lb, and a boat wants **24 of them**.
+
+### Pirts, merchant (deceased)
+
+The ghost town's one open business. He buys, he sells, he has jokes.
+
+| He sells | Price |
+| --- | --- |
+| Heal draught (+3 HP) | **3c** |
+| Axe | **8c** |
+| Rope | **2c** |
+| HOW TO BUILD A BOAT (ghost-press edition) | **12c** |
+
+| He buys | Pays |
+| --- | --- |
+| The meat | **2c** |
+| The bone | **4c** |
+| A plank | **1c** |
+| Your story | **1c** — once; he's heard it after that |
+
+### The boat
+
+**24 planks + the rope + the manual + a shoreline** and BUILD THE BOAT
+appears. Building spends the planks and the rope (its fifty-first use).
+The boat sails wherever you swim, at **1.25×** walking speed — swimming
+without it is **0.45×**. She floats. Somehow, she floats.
 
 ## Healing
 
 - **GOOD DOG** — every completed game of fetch: +1 HP.
 - **The meaty bone** — gnaw the meat off the dumpster bone: +2 HP, once.
 - **MOONLIGHT** — 2 focus, +3 HP, as often as the pool allows.
+- **Heal draught** — 3 coins at Pirts': +3 HP in a bottle. Tastes like
+  starlight and cough syrup.
+- **Light a candle** — 1 coin at the cathedral altar: +1 HP.
 - **WISH FOR HEALTH** — the genie restores you to full. One wish. Choose well;
   WISH FOR MORE WISHES has been tried, and the genie has seen it all before.
   WISH FOR HOME buys the one thing money can't: directions.
@@ -227,9 +302,31 @@ higher level, everything rose and gold and lovely warm pastels. The rules
 up there:
 
 - **You arrive alone**, west of the **river Styx** — pale, silver, slow.
-- **The zombies are angels.** Nothing is hostile; turn-based mode never
-  engages. **TRY TO BEFRIEND IT works** (it was always going to). BASK IN
-  ITS LIGHT is **+1 HP**; ASK THE WAY HOME points you at the Styx.
+- **Heaven has weather in its bones now (v0.20).** Beyond the grass, oaks,
+  redwoods, lakes, and mountains, heaven deals **deserts**, **beaches**,
+  and **glaciers** — and, far off the beaten path, **an island**.
+- **The water is warm and passable.** Walk in and you swim, at **0.45×**
+  walking speed. Build the boat (see above) and you sail at **1.25×**.
+  Night water still says no.
+- **Hand-painted signs point toward God.** About one region in five holds
+  one: READ IT, FOLLOW WHERE IT POINTS (your feet agree before you do),
+  LEAN ON IT, or WALK ON.
+- **God is a cricket** by a lake in a redwood grove, occasionally menaced
+  by frogs on lilypads. Finding God is **+3 XP**. You can ASK THE BIG
+  QUESTION (chirp; somehow that covers it), CONFESS (you are not forgiven —
+  you are something better, heard), **SIT WITH GOD A WHILE** (your focus
+  returns, all of it), SHOO THE FROGS (**+1 XP**, once; God did not need
+  the help and appreciates it anyway), or LEAVE QUIETLY.
+- **The zombies are angels.** Nothing *native* is hostile; turn-based mode
+  almost never engages. **TRY TO BEFRIEND IT works** (it was always going
+  to). BASK IN ITS LIGHT is **+1 HP**; ASK THE WAY HOME points you at the
+  Styx.
+- **Except the minotaur.** Rare and red and endlessly pacing the maze of
+  this life, he is heaven's one fight (see The foes). WIS gets you past him
+  kindest.
+- **The island shrine.** Swim or sail to the island and its shrine takes
+  offerings: **1 coin** buys **THE ISLANDER'S CALM — +2 max focus,
+  always**. Once; the calm is already yours after that.
 - **The dumpsters are cathedrals of melted gold.** LISTEN TO THE RAGAS
   restores your **focus** (all of it). ADD TO THE PILE OF GOD melts your
   offering in, and the spire climbs **one course higher each time** —
@@ -242,21 +339,63 @@ up there:
   night world waits unchanged. Heaven remembers you between visits.
 - Heaven has mansions too. Their televisions show the night below. Yes.
 
-## The mansion
+## The ghost town
+
+Rare — about one dry grass or oak region in forty-five — the night holds a
+**deserted ghost town**: a handful of ruins, a leaning sign, and the ghosts
+themselves, datamoshing through their old routines. Each ghost is dealt a
+temperament at generation:
+
+- **Drifting** and **sullen** ghosts are encounters: ASK WHAT HAPPENED
+  HERE, OFFER A COIN, KEEP IT COMPANY, or BACK AWAY SLOWLY.
+- **Hostile** ghosts belong to the battle system: 2 HP, 1 damage — and
+  every hit **passes through you and steals a coin**.
+
+In the middle of it, **Pirts** — the merchant ghost, open for business (see
+Coins and planks). On the outskirts, a **bail-bonds office** where a
+hard-boiled detective works the one case that matters: **where in the
+devil is the Devil**. Ask about the case, ask for work, ask about the town
+— or OFFER A TIP: something true pays **3 coins**, once. His corkboard is
+red string all the way down; one string leads to a mirror. You decide not
+to ask.
+
+## The mansion, and the other rooms
 
 Rarer than the cabins, somewhere in the forest or the grass, stands a
 two-story mansion with brass-lit windows and an attic light that comes on
 when nobody is home. **The front door is not locked.** Walk into the
 doorway and you're inside: a library, a grand hall, a parlor, a portrait
 whose eyes follow you (look closer — once), a grandfather clock you can
-hear from across the room, and a locked staircase. Nothing in the mansion
-rolls dice at you. Yet. The door mat at the entrance leads back out to the
-night, exactly where you left it. Fetch is declined indoors. The parlor's
-television is the way up (see above).
+hear from across the room, and a staircase somebody locked. The door mat
+at the entrance leads back out to the night, exactly where you left it.
+Fetch is declined indoors. The parlor's television is the way up (see
+above).
+
+**v0.20 opened the doors.** The staircase's lock finally rusted through,
+and every roofed place is a room now:
+
+- **The mansion upstairs** — a bedroom (a bed nobody died in, probably),
+  a study, **another portrait with the same eyes**, and a brass
+  **telescope**. Aim it where you like; it is already aimed **at the
+  island**.
+- **The cathedral nave** (heaven) — walk into a cathedral of melted gold:
+  an **altar** (PRAY refills your focus; LIGHT A CANDLE is 1 coin, +1 HP),
+  the **pile of god** indoors at last, and **singers** along the west wall
+  handing each other the melody forever (LISTEN refills your focus; ask
+  the melody's name — it is yours, sung slowly).
+- **The cabin's one room** — a stove with one warm coal, a cot, a lantern,
+  and **an axe on the wall pegs, free to take**. Exactly the kind of thing
+  a person building a boat in another world entirely might want.
+- **The bail-bonds office** — the detective, his desk, the corkboard.
 
 ## Encounters
 
 Walking up to an encounter opens a choice menu — arrows/tap to pick,
-Space/E or tap to confirm. Walking away is always one of the choices, and
-leaving re-arms the encounter unless it resolved for good. The psychedelic
-cat resolves for good no matter what you pick. He was never really there.
+Space/E or tap to confirm. **Every encounter now offers at least four
+options** (the v0.20 audit): warm your hands at the burning dumpster,
+stare back at the cat, polish the lamp on your sleeve, sniff the pipe,
+shamble alongside the zombie, JUST BREATHE in the spell menu (+1 focus —
+the cheapest spell, and still nobody casts it), and so on. Walking away is
+always one of the choices, and leaving re-arms the encounter unless it
+resolved for good. The psychedelic cat resolves for good no matter what
+you pick. He was never really there.

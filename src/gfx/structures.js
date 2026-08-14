@@ -403,6 +403,112 @@ export const TELEVISION_COLORS = {
   L: PALETTE.amber,
 };
 
+// --- Upstairs (v0.20): the mansion's second floor furnishings ---------------
+//
+// Same idiom and the same FURNISH_COLORS ramp as the ground floor, so the
+// two stories read as one house: smokeDeep case wood, plum upholstery,
+// brass fittings, gold for anything lit, night for anything that is glass.
+
+// The bed (30x14): a plum quilt, a smoke pillow, a headboard on the west
+// wall side. Nobody has slept badly in it; nobody has slept in it at all.
+export const BED_SPRITE = [
+  'ttt...........................',
+  'twwt..........................',
+  'twwt..........................',
+  'twwtsss.......................',
+  'twwsssss......................',
+  'twwsssssppppppppppppppppppppp.',
+  'twwppppppppppppppppppppppppppp',
+  'twpppwwppppwwppppwwppppwwppppp',
+  'twpppppppppppppppppppppppppppp',
+  'ttwwwwwwwwwwwwwwwwwwwwwwwwwwwt',
+  'ttssssssssssssssssssssssssssst',
+  '.tt.........................tt',
+  '.tt.........................tt',
+  '.tt.........................tt',
+];
+
+// The nightstand (10x13): two drawers and a candle that keeps its own hours.
+export const NIGHTSTAND_SPRITE = [
+  '....kk....',
+  '....ss....',
+  '....ss....',
+  'tttttttttt',
+  'twwwwwwwwt',
+  'twwwwkwwwt',
+  'twwwwwwwwt',
+  'tttttttttt',
+  'twwwwwwwwt',
+  'twwwwkwwwt',
+  'twwwwwwwwt',
+  'tttttttttt',
+  't........t',
+];
+
+// The telescope (14x16): a brass tube on a tripod, aimed out the window at
+// the top-right — at the moon, or at whatever heaven the set downstairs gets.
+export const TELESCOPE_SPRITE = [
+  '...........gg.',
+  '..........ggg.',
+  '.........ggg..',
+  '........ggg...',
+  '.......ggg....',
+  '......ggg.....',
+  '.....ggk......',
+  '.....kk.......',
+  '.....tt.......',
+  '....t..t......',
+  '....t..t......',
+  '...t....t.....',
+  '...t....t.....',
+  '..t......t....',
+  '..t......t....',
+  '.tt......tt...',
+];
+
+// The study desk (26x13): papers, a gold inkwell, and drawers that lock.
+export const DESK2_SPRITE = [
+  '......kk..................',
+  '.sssss..sssss.............',
+  'ssssssssssssssssssssssssss',
+  'wwwwwwwwwwwwwwwwwwwwwwwwww',
+  '.tt.wwwwwwwwwwwwwwwww.tt..',
+  '.tt.wwwwkwwwwwwkwwwww.tt..',
+  '.tt.wwwwwwwwwwwwwwwww.tt..',
+  '.tt.wwwwwwwwwwwwwwwww.tt..',
+  '.tt...................tt..',
+  '.tt...................tt..',
+  '.tt...................tt..',
+  '.tt...................tt..',
+  'ttt...................ttt.',
+];
+
+// The second portrait (18x20): the same brass frame as downstairs, a
+// different sitter — a violet figure this time. The eyes still follow; the
+// renderer paints them.
+export const PORTRAIT2_SPRITE = [
+  'tttttttttttttttttt',
+  'tggggggggggggggggt',
+  'tgGGGGGGGGGGGGGGgt',
+  'tgGGGvvvvvvvGGGGgt',
+  'tgGGGvGGGGGvGGGGgt',
+  'tgGGGvvvvvvvGGGGgt',
+  'tgGGGGvvvvvGGGGGgt',
+  'tgGGGvvvvvvvGGGGgt',
+  'tgGGvvvvvvvvvGGGgt',
+  'tgGGvvvGGGvvvGGGgt',
+  'tgGGvvvGGGvvvGGGgt',
+  'tgGGvvvvvvvvvGGGgt',
+  'tgGGvvvvvvvvvGGGgt',
+  'tgGGGGGGGGGGGGGGgt',
+  'tgGGGGGGGGGGGGGGgt',
+  'tgGGGGGGGGGGGGGGgt',
+  'tggggggggggggggggt',
+  'tttttttttttttttttt',
+  '......tttttt......',
+  '.......tttt.......',
+];
+
 /**
  * The set's living static: warm sparks drifting inside the screen, and a
  * soft spill of rose on the floor below. Offsets relative to the base

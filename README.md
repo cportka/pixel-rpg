@@ -7,7 +7,7 @@ things dancing where the woods grow deep. Somewhere out there
 waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
 eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.19.0
+**Version:** 0.20.0
 
 ## Play
 
@@ -39,8 +39,11 @@ On touch devices, pixel SWAP and BALL buttons appear in the bottom corners
 You start alone; follow the whimpers to find the
 dog. After that, whichever character you aren't controlling follows along on
 its own. Rare encounters (a burning dumpster, a psychedelic cat, a genie lamp,
-a suspicious pipe, a zombie who does not want friends) open a
-choice menu: arrows/tap to pick, Space/E or tap to confirm. The simplified
+a suspicious pipe, a zombie who does not want friends, datamoshing ghosts,
+a rare red minotaur pacing the maze of this life) open a choice menu:
+arrows/tap to pick, Space/E or tap to confirm — and as of 0.20 every
+encounter offers at least four options (warm your hands, stare back, polish
+the lamp, shout something brave, just breathe). The simplified
 D&D ruleset — 10 HP, six abilities (STR/INT/WIS/DEX/CON/CHA) that all start
 at a humbling 2, levels every 10 XP granting two +1s (find the dog for 4 XP,
 drop zombies for 1 each), d20 + modifier checks, STR-scaled damage, carry
@@ -59,8 +62,12 @@ don't quadruple the draw cost.
 within 120px: the screen locks into a rose-gold frame with corner
 brackets, a banner names the mode and whose move it is, and a bar counts
 down your 60px step budget. Spend it (or press Space/E) and your action
-menu opens — try to befriend it, swing, cast, or hold your ground — then
-the dead answer. Put 200px between you and the woods let go. The pipe is
+menu opens — try to befriend it, swing, cast, shout something brave, throw
+dirt in its eyes (DEX vs DC 10 — their answer goes wide), or hold your
+ground — then the dead answer. Put 200px between you and the woods let go.
+The foe table runs from the zombie (4 HP) through coin-stealing hostile
+ghosts (2 HP) to the red minotaur (8 HP, 3 damage — or talk him past with
+WIS: OFFER DIRECTIONS, DC 13, the kindest resolution). The pipe is
 where magic comes from: it never costs you a hit point, and a vision
 teaches **EMBER**, **WARD**, or **MOONLIGHT**, paid for out of a focus
 pool of `3 + WIS` that seeps back a point every 20 seconds.
@@ -73,6 +80,28 @@ grass, blush canopies, a pale silver Styx. The zombies are angels there
 melted gold where ragas never end and every donation raises the spire one
 course, and the dog is Cerberus — three heads, all glad — waiting on the
 far bank to carry you home. The night waits exactly where you left it.
+As of 0.20 heaven is wide: deserts, beaches, and glaciers join its
+biomes, its warm water is swimmable (0.45× walking speed — or sail at
+1.25× once you build the boat), hand-painted signs point the way to God
+— a cricket by a lake in a redwood grove, menaced occasionally by frogs
+on lilypads (meet, question, confess, sit, shoo) — a rare dangerous red
+minotaur paces the maze of this life, and an island far offshore holds a
+shrine whose one-coin offering grants +2 max focus, always.
+
+**The night got company too (0.20).** Rare grass and oak regions hold a
+deserted ghost town: drifting, sullen, and hostile datamoshing ghosts
+(the hostile ones fight — and steal a coin a hit), Pirts the merchant
+ghost (heal draughts, an axe, rope, a boat-building manual; he buys
+meat, bone, planks, and your story once), and a bail-bonds office on the
+outskirts where a hard-boiled detective works the case of where in the
+devil the Devil is (a good tip pays 3 coins, once). Coins and planks are
+the new economy: chop trees with the axe (STR vs DC 8, 1-3 planks) and
+build the boat from 24 planks, a rope, the manual, and a shoreline.
+Interiors opened up as well: the mansion's upstairs (the lock finally
+rusted through — a bedroom, a telescope aimed at the island, another
+portrait), the cathedral nave (altar, pile of god, singers), the cabin's
+one room (a wall axe to take, a stove), and the detective's office with
+its red-string corkboard.
 
 The person walks lanky now: a 14×32 anime silhouette, half leg, with a
 swept fall of hair that stays swept through the whole stride, a bounce
@@ -135,7 +164,10 @@ sized to the window (624x540 is the reference view; see `viewFor` in
     captions, the fetch state machine, spells and focus, the free /
     turn-based mode switch, and the two planes (night and heaven, swapped
     whole through the television).
-  - `mansion.js` — the one-screen interior, its furnishings and collision.
+  - `mansion.js` — the mansion's ground floor, its furnishings and collision.
+  - `interiors.js` — the walkable-interior registry (v0.20): the mansion
+    upstairs, the cathedral nave, the cabin, the bail-bonds office — tile
+    maps, furnishings, and named spots that turn into menus.
 - `src/gfx/` — rendering:
   - `palette.js` — the neo-noir smokey-darks-and-purples palette, and its
     heaven counterpart: every night color has a rose/gold/pastel twin under

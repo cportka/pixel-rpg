@@ -4,10 +4,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   Renderer, SCREEN_W, SCREEN_H, RENDER_FPS, uiButtons, choicePanel, captionMaxW, sheetLines, groundNoise,
+  memoryGlyphs,
 } from '../src/gfx/renderer.js';
 import { WALK_CYCLE_FPS } from '../src/gfx/sprites.js';
 import { wrapText } from '../src/gfx/font.js';
 import { Game } from '../src/core/game.js';
+import { World } from '../src/core/world.js';
+import {
+  godSpot, townAt, minotaurAt, signAt, biomeAt, ISLAND_REGION, REGION,
+} from '../src/core/terrain.js';
 import { viewFor, setScreenSize, VIEW_MIN_W, VIEW_MIN_H } from '../src/core/screen.js';
 
 function fakeCanvas(w = SCREEN_W, h = SCREEN_H) {
@@ -340,6 +345,124 @@ test('the sheet grows a focus line once the leaf has taught you', () => {
   const lines = sheetLines(g);
   assert.ok(lines.some((l) => l === `FOCUS ${g.focus} OF ${g.maxFocus()}`));
   assert.ok(lines.some((l) => l.startsWith('SPELLS: ')));
+});
+
+test('the sheet always counts the pockets: coins and wood', () => {
+  const g = new Game(42, { story: false });
+  assert.ok(sheetLines(g).includes('COINS 0  WOOD 0'), 'empty pockets still show');
+  g.coins = 7;
+  g.wood = 3;
+  assert.ok(sheetLines(g).includes('COINS 7  WOOD 3'));
+});
+
+// --- v0.20: interiors, the ghost town, heaven's residents --------------------
+
+test('every v0.20 interior renders from its INTERIORS spec', () => {
+  for (const kind of ['mansion2', 'cathedral', 'cabin', 'office']) {
+    const g = new Game(1, { story: false });
+    if (kind === 'cathedral') g.plane = 'heaven'; // the nave sits in heaven
+    g.goldGiven = 5; // grow the pile of god a few courses
+    g.enterInterior(kind, `t:${kind}`, { px: 0, py: 0, dx: -17, dy: 5 });
+    assert.equal(g.location, kind);
+    const canvas = fakeCanvas();
+    const r = makeRenderer(canvas);
+    r.render(g);
+    assert.equal(r.lastLocation, kind);
+    assert.ok(canvas.ctx.ops.fillRect > 500, `${kind} painted floor, walls, furnishings`);
+    for (const [x, y, w, h] of canvas.ctx.rects) {
+      assert.ok(x >= -1 && y >= -1 && x + w <= SCREEN_W + 1 && y + h <= SCREEN_H + 1,
+        `${kind} pixel (${x},${y}) off screen`);
+    }
+  }
+});
+
+test('the ghost town renders: ruins, ghosts, Pirts, the sign, the office', () => {
+  const g = new Game(3, { story: false });
+  let town = null;
+  for (let rx = -15; rx <= 15 && !town; rx++) {
+    for (let ry = -15; ry <= 15 && !town; ry++) town = townAt(g.world.seed, rx, ry);
+  }
+  assert.ok(town, 'seed 3 raises a town within 15 regions');
+  g.person.x = town.cx;
+  g.person.y = town.cy;
+  g.dog.x = town.cx - 20;
+  g.dog.y = town.cy;
+  const canvas = fakeCanvas();
+  const r = makeRenderer(canvas);
+  // Step across several mosh ticks so dropouts, tears, and tints all draw.
+  for (let i = 0; i < 8; i++) {
+    g.time += 0.13;
+    r.render(g);
+  }
+  assert.ok(canvas.ctx.ops.fillRect > 1000, 'main street painted');
+  // The office end of the street, facade and doorway.
+  g.person.x = town.office.x;
+  g.person.y = town.office.y + 40;
+  const before = canvas.ctx.ops.fillRect;
+  r.render(g);
+  assert.ok(canvas.ctx.ops.fillRect > before, 'the office facade painted');
+});
+
+test('a heaven frame renders God, the frogs, signposts, the shrine, the minotaur', () => {
+  const g = new Game(11, { story: false });
+  g.world = new World(0xbeef, 'heaven');
+  g.plane = 'heaven';
+  const seed = g.world.seed;
+  const god = godSpot(seed);
+  assert.ok(god, 'heaven has a God');
+  const spots = [[god.x, god.y]]; // the lake shore: cricket, chirp, lilypads, frogs
+  spots.push([ISLAND_REGION.rx * REGION + REGION / 2, ISLAND_REGION.ry * REGION + REGION / 2]); // the shrine
+  let den = null;
+  let sign = null;
+  let desert = null;
+  for (let rx = -20; rx <= 20; rx++) {
+    for (let ry = -20; ry <= 20; ry++) {
+      den ??= minotaurAt(seed, rx, ry);
+      sign ??= signAt(seed, rx, ry);
+      if (!desert && biomeAt(seed, rx, ry) === 'desert') {
+        desert = { x: rx * REGION + REGION / 2, y: ry * REGION + REGION / 2 };
+      }
+    }
+  }
+  assert.ok(den, 'a minotaur paces somewhere');
+  assert.ok(sign, 'a signpost points the way');
+  assert.ok(desert, 'heaven deals desert regions');
+  spots.push([den.x, den.y], [sign.x, sign.y], [desert.x, desert.y]);
+  const canvas = fakeCanvas();
+  const r = makeRenderer(canvas);
+  for (const [x, y] of spots) {
+    g.person.x = x;
+    g.person.y = y;
+    g.dog.x = x - 20;
+    g.dog.y = y;
+    r.camInit = false; // snap to each new stage
+    const before = canvas.ctx.ops.fillRect;
+    g.time += 1.1;
+    r.render(g);
+    assert.ok(canvas.ctx.ops.fillRect > before + 100, `painted at (${x},${y})`);
+  }
+});
+
+test('swimming halves the person; the boat carries them whole', () => {
+  const g = new Game(42, { story: false });
+  g.swimming = true;
+  const swim = fakeCanvas();
+  makeRenderer(swim).render(g);
+  assert.ok(swim.ctx.ops.fillRect > 100, 'the swimmer and ripples painted');
+  g.hasBoat = true;
+  const sail = fakeCanvas();
+  makeRenderer(sail).render(g);
+  // The boat is 26x14 of extra hull pixels the bare swimmer never paints.
+  assert.ok(sail.ctx.ops.fillRect > swim.ctx.ops.fillRect, 'the boat adds hull pixels');
+});
+
+test('memory glyphs mark the town, the island, and God', () => {
+  assert.ok(memoryGlyphs({ biome: 'grass', town: true }, 15).length > 0, 'town glyph');
+  const island = memoryGlyphs({ biome: 'island', water: true, island: true }, 15);
+  assert.ok(island.length > 0, 'island glyph');
+  assert.ok(memoryGlyphs({ biome: 'lake', god: true }, 15).length > 0, 'god glyph');
+  // The island cell shows land in the sea, not a river channel.
+  assert.ok(island.length < 15, 'no 15-row river channel across the island');
 });
 
 test('ground noise is smooth: neighbours differ by a little, not a lot', () => {
