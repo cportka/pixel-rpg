@@ -1110,7 +1110,7 @@ export class Game {
       }
       for (const o of this.world.officesInRect(p.x - 80, p.y - 80, 160, 160)) {
         if (Math.abs(p.x - (o.x + 32)) < 8 && p.y > o.y - 5 && p.y < o.y + 5) {
-          this.enterInterior('office', `of:${o.x},${o.y}`, { px: o.x, py: o.y + 12, dx: o.x - 15, dy: o.y + 16 });
+          this.enterInterior('office', `of:${o.x},${o.y}`, { px: o.x + 32, py: o.y + 12, dx: o.x + 17, dy: o.y + 16 });
           if (!this.encounterDone.has(`${this.mansionKey}:in`)) {
             this.encounterDone.add(`${this.mansionKey}:in`);
             this.announce(['GORSKI - BAIL BONDS, SAYS THE GLASS', 'THE LIGHT INSIDE IS THE COLOR OF COLD COFFEE']);
@@ -1155,6 +1155,7 @@ export class Game {
 
     // A clicked interactable being walked to: open its menu on arrival, or
     // give up if the walk was abandoned.
+    if (this.pendingInteract && this.mode === 'turn') this.pendingInteract = null;
     if (this.pendingInteract && !this.choice && this.active === 'person') {
       const t = this.pendingInteract;
       if (Math.hypot(t.x - this.person.x, t.y - this.person.y) <= INTERACT_REACH) {
@@ -1359,6 +1360,7 @@ export class Game {
   interactAt(wx, wy) {
     if (this.choice) return false;
     if (this.active !== 'person') return false;
+    if (this.mode === 'turn') return false; // the battle owns the screen
     const it = this.interactableAt(wx, wy);
     if (!it) {
       this.pendingInteract = null;
@@ -1368,7 +1370,7 @@ export class Game {
       this.pendingInteract = null;
       this.openMenuFor(it);
     } else {
-      this.pendingInteract = { kind: it.kind, key: it.key, x: it.x, y: it.y, data: it.data };
+      this.pendingInteract = { kind: it.kind, key: it.key, x: it.x, y: it.y, r: it.r, data: it.data };
       this.setMoveTarget(it.x, it.y + 10);
     }
     return true;
@@ -1377,6 +1379,7 @@ export class Game {
   /** The action key, out of battle: talk to whatever is in front of you. */
   interactNearest() {
     if (this.choice || this.active !== 'person') return false;
+    if (this.mode === 'turn') return false; // no shopping mid-fight
     let best = null;
     for (const it of this.interactables()) {
       const d = Math.hypot(it.x - this.person.x, it.y - this.person.y);
@@ -1770,8 +1773,10 @@ export class Game {
         this.emit('whimper');
         this.announce(['INSIDE: SNORING. FAINT, ANCIENT, CONTENT', 'YOU SET IT DOWN GENTLY. LET SOMETHING SLEEP']);
       } else if (id === 'take') {
-        // v0.21: it goes in the pocket. The polish rides along.
+        // v0.21: it goes in the pocket. The polish rides along — and a fresh
+        // lamp brings a fresh sleeper, even if an old wish was spent.
         this.encounterDone.add(c.key);
+        this.encounterDone.delete('lamp:carried');
         if (this.polishedLamps.delete(c.key)) this.polishedLamps.add('lamp:carried');
         this.hasLamp = true;
         this.emit('pickup');
@@ -1811,7 +1816,9 @@ export class Game {
         this.announce(['THE ASH MAKES ONE SMALL GRAY GHOST AND JOINS THE NIGHT']);
       } else if (id === 'take') {
         this.encounterDone.add(c.key);
+        this.encounterDone.add(`${c.key}:taken`); // gone from the ground, not just spent
         this.hasPipe = true;
+        this.pipeSpent = false; // a fresh pipe is a fresh bowl
         this.emit('pickup');
         this.announce(['YOU POCKET THE PIPE, STILL FAINTLY WARM', 'THE WOODS PRETEND NOT TO NOTICE']);
       }
@@ -1874,6 +1881,7 @@ export class Game {
         if (foe && r.total >= DC_DIRECTIONS) {
           this.encounterDone.add(foe.key);
           this.zombieHp.delete(foe.key);
+          this.foeOffsets.delete(foe.key);
           this.emit('vanish');
           this.triggerGlitch(0.5);
           this.announce([
@@ -2925,16 +2933,12 @@ export class Game {
 
   /** Swing from the inventory at whatever undead thing is in reach. */
   attackFromSheet(id) {
-    const p = this.person;
-    // Indoors, interior coordinates would alias world chunks near the origin
-    // — and the mansion keeps no zombies anyway. You swing at the dark.
-    const zombies = this.location !== 'world' ? [] : this.world.zombiesInRect(
-      p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2,
-    );
-    for (const z of zombies) {
-      const key = `z:${z.x},${z.y}`;
-      if (this.encounterDone.has(key)) continue;
-      this.resolveZombie({ kind: 'zombie', key, x: z.x, y: z.y }, id);
+    // Live positions (v0.21: zombies drift off their posts to chase you) —
+    // hostilesNear already speaks zombiePos/ghostPos/minotaurPos. Indoors it
+    // returns nothing, and you swing at the dark.
+    const foe = this.hostilesNear(ENCOUNTER_RADIUS)[0] ?? null;
+    if (foe) {
+      this.resolveZombie({ kind: 'zombie', foe: foe.kind, key: foe.key, x: foe.x, y: foe.y }, id);
       return;
     }
     this.emit('throw'); // the whoosh of hitting nothing
@@ -3151,6 +3155,7 @@ export class Game {
     if (left <= 0) {
       this.encounterDone.add(target.key);
       this.zombieHp.delete(target.key);
+      this.foeOffsets.delete(target.key);
       this.emit('vanish');
       this.announce([lines.kills]);
       this.gainXp(spec.xp);
@@ -3925,19 +3930,12 @@ export class Game {
     };
     const LOOT = { zombie: 1, ghost: 2, minotaur: 5 };
     if (r.total >= dc) {
-      if (dmg <= 0) {
-        // A STR-3 punch lands and accomplishes nothing. No bite either —
-        // you did, technically, hit it.
-        this.announce([`${this.rollText(r)} - YOUR FISTS BOUNCE OFF HARMLESSLY`]);
-        if (this.mode === 'turn') this.endPlayerTurn();
-        else this.openChoice(this.zombieMenu(c.key, c.x, c.y));
-        return;
-      }
       const left = hp - dmg;
       if (weapon) this.emit(weapon === 'bone' ? 'bonk' : weapon === 'wand' ? 'spell-cast' : 'chop');
       if (left <= 0) {
         this.encounterDone.add(c.key);
         this.zombieHp.delete(c.key);
+        this.foeOffsets.delete(c.key);
         this.emit('vanish');
         this.triggerGlitch(0.4);
         this.announce([

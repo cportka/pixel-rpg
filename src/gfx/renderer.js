@@ -514,7 +514,9 @@ export class Renderer {
    * aggressively so the cache stays capped.
    */
   treeSprite(tree, time = 0) {
-    const bucket = Math.floor(time * 4); // 0.25s twinkle buckets
+    // 0.25s twinkle buckets — but only conifers wear garlands; bushes are
+    // time-invariant, so they key at bucket 0 and never churn the cache.
+    const bucket = tree.kind === 'tree' ? Math.floor(time * 4) : 0;
     const key = `${this.plane}:${tree.kind}:${tree.variant}:${tree.size}:${tree.detailSeed}:${bucket}`;
     let entry = this.treeCache.get(key);
     if (!entry) {
@@ -914,7 +916,8 @@ export class Renderer {
       });
     }
     for (const pi of game.world.pipesInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
-      const spent = game.encounterDone.has(`p:${pi.x},${pi.y}`);
+      if (game.encounterDone.has(`p:${pi.x},${pi.y}:taken`)) continue; // pocketed — gone
+      const spent = game.encounterDone.has(`p:${pi.x},${pi.y}`); // smoked in place: lies there, smokeless
       drawables.push({
         y: pi.y,
         draw: () => {

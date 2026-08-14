@@ -767,9 +767,9 @@ test('an empty shelf scatters the words — and still costs you the turn', () =>
 
 test('you cannot cast what the leaf has not taught you', () => {
   const g = flatGame();
-  const focus0 = g.focus;
+  const slots0 = { ...g.slots };
   g.castSpell('ember');
-  assert.equal(g.focus, focus0);
+  assert.deepEqual(g.slots, slots0, 'no slot is spent');
   assert.equal(g.caption, null, 'nothing happens at all');
 });
 
