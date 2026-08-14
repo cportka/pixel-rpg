@@ -401,11 +401,11 @@ test('the battle menu: no bone option bare-handed, befriend only in round one', 
   const g = zombieGame();
   assert.equal(g.choice.kind, 'battle');
   assert.equal(g.choice.title, 'A ZOMBIE IS ON YOU');
-  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'fists', 'wait']);
+  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'fists', 'taunt', 'dirt', 'study', 'wait']);
   g.resolveChoice('wait');
   assert.equal(g.round, 2, 'holding your ground still spends the turn');
   g.openBattleMenu();
-  assert.deepEqual(g.choice.options.map((o) => o.id), ['fists', 'wait'], 'the friendly beat was round one');
+  assert.deepEqual(g.choice.options.map((o) => o.id), ['fists', 'taunt', 'dirt', 'study', 'wait'], 'the friendly beat was round one');
 });
 
 test('befriending the zombie just gets you bitten (-2 HP)', () => {
@@ -451,7 +451,7 @@ test('the last hostile down lets the world back into free movement', () => {
 
 test('the bone is the better club: DC 9, 3 damage, and it bonks', () => {
   const g = zombieGame({ bone: true });
-  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'fists', 'bone', 'wait']);
+  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'fists', 'bone', 'taunt', 'dirt', 'study', 'wait']);
   const key = g.zombieKey;
   g.events.length = 0;
   g.rng = () => 0.45; // roll 10: lands with the bone, would miss bare-handed
@@ -605,7 +605,7 @@ test('your move is a budget: spend it and the action menu opens itself', () => {
   assert.ok(g.choice, 'so the action menu opened on its own');
   assert.equal(g.choice.kind, 'battle');
   assert.equal(g.choice.title, 'IT SHAMBLES CLOSER', 'out of reach, so no fists');
-  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'wait']);
+  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'taunt', 'dirt', 'study', 'wait']);
 });
 
 // --- Magic ------------------------------------------------------------------
@@ -660,7 +660,7 @@ test('the spell menu is a pause screen, and needs a spell to open', () => {
   assert.equal(g.choice.kind, 'spell');
   assert.match(g.choice.title, /^FOCUS \d+ OF \d+$/);
   assert.ok(g.menuPaused(), 'the world waits while you read the book');
-  assert.deepEqual(g.choice.options.map((o) => o.id), [SPELLS[0].id, 'back']);
+  assert.deepEqual(g.choice.options.map((o) => o.id), [SPELLS[0].id, 'breathe', 'hum', 'back']);
 });
 
 test('the SPELLS icon joins the sheet only once you know one', () => {

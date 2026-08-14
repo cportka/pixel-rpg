@@ -46,6 +46,10 @@ export const PALETTE = {
   pink: '#f06ab0', // the fetch ball
   hotRose: '#ff8fc4', // the hottest point of a flame
 
+  // BLOOD — true red, reserved (v0.20): the minotaur, the corkboard strings
+  blood: '#a8232f',
+  bloodDeep: '#5c1119',
+
   // GOLD — lamplight, brass, the warm accent the noir turns on
   amber: '#6f4630', // dark warm shadow
   brass: '#b8834a', // lit brass
@@ -131,6 +135,10 @@ export const HEAVEN = {
   magenta: '#e26a95',
   pink: '#f27ba6',
   hotRose: '#ff9cc0',
+
+  // BLOOD — the minotaur burns red even on the cream
+  blood: '#d94040',
+  bloodDeep: '#8f2430',
 
   // GOLD — warmer than ever; heaven runs on it
   amber: '#c08a3e',

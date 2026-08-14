@@ -165,7 +165,7 @@ test('walking up to a burning dumpster opens the choice menu and freezes the wal
   assert.ok(choice, 'menu opened');
   assert.equal(choice.kind, 'dumpster');
   assert.equal(choice.title, 'A DUMPSTER BURNS IN THE DARK');
-  assert.equal(choice.options.length, 3);
+  assert.equal(choice.options.length, 4);
   const px = g.person.x;
   g.update(STEP, { right: true });
   assert.equal(g.person.x, px, 'movement frozen while the menu is open');
@@ -198,7 +198,7 @@ test('search success: d20 shown, a meaty bone, and a gnaw-or-save menu', () => {
   assert.ok(g.encounterDone.has(choice.key), 'no second search');
   assert.ok(g.choice, 'the bone menu chained open');
   assert.equal(g.choice.kind, 'bone');
-  assert.equal(g.choice.options.length, 2);
+  assert.equal(g.choice.options.length, 4);
   g.hp = 5;
   g.resolveChoice('eat');
   assert.equal(g.hp, 7, 'gnawing the meat heals +2');

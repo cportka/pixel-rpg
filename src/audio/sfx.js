@@ -78,6 +78,22 @@ export const SOUNDS = {
   raga: { name: 'rpg_133', gain: 0.8 }, // the music that never ends
   blessing: { name: 'rpg_090', gain: 0.7 }, // an angel notices you
   gold: { name: 'rpg_055', gain: 0.7 }, // one more course on the pile of god
+
+  // v0.20 — the economy, the ghost town, and the far shores.
+  coin: { name: 'rpg_046', gain: 0.7 }, // one small bright noise
+  buy: { name: 'rpg_052', gain: 0.7 }, // Pirts makes a sale
+  sell: { name: 'rpg_053', gain: 0.7 }, // Pirts makes an acquisition
+  chop: { name: 'rpg_020', gain: 0.9 }, // the axe remembers trees
+  splash: { name: 'rpg_101', gain: 0.8 }, // into the warm Styx shallows
+  sail: { name: 'rpg_104', gain: 0.8 }, // she floats. somehow, she floats
+  chirp: { name: 'rpg_140', gain: 0.6 }, // God, existing
+  frog: { name: 'rpg_098', gain: 0.6 }, // the lilypad opposition
+  bellow: { name: 'rpg_027', gain: 1 }, // something red is pacing this way
+  ghost: { name: 'rpg_120', gain: 0.7 }, // static with a dinner bell in it
+  sign: { name: 'rpg_009', gain: 0.5 }, // creak of a patient signpost
+  typewriter: { name: 'rpg_007', gain: 0.6 }, // the Devil file grows a line
+  pray: { name: 'rpg_131', gain: 0.7 }, // the gold listens
+  squeak: { name: 'rpg_143', gain: 0.6 }, // somewhere, ears rotate
 };
 
 /** Every event name the game can emit. main.js plays these 1:1. */

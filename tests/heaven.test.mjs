@@ -90,7 +90,7 @@ test('the parlor holds a television, and its menu offers the way up', () => {
   }
   assert.equal(g.choice?.kind, 'tv');
   assert.equal(g.choice.title, 'AN OLD TELEVISION, WARM WITH ROSE LIGHT');
-  assert.deepEqual(g.choice.options.map((o) => o.id), ['inside', 'channel', 'away']);
+  assert.deepEqual(g.choice.options.map((o) => o.id), ['inside', 'channel', 'down', 'away']);
   assert.ok(g.heard.includes('tv'), 'the set hums as you come near');
 });
 
