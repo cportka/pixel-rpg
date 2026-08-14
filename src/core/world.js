@@ -172,9 +172,9 @@ export class World {
     return this.featuresInRect('ruins', x, y, w, h, 48);
   }
 
-  /** Ghosts near the rect. */
+  /** Ghosts near the rect (pad covers drift ±26 + half sprite + mosh tear). */
   ghostsInRect(x, y, w, h) {
-    return this.featuresInRect('ghosts', x, y, w, h, 30);
+    return this.featuresInRect('ghosts', x, y, w, h, 40);
   }
 
   /** Pirts, wherever his town is, near the rect. */

@@ -931,6 +931,7 @@ export class Renderer {
       });
     }
     for (const gh of game.world.ghostsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      if (game.encounterDone.has(`gh:${gh.x},${gh.y}`)) continue; // the signal dropped for good
       const pos = ghostPos(gh, game.time);
       drawables.push({
         y: pos.y,
@@ -1033,6 +1034,7 @@ export class Renderer {
       }
     }
     for (const m of game.world.minotaursInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      if (game.encounterDone.has(`mi:${m.x},${m.y}`)) continue; // the maze, at last, had an exit
       const pos = minotaurPos(m, game.time);
       drawables.push({
         y: pos.y,

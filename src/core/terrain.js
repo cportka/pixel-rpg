@@ -156,11 +156,10 @@ export function minotaurAt(seed, rx, ry) {
   if (Math.abs(rx - GOD_REGION.rx) <= 1 && Math.abs(ry - GOD_REGION.ry) <= 1) return null;
   const h = hashCoords((seed ^ SALT_MINO) >>> 0, rx, ry);
   if (h % 53 !== 0) return null; // rare, rare, rare
-  return {
-    x: rx * REGION + REGION * 0.35 + ((h >> 8) % Math.round(REGION * 0.3)),
-    y: ry * REGION + REGION * 0.35 + ((h >> 16) % Math.round(REGION * 0.3)),
-    phase: ((h >> 4) % 628) / 100,
-  };
+  const x = rx * REGION + REGION * 0.35 + ((h >>> 8) % Math.round(REGION * 0.3));
+  const y = ry * REGION + REGION * 0.35 + ((h >>> 16) % Math.round(REGION * 0.3));
+  if (isWater(seed, x, y)) return null; // he paces a maze, not the Styx
+  return { x, y, phase: ((h >>> 4) % 628) / 100 };
 }
 
 /**

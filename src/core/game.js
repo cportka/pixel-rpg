@@ -238,6 +238,10 @@ export class Game {
     this.choice = null; // active menu: { kind, key, x, y, title, options: [{id, label}] }
     this.choiceIndex = 0;
     this.choiceCooldown = null; // { key, x, y } — recently closed, re-arms at distance
+    // Every key dismissed since you last walked clear. One slot alone
+    // ping-pongs when two encounters overlap (Pirts beside a ghost, the
+    // detective under his corkboard): closing B re-armed A each tick.
+    this.cooldownKeys = new Set();
     this.encounterDone = new Set(); // encounter keys that resolved for good
     this.dumpstersOut = new Set(); // dumpsters whose fire was smothered
     this.encounterCheck = 0;
@@ -441,6 +445,19 @@ export class Game {
       this.dog.x = ds.x;
       this.dog.y = ds.y;
     }
+    // A world encounter dismissed just inside its ring (the cathedral's
+    // gold, a dumpster by the cabin steps) must not pounce the moment you
+    // step out: anchor the cooldown at the doorstep and pre-block whatever
+    // encounter feature shares it.
+    this.choiceCooldown = { key: 'door', x: spot.x, y: spot.y };
+    for (const d of this.world.dumpstersInRect(
+      spot.x - ENCOUNTER_RADIUS - 12,
+      spot.y - ENCOUNTER_RADIUS - 12,
+      (ENCOUNTER_RADIUS + 12) * 2,
+      (ENCOUNTER_RADIUS + 12) * 2,
+    )) {
+      this.cooldownKeys.add(`d:${d.x},${d.y}`);
+    }
     this.mansionKey = null;
     this.clearMoveTarget();
     this.emit('door');
@@ -469,6 +486,7 @@ export class Game {
       encounterDone: this.encounterDone,
       zombieHp: this.zombieHp,
       choiceCooldown: this.choiceCooldown,
+      cooldownKeys: this.cooldownKeys,
       px: this.person.x,
       py: this.person.y,
       dx: this.dog.x,
@@ -489,6 +507,7 @@ export class Game {
     this.encounterDone = snap.encounterDone;
     this.zombieHp = snap.zombieHp;
     this.choiceCooldown = snap.choiceCooldown;
+    this.cooldownKeys = snap.cooldownKeys ?? new Set();
     this.person.x = snap.px;
     this.person.y = snap.py;
     this.dog.x = snap.dx;
@@ -518,13 +537,20 @@ export class Game {
     // will cross it on. Cerberus sits past the far bank, level with the deck.
     const river = riverNear(hseed, RIVER_COL * REGION, py);
     const by = bridgeYNear(hseed, river.band, py);
-    const spot = { x: river.center + RIVER_W + 36, y: by };
+    // The bank at the BRIDGE's latitude — the meander shifts between y=30
+    // and the deck — probed eastward until the ground is actually dry:
+    // Cerberus waits past the far bank, never in a lake.
+    const bank = riverNear(hseed, RIVER_COL * REGION, by);
+    let cbx = bank.center + RIVER_W + 36;
+    for (let i = 0; i < 40 && isWater(hseed, cbx, by); i++) cbx += 24;
+    const spot = { x: cbx, y: by };
     return {
       world,
       memory: new Map(),
       encounterDone: new Set(),
       zombieHp: new Map(),
       choiceCooldown: null,
+      cooldownKeys: new Set(),
       px,
       py,
       dx: spot.x,
@@ -604,16 +630,23 @@ export class Game {
       this.emit('door');
       return;
     }
-    // Re-arm closed menus at distance, same as everywhere else.
+    // Re-arm closed menus at distance — but only this interior's own keys.
+    // A world cooldown's stored position is in world coordinates; measuring
+    // it against interior coordinates would clear it every time, and the
+    // dismissed menu would pounce again the moment you stepped back out.
     if (this.choiceCooldown) {
       const cd = this.choiceCooldown;
-      if (Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) this.choiceCooldown = null;
+      const prefix = `${this.mansionKey}:`;
+      if (cd.key.startsWith(prefix) && Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) {
+        this.choiceCooldown = null;
+        for (const k of this.cooldownKeys) if (k.startsWith(prefix)) this.cooldownKeys.delete(k);
+      }
     }
     // Named spots open their menus when the person wanders close.
     if (!this.choice) {
       for (const spot of INTERIORS[kind].spots) {
         const key = `${this.mansionKey}:${spot.id}`;
-        if (this.choiceCooldown?.key === key) continue;
+        if (this.choiceCooldown?.key === key || this.cooldownKeys.has(key)) continue;
         if (Math.hypot(spot.x - p.x, spot.y - p.y) > spot.r) continue;
         this.openSpotMenu(kind, spot, key);
         return;
@@ -640,10 +673,15 @@ export class Game {
       return;
     }
     // Re-arm a closed menu once you actually walk away (the television is
-    // the one mansion encounter that comes back).
+    // the one mansion encounter that comes back). Same interior-key scoping
+    // as updateInterior: never wipe a world cooldown against indoor coords.
     if (this.choiceCooldown) {
       const cd = this.choiceCooldown;
-      if (Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) this.choiceCooldown = null;
+      const prefix = `${this.mansionKey}:`;
+      if (cd.key.startsWith(prefix) && Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) {
+        this.choiceCooldown = null;
+        for (const k of this.cooldownKeys) if (k.startsWith(prefix)) this.cooldownKeys.delete(k);
+      }
     }
     const pk = `${this.mansionKey}:port`;
     if (!this.choice && !this.encounterDone.has(pk) && nearPortrait(p.x, p.y)) {
@@ -1247,13 +1285,18 @@ export class Game {
     if (this.choice) return; // never clobber an open menu (e.g. a level-up)
     if (this.location !== 'world') return; // the mansion has its own manners
     if (this.active !== 'person') return; // the dog is unbothered by all of it
+    if (this.mode === 'turn') return; // the battle owns the screen — no shopping mid-fight
     const p = this.person;
-    // Re-arm a recently closed menu only once you've actually walked away.
+    // Re-arm recently closed menus only once you've actually walked away.
     if (this.choiceCooldown) {
       const cd = this.choiceCooldown;
-      if (Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) this.choiceCooldown = null;
+      if (Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) {
+        this.choiceCooldown = null;
+        this.cooldownKeys.clear();
+      }
     }
-    const blocked = (key) => this.encounterDone.has(key) || this.choiceCooldown?.key === key;
+    const blocked = (key) =>
+      this.encounterDone.has(key) || this.choiceCooldown?.key === key || this.cooldownKeys.has(key);
     const near = (method) =>
       this.world[method](p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2);
 
@@ -1398,7 +1441,7 @@ export class Game {
       // Night (v0.20): the ghost town's people, such as they are.
       for (const pt of near('pirtsInRect')) {
         const key = `pi:${pt.x},${pt.y}`;
-        if (this.choiceCooldown?.key === key) continue; // Pirts never one-shots
+        if (this.choiceCooldown?.key === key || this.cooldownKeys.has(key)) continue; // Pirts never one-shots
         this.emit('ghost');
         this.openPirtsMenu(key, pt.x, pt.y);
         return;
@@ -1444,9 +1487,9 @@ export class Game {
     }
 
     // Zombies get their own path: options depend on the bone, and they groan.
-    // While turn-based, the round structure owns them instead. In heaven the
-    // same spots hold angels, and the angels hold no grudges.
-    if (this.mode === 'turn') return;
+    // (While turn-based, the round structure owns them — the guard at the
+    // top already returned.) In heaven the same spots hold angels, and the
+    // angels hold no grudges.
     for (const z of near('zombiesInRect')) {
       const key = `z:${z.x},${z.y}`;
       if (blocked(key)) continue;
@@ -1483,7 +1526,11 @@ export class Game {
     // a pause screen — or the mansion's portrait — must not wipe the
     // cooldown of an encounter you fled outside.
     if (!['sheet', 'detail', 'map', 'levelup', 'portrait', 'spell', 'battle'].includes(c.kind)) {
-      this.choiceCooldown = { key: c.key, x: c.x, y: c.y };
+      // Anchored where YOU stand, not where the feature is: a padded feature
+      // can trigger from beyond the re-arm ring, and a feature-anchored
+      // cooldown would clear itself while you stood perfectly still.
+      this.choiceCooldown = { key: c.key, x: this.person.x, y: this.person.y };
+      this.cooldownKeys.add(c.key); // stays blocked even if a neighbor closes after
     }
     this.emit('menu-confirm');
 
@@ -1618,6 +1665,7 @@ export class Game {
               { id: 'health', label: 'WISH FOR HEALTH' },
               { id: 'home', label: 'WISH FOR HOME' },
               { id: 'wishes', label: 'WISH FOR MORE WISHES' },
+              { id: 'nothing', label: 'WISH FOR NOTHING' },
             ],
           });
         } else {
@@ -3194,7 +3242,8 @@ export class Game {
       // off — stamped on the ZOMBIE explicitly, since a sheet-launched attack
       // otherwise leaves the slot on the detail window and the fight would
       // force-reopen over your unconscious body.
-      this.choiceCooldown = { key: c.key, x: c.x, y: c.y };
+      this.choiceCooldown = { key: c.key, x: this.person.x, y: this.person.y };
+      this.cooldownKeys.add(c.key);
       this.stats.int = Math.max(1, this.stats.int - 1);
       this.announce([
         'IT TASTES A LITTLE OF YOUR BRAIN (-1 INT)',

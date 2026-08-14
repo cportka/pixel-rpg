@@ -66,10 +66,8 @@ function minotaurGame() {
   return g;
 }
 
-// A heaven-registered fixture seed for the pure terrain checks. (NOTE:
-// Game.freshHeaven() builds its World without the 'heaven' biome set — see
-// the report — so the terrain fixtures are tested against a World that
-// registers the heaven deck explicitly, the way terrain intends.)
+// A heaven-registered fixture seed for the pure terrain checks, registered
+// explicitly the same way Game.freshHeaven() registers a real ascent's world.
 const HSEED = 4242;
 new World(HSEED, 'heaven');
 
@@ -378,7 +376,8 @@ test('walking up to God fires the one-shot meeting (+3 XP) and a five-option men
   assert.equal(g.choice.options.length, 5, 'five ways to be with God');
   // Leave and return: the menu re-opens, the meeting stays once-only.
   g.resolveChoice('leave');
-  g.choiceCooldown = null;
+  g.choiceCooldown = null; // the walk-away re-arm clears both together
+  g.cooldownKeys.clear();
   runSeconds(g, 0.5);
   assert.equal(g.choice?.kind, 'god', 'God remains');
   assert.equal(g.xp, 3, 'but you only meet God for the first time once');

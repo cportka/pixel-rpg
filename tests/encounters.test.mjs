@@ -305,7 +305,7 @@ test('a good rub summons the genie: chained wish menu on the same key', () => {
   assert.equal(g.choice.kind, 'genie');
   assert.equal(g.choice.key, choice.key);
   assert.equal(g.choice.title, 'THE GENIE OFFERS ONE WISH');
-  assert.equal(g.choice.options.length, 3);
+  assert.equal(g.choice.options.length, 4);
   assert.match(g.caption.text, /A GENIE BILLOWS OUT IN VIOLET SMOKE/);
   assert.ok(DC_GENIE >= 10 && DC_GENIE < DC_SMOTHER, 'genie sits between the dumpster DCs');
 });
