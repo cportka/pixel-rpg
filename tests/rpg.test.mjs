@@ -7,7 +7,7 @@ import {
   DC_FISTS, DC_BONE, ZOMBIE_HP, ZOMBIE_BITE, DRUNK_TIME, DRUNK_WIS_BONUS,
   BONE_WEIGHT, MEAT_WEIGHT,
   START_STAT, XP_PER_LEVEL, LEVEL_POINTS, XP_DOG, XP_ZOMBIE, MEET_RADIUS,
-  SPELLS, FOCUS_BASE, FOCUS_REGEN, BATTLE_RADIUS, BATTLE_LEAVE, BATTLE_MOVE,
+  SPELLS, SLOT_LEVELS, BATTLE_RADIUS, BATTLE_LEAVE, BATTLE_MOVE,
 } from '../src/core/game.js';
 import { generateChunk, CHUNK } from '../src/core/world.js';
 import { ZOMBIE_SPRITE, ZOMBIE_COLORS, zombieSway } from '../src/gfx/encounters.js';
@@ -28,6 +28,7 @@ function flatGame() {
   const g = new Game(1, { story: false });
   g.world.collides = () => false;
   for (const a of ABILITIES) g.stats[a] = 10;
+  g.rest(); // slots were dealt at STAT 2 — re-deal for the flat 10s
   runSeconds(g, 3.5); // let the greeting caption clear
   return g;
 }
@@ -615,39 +616,46 @@ function said(g) {
   return [g.caption && g.caption.text, ...g.captionQueue].filter(Boolean);
 }
 
-test('focus is 3 + WIS, and never drops below one point', () => {
-  const g = flatGame();
-  assert.equal(g.maxFocus(), FOCUS_BASE, 'a WIS of 10 is a flat 3');
+test('slots come from the mind: INT shapes L1, WIS L2, CHA L3', () => {
+  const g = flatGame(); // all 10s: mods 0
+  assert.equal(g.maxSlots(1), 2, 'L1 = 2 + INT mod');
+  assert.equal(g.maxSlots(2), 1, 'L2 = 1 + WIS mod');
+  assert.equal(g.maxSlots(3), 0, 'L3 = CHA mod');
+  g.stats.int = 18;
+  assert.equal(g.maxSlots(1), 6);
   g.stats.wis = 18;
-  assert.equal(g.maxFocus(), FOCUS_BASE + 4);
-  g.stats.wis = 2; // -4: the pool would go negative
-  assert.equal(g.maxFocus(), 1, 'the dimmest mind still holds one spell');
+  assert.equal(g.maxSlots(2), 5);
+  g.stats.cha = 14;
+  assert.equal(g.maxSlots(3), 2);
+  g.stats.int = 2; // -4: the shelf would go negative
+  assert.equal(g.maxSlots(1), 1, 'the dimmest mind still holds one casting');
 });
 
-test('the leaf teaches one spell at a time, in the order of the book', () => {
+test('the leaf teaches its own book in order — never the scroll spells', () => {
   const g = flatGame();
+  const BOOK = SPELLS.filter((s) => !s.scroll);
   assert.deepEqual(g.spells, [], 'you start knowing nothing');
-  for (let i = 0; i < SPELLS.length; i++) {
-    g.focus = 0;
+  for (let i = 0; i < BOOK.length; i++) {
+    g.slots[1] = 0;
     g.learnSpell();
-    assert.deepEqual(g.spells, SPELLS.slice(0, i + 1).map((s) => s.id));
-    assert.equal(g.focus, g.maxFocus(), 'a vision fills you back up');
+    assert.deepEqual(g.spells, BOOK.slice(0, i + 1).map((s) => s.id));
+    assert.equal(g.slots[1], g.maxSlots(1), 'a vision is a rest for the mind');
   }
+  g.caption = null;
+  g.captionQueue = []; // the rest-lines crowd the queue; clear before the coda
   g.learnSpell();
-  assert.equal(g.spells.length, SPELLS.length, 'the book runs out');
+  assert.equal(g.spells.length, BOOK.length, 'the leaf never teaches scrolls');
   assert.ok(said(g).includes('THE LEAF HAS NOTHING LEFT TO TEACH'));
 });
 
-test('focus seeps back under the open sky, a point at a time', () => {
+test('slots never seep back — only a rest returns them', () => {
   const g = flatGame();
   g.spells.push('ember');
-  g.focus = 0;
-  runSeconds(g, FOCUS_REGEN - 1);
-  assert.equal(g.focus, 0, 'not yet');
-  runSeconds(g, 1.1);
-  assert.equal(g.focus, 1);
-  runSeconds(g, FOCUS_REGEN * 3);
-  assert.equal(g.focus, g.maxFocus(), 'and it stops at full');
+  for (const lv of SLOT_LEVELS) g.slots[lv] = 0;
+  runSeconds(g, 90);
+  assert.deepEqual(g.slots, { 1: 0, 2: 0, 3: 0 }, 'time alone gives nothing');
+  g.rest();
+  for (const lv of SLOT_LEVELS) assert.equal(g.slots[lv], g.maxSlots(lv), `L${lv} returns`);
 });
 
 test('the spell menu is a pause screen, and needs a spell to open', () => {
@@ -658,7 +666,7 @@ test('the spell menu is a pause screen, and needs a spell to open', () => {
   g.learnSpell();
   g.openSpellMenu();
   assert.equal(g.choice.kind, 'spell');
-  assert.match(g.choice.title, /^FOCUS \d+ OF \d+$/);
+  assert.match(g.choice.title, /^SLOTS {2}L1 /);
   assert.ok(g.menuPaused(), 'the world waits while you read the book');
   assert.deepEqual(g.choice.options.map((o) => o.id), [SPELLS[0].id, 'breathe', 'hum', 'back']);
 });
@@ -677,17 +685,17 @@ test('the SPELLS icon joins the sheet only once you know one', () => {
   assert.equal(g.choice.kind, 'sheet', 'BACK returns you to the sheet');
 });
 
-test('EMBER burns a zombie for 3 and spends a point of focus', () => {
+test('EMBER burns a zombie for 3 and spends a level-1 slot', () => {
   const g = zombieGame({ menu: false });
   g.spells.push('ember');
-  g.focus = 2;
+  g.slots[1] = 2;
   g.openBattleMenu();
   assert.ok(g.choice.options.some((o) => o.id === 'cast'), 'battle offers the book');
   g.resolveChoice('cast');
   assert.equal(g.choice.kind, 'spell');
   g.events.length = 0;
   g.resolveChoice('ember');
-  assert.equal(g.focus, 1, 'one point burned');
+  assert.equal(g.slots[1], 1, 'one slot burned');
   assert.ok(g.events.includes('spell-cast'));
   assert.equal(g.caption.text, 'EMBER BITES. THE ZOMBIE BURNS AND KEEPS COMING');
   assert.equal(g.zombieHp.get(g.zombieKey), ZOMBIE_HP - 3);
@@ -704,10 +712,10 @@ test('EMBER burns a zombie for 3 and spends a point of focus', () => {
 test('EMBER with nothing to burn just blooms', () => {
   const g = flatGame();
   g.spells.push('ember');
-  g.focus = 3;
+  g.slots[1] = 2;
   g.castSpell('ember');
   assert.equal(g.caption.text, 'EMBER BLOOMS AND FINDS NOTHING TO BURN');
-  assert.equal(g.focus, 2, 'the focus is spent regardless');
+  assert.equal(g.slots[1], 1, 'the slot is spent regardless');
 });
 
 test('WARD eats the next bite instead of you', () => {
@@ -729,29 +737,30 @@ test('WARD eats the next bite instead of you', () => {
   assert.equal(g.hp, 8 - ZOMBIE_BITE, 'the next one lands');
 });
 
-test('MOONLIGHT costs two and pours three HP back', () => {
+test('MOONLIGHT is level 2 and pours three HP back', () => {
   const g = flatGame();
   g.spells.push('moonlight');
-  g.focus = 3;
   g.hp = 4;
+  assert.equal(g.slots[2], 1, 'flat WIS holds one L2 slot');
   g.castSpell('moonlight');
   assert.equal(g.hp, 7);
-  assert.equal(g.focus, 1);
+  assert.equal(g.slots[2], 0, 'the L2 slot is spent');
   assert.equal(g.caption.text, 'YOU DRINK THE MOON (+3 HP)');
   assert.equal(g.hearts.length, 1, 'a heart floats up');
 });
 
-test('an empty pool scatters the words — and still costs you the turn', () => {
+test('an empty shelf scatters the words — and still costs you the turn', () => {
   const g = zombieGame({ menu: false });
   g.spells.push('moonlight');
-  g.focus = 1; // MOONLIGHT costs 2
+  for (const lv of SLOT_LEVELS) g.slots[lv] = 0;
+  g.slots[1] = 1; // an L1 slot cannot hold an L2 spell
   g.hp = 8;
   g.openBattleMenu();
   g.resolveChoice('cast');
   g.events.length = 0;
   g.resolveChoice('moonlight');
-  assert.equal(g.caption.text, 'NOT ENOUGH FOCUS. THE WORDS SCATTER');
-  assert.equal(g.focus, 1, 'nothing spent');
+  assert.equal(g.caption.text, 'NO LEVEL 2 SLOT LEFT. REST, SOMEWHERE KIND');
+  assert.equal(g.slots[1], 1, 'the small slot is not spent');
   assert.ok(g.events.includes('spell-fail'));
   assert.equal(g.hp, 8 - ZOMBIE_BITE, 'the zombie is not sympathetic');
 });
@@ -817,14 +826,14 @@ test('the zombie sprite is rectangular with known colors, and it lurches', () =>
 
 test('the vision that teaches you also fuels you — until you sober up', () => {
   const g = flatGame();
-  g.stats.wis = 6; // a sober pool of exactly 1 (a -2 modifier)
-  assert.equal(g.maxFocus(), 1);
-  g.drunk = DRUNK_TIME; // the pipe's ten minutes: WIS +2
-  assert.equal(g.maxFocus(), FOCUS_BASE, 'the colors lend you the points back');
+  g.stats.wis = 8; // a sober L2 shelf of zero (a -1 modifier)
+  assert.equal(g.maxSlots(2), 0);
+  g.drunk = DRUNK_TIME; // the pipe's ten minutes: +2 straight to the modifier
+  assert.equal(g.maxSlots(2), 2, 'the colors lend second-level slots');
   g.learnSpell();
-  assert.equal(g.focus, FOCUS_BASE, 'and the vision fills the bigger pool');
+  assert.equal(g.slots[2], 2, 'and the vision fills the bigger shelf');
   g.drunk = 0.01;
   runSeconds(g, 0.1);
   assert.equal(g.drunk, 0);
-  assert.equal(g.focus, 1, 'sobering up takes the borrowed point back');
+  assert.equal(g.slots[2], 0, 'sobering up takes the borrowed slot back');
 });

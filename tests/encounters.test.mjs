@@ -392,7 +392,7 @@ test('a vision teaches the first spell in the book', () => {
   g.resolveChoice('smoke');
   assert.equal(g.hp, 6, 'still no damage on the way up');
   assert.deepEqual(g.spells, [SPELLS[0].id], 'the leaf hands over EMBER');
-  assert.equal(g.focus, g.maxFocus(), 'and tops you up');
+  assert.equal(g.slots[1], g.maxSlots(1), 'and the vision is a rest');
   assert.ok(g.events.includes('spell-learn'));
   assert.ok(
     g.captionQueue.some((l) => l.startsWith(`YOU LEARN ${SPELLS[0].name}`)),

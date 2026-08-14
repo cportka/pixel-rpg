@@ -53,6 +53,7 @@ const SALT_LODGE = 0x0cab1a50;
 const SALT_SIGN = 0x516e0d17; // signs to God (heaven)
 const SALT_MINO = 0x3417a0b5; // the minotaur's rare regions (heaven)
 const SALT_TOWN = 0x707a57e1; // ghost towns (night)
+const SALT_QT = 0x51554554; // 'QUET' — Queue Town, the wizard town (night)
 
 /** Which region a world point falls in. */
 export function regionAt(x, y) {
@@ -179,16 +180,17 @@ export function townAt(seed, rx, ry) {
   const cy = ry * REGION + REGION / 2 + ((h >> 16) % 120) - 60;
   if (isWater(seed, cx, cy)) return null;
   const r = coordRng((seed ^ SALT_TOWN) >>> 0, rx, ry);
+  // v0.21: the facades grew ~10x in area, so the street grew with them.
   const ruins = [
-    { x: cx - 150, y: cy - 45, variant: 0 },
-    { x: cx - 30, y: cy - 100, variant: 1 },
-    { x: cx + 95, y: cy - 60, variant: 2 },
-    { x: cx + 175, y: cy + 20, variant: Math.floor(r() * 3) },
+    { x: cx - 340, y: cy - 70, variant: 0 },
+    { x: cx - 90, y: cy - 150, variant: 1 },
+    { x: cx + 190, y: cy - 90, variant: 2 },
+    { x: cx + 400, y: cy + 30, variant: Math.floor(r() * 3) },
   ].filter((b) => !isWater(seed, b.x, b.y));
   const ghosts = [];
   for (let i = 0; i < 6; i++) {
     const angle = r() * Math.PI * 2;
-    const dist = 50 + r() * 130;
+    const dist = 90 + r() * 300;
     const roll = r();
     ghosts.push({
       x: Math.round(cx + Math.cos(angle) * dist),
@@ -209,9 +211,51 @@ export function townAt(seed, rx, ry) {
     cy,
     ruins,
     ghosts: ghosts.filter((g) => !isWater(seed, g.x, g.y)),
-    pirts: dryPick([cx + 8, cy + 42], [cx, cy + 20]),
-    sign: dryPick([cx - 45, cy + 118], [cx - 20, cy + 60]),
-    office: dryPick([cx + 245, cy + 150], [cx + 120, cy + 80]),
+    pirts: dryPick([cx + 12, cy + 60], [cx, cy + 24]),
+    sign: dryPick([cx - 80, cy + 170], [cx - 30, cy + 80]),
+    office: dryPick([cx + 560, cy + 220], [cx + 260, cy + 120]),
+  };
+}
+
+/**
+ * Queue Town (v0.21): the dark wizard town, rare in the night's redwood
+ * regions. Most wizards are grumpy but not hostile; Cortie keeps the weapon
+ * shop, Queebee the scroll-and-book shop, and two crooked towers watch it
+ * all. Fresh salted hash — legacy layouts stay byte-identical.
+ */
+export function qtownAt(seed, rx, ry) {
+  if (biomeSetOf(seed) !== 'night') return null;
+  if (isHomeRegion(rx, ry)) return null;
+  if (biomeAt(seed, rx, ry) !== 'redwood') return null;
+  const h = hashCoords((seed ^ SALT_QT) >>> 0, rx, ry);
+  if (h % 45 !== 7) return null; // rare, and never where a ghost town deals
+  const cx = rx * REGION + REGION / 2 + ((h >>> 8) % 120) - 60;
+  const cy = ry * REGION + REGION / 2 + ((h >>> 16) % 120) - 60;
+  if (isWater(seed, cx, cy)) return null;
+  const r = coordRng((seed ^ SALT_QT) >>> 0, rx, ry);
+  const dryPick = (...spots) => {
+    for (const [x, y] of spots) if (!isWater(seed, x, y)) return { x, y };
+    return { x: cx, y: cy };
+  };
+  const wizards = [];
+  for (let i = 0; i < 5; i++) {
+    const angle = r() * Math.PI * 2;
+    const dist = 80 + r() * 240;
+    wizards.push({
+      x: Math.round(cx + Math.cos(angle) * dist),
+      y: Math.round(cy + Math.sin(angle) * dist),
+      phase: r() * Math.PI * 2,
+      variant: Math.floor(r() * 3),
+    });
+  }
+  return {
+    cx,
+    cy,
+    towers: [dryPick([cx - 260, cy - 140]), dryPick([cx + 300, cy - 60])],
+    cortie: dryPick([cx - 130, cy + 60], [cx - 60, cy + 90]),
+    queebee: dryPick([cx + 150, cy + 70], [cx + 70, cy + 110]),
+    sign: dryPick([cx - 20, cy + 190], [cx, cy + 120]),
+    wizards: wizards.filter((w) => !isWater(seed, w.x, w.y)),
   };
 }
 
@@ -326,6 +370,7 @@ export function regionInfo(seed, rx, ry) {
     sign: signAt(seed, rx, ry),
     minotaur: minotaurAt(seed, rx, ry),
     town: townAt(seed, rx, ry),
+    qtown: qtownAt(seed, rx, ry),
   };
   const r = coordRng((seed ^ SALT_LODGE) >>> 0, rx, ry);
   if (!isHomeRegion(rx, ry) && (biome === 'oak' || biome === 'redwood' || biome === 'grass')) {
@@ -356,6 +401,7 @@ export function regionLandmarks(seed, rx, ry) {
     // max bridge gap 945px < REGION 960).
     bridge: river,
     town: !!info.town,
+    qtown: !!info.qtown,
     island: !!info.island,
     god: biomeSetOf(seed) === 'heaven' && rx === GOD_REGION.rx && ry === GOD_REGION.ry,
   };

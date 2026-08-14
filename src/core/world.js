@@ -187,6 +187,27 @@ export class World {
     return this.featuresInRect('townsigns', x, y, w, h, 26);
   }
 
+  /** Queue Town's people and stones (v0.21). */
+  wizardsInRect(x, y, w, h) {
+    return this.featuresInRect('wizards', x, y, w, h, 30);
+  }
+
+  cortiesInRect(x, y, w, h) {
+    return this.featuresInRect('corties', x, y, w, h, 70);
+  }
+
+  queebeesInRect(x, y, w, h) {
+    return this.featuresInRect('queebees', x, y, w, h, 70);
+  }
+
+  towersInRect(x, y, w, h) {
+    return this.featuresInRect('towers', x, y, w, h, 110);
+  }
+
+  qtownsignsInRect(x, y, w, h) {
+    return this.featuresInRect('qtownsigns', x, y, w, h, 26);
+  }
+
   /** Bail-bonds offices near the rect. */
   officesInRect(x, y, w, h) {
     return this.featuresInRect('offices', x, y, w, h, 48);
@@ -223,12 +244,16 @@ export class World {
         if (x < r.x + half && x + w > r.x - half && y < r.y + 1 && y + h > r.y - 6) return true;
       }
       for (const c of chunk.cabins) {
-        if (x < c.x + 15 && x + w > c.x - 15 && y < c.y + 1 && y + h > c.y - 9) return true;
+        // v0.21: the big cabin facade — solid base band, doorway at center.
+        if (x < c.x + 65 && x + w > c.x - 65 && y < c.y + 1 && y + h > c.y - 10) {
+          const cx = x + w / 2;
+          if (!(cx > c.x - 8 && cx < c.x + 8)) return true;
+        }
       }
       for (const m of chunk.mansions) {
-        // The facade is solid — except the doorway (center 10px), which is
-        // how you get in (game.js watches for feet crossing it).
-        if (x < m.x + 42 && x + w > m.x - 42 && y < m.y + 1 && y + h > m.y - 12) {
+        // The facade is solid — except the doorway, which is how you get in
+        // (game.js watches for feet crossing it). v0.21: 230px wide now.
+        if (x < m.x + 115 && x + w > m.x - 115 && y < m.y + 1 && y + h > m.y - 12) {
           const cx = x + w / 2;
           if (!(cx > m.x - 8 && cx < m.x + 8)) return true;
         }
@@ -240,14 +265,34 @@ export class World {
         }
       }
       for (const b of chunk.ruins) {
-        // A ruin's ground floor is solid; the collapsed upper story is scenery.
-        if (x < b.x + 18 && x + w > b.x - 18 && y < b.y + 1 && y + h > b.y - 10) return true;
+        // A ruin's ground floor is solid; the collapsed upper story is
+        // scenery. v0.21 widths per facade variant.
+        const half = [70, 75, 63][b.variant] ?? 70;
+        if (x < b.x + half && x + w > b.x - half && y < b.y + 1 && y + h > b.y - 10) return true;
       }
       for (const o of chunk.offices) {
-        // The office facade is solid except its doorway (center 8px).
-        if (x < o.x + 20 && x + w > o.x - 20 && y < o.y + 1 && y + h > o.y - 10) {
+        // The office facade is solid except its doorway (v0.21: at +32).
+        if (x < o.x + 65 && x + w > o.x - 65 && y < o.y + 1 && y + h > o.y - 10) {
           const cx = x + w / 2;
-          if (!(cx > o.x - 4 && cx < o.x + 4)) return true;
+          if (!(cx > o.x + 32 - 8 && cx < o.x + 32 + 8)) return true;
+        }
+      }
+      for (const t of chunk.towers) {
+        // A wizard tower's stone base.
+        if (x < t.x + 32 && x + w > t.x - 32 && y < t.y + 1 && y + h > t.y - 12) return true;
+      }
+      for (const sh of chunk.corties) {
+        // Cortie's shop: door at +31.
+        if (x < sh.x + 60 && x + w > sh.x - 60 && y < sh.y + 1 && y + h > sh.y - 10) {
+          const cx = x + w / 2;
+          if (!(cx > sh.x + 31 - 8 && cx < sh.x + 31 + 8)) return true;
+        }
+      }
+      for (const sh of chunk.queebees) {
+        // Queebee's shop: door at -31.
+        if (x < sh.x + 60 && x + w > sh.x - 60 && y < sh.y + 1 && y + h > sh.y - 10) {
+          const cx = x + w / 2;
+          if (!(cx > sh.x - 31 - 8 && cx < sh.x - 31 + 8)) return true;
         }
       }
       for (const sh of chunk.shrines) {
@@ -456,6 +501,12 @@ export function generateChunk(seed, cx, cy) {
   const pirts = town && inChunk(town.pirts) ? [{ x: town.pirts.x, y: town.pirts.y }] : [];
   const townsigns = town && inChunk(town.sign) ? [{ x: town.sign.x, y: town.sign.y }] : [];
   const offices = town && inChunk(town.office) ? [{ x: town.office.x, y: town.office.y }] : [];
+  const qtown = info.qtown;
+  const wizards = qtown ? qtown.wizards.filter(inChunk) : [];
+  const towers = qtown ? qtown.towers.filter(inChunk) : [];
+  const corties = qtown && inChunk(qtown.cortie) ? [{ x: qtown.cortie.x, y: qtown.cortie.y }] : [];
+  const queebees = qtown && inChunk(qtown.queebee) ? [{ x: qtown.queebee.x, y: qtown.queebee.y }] : [];
+  const qtownsigns = qtown && inChunk(qtown.sign) ? [{ x: qtown.sign.x, y: qtown.sign.y }] : [];
 
   // Nothing grows or lurks in the water (filtered after generation so the
   // rng sequence — and thus dry-land layouts — never shift).
@@ -484,6 +535,11 @@ export function generateChunk(seed, cx, cy) {
     ghosts,
     pirts,
     townsigns,
+    wizards,
+    towers,
+    corties,
+    queebees,
+    qtownsigns,
     offices,
   };
 }

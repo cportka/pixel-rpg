@@ -107,7 +107,7 @@ export function sheetLines(game) {
     `COINS ${game.coins}  WOOD ${game.wood}`,
   ];
   if (game.spells.length) {
-    lines.push(`FOCUS ${game.focus} OF ${game.maxFocus()}`);
+    lines.push(`SLOTS L1 ${game.slots[1]}/${game.maxSlots(1)}  L2 ${game.slots[2]}/${game.maxSlots(2)}  L3 ${game.slots[3]}/${game.maxSlots(3)}`);
     lines.push(
       `SPELLS: ${SPELLS.filter((s) => game.spells.includes(s.id)).map((s) => s.name).join(', ')}`,
     );
@@ -1787,7 +1787,7 @@ export class Renderer {
       this.drawShadowedText(lvlText, 6 + measureText(lvlText) / 2, top + 10, PALETTE.smoke);
       let line = top + 20;
       if (game.spells.length) {
-        const fText = `FOCUS ${game.focus}/${game.maxFocus()}`;
+        const fText = `SLOTS ${game.slots[1]}/${game.slots[2]}/${game.slots[3]}`;
         this.drawShadowedText(fText, 6 + measureText(fText) / 2, line, PALETTE.gold);
         line += 10;
       }

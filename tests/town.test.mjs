@@ -237,8 +237,8 @@ test('the detective pays 3 coins for a good tip, exactly once', () => {
   g.enterInterior('office', 'of:test', { px: 0, py: 0, dx: -15, dy: 5 });
   assert.equal(g.location, 'office');
   // Wander up to the desk: the spot menu opens by proximity.
-  g.person.x = 192;
-  g.person.y = 140;
+  g.person.x = 144; // v0.21: the office shrank; the desk moved with it
+  g.person.y = 116;
   runSeconds(g, 0.5);
   g.interactNearest(); // v0.21: spots open when clicked
   assert.equal(g.choice?.kind, 'spot:detective');

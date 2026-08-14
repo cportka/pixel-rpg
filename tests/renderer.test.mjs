@@ -343,7 +343,7 @@ test('the sheet grows a focus line once the leaf has taught you', () => {
   assert.equal(sheetLines(g).some((l) => l.startsWith('FOCUS')), false);
   g.learnSpell();
   const lines = sheetLines(g);
-  assert.ok(lines.some((l) => l === `FOCUS ${g.focus} OF ${g.maxFocus()}`));
+  assert.ok(lines.some((l) => l.startsWith('SLOTS L1 ')));
   assert.ok(lines.some((l) => l.startsWith('SPELLS: ')));
 });
 

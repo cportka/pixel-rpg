@@ -249,10 +249,10 @@ test('the dumpster spot holds a cathedral; ragas restore focus; gold grows the s
   assert.equal(g.choice?.kind, 'cathedral');
   assert.equal(g.choice.title, 'A CATHEDRAL OF MELTED GOLD');
   g.spells.push('ember');
-  g.focus = 0;
+  g.slots[1] = 0;
   g.events.length = 0;
   g.resolveChoice('listen');
-  assert.equal(g.focus, g.maxFocus(), 'the music hands your focus back');
+  assert.equal(g.slots[1], g.maxSlots(1), 'the music is a rest');
   assert.ok(g.events.includes('raga'));
   // Walk away (past the re-arm distance), return, donate.
   g.person.x += 150;

@@ -193,7 +193,7 @@ test('the lock rusted through: the stairs climb to the second floor and back', (
   assert.ok(g.captionQueue.includes('THE STAIRS REMEMBER FEET. THEY CREAK ANYWAY'));
   assert.equal(g.mansionReturn, worldReturn, 'the way back outside rides along');
   // Walk onto the stairwell tiles: back down, still inside the mansion.
-  g.person.x = 14.5 * 24;
+  g.person.x = 10.5 * 24; // v0.21: the shrunk upstairs' stairwell
   g.person.y = 1.5 * 24;
   g.update(STEP, {});
   assert.equal(g.location, 'mansion', 'back on the ground floor');

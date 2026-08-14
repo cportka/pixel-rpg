@@ -19,29 +19,25 @@ export const TILE = 24;
 // landing on it descends. A moonlit window band runs the north wall of the
 // bedroom (west) and the study (east).
 export const MANSION2_MAP = [
-  '##########################',
-  '#..W..W.#.....SS...#.W.W.#',
-  '#........#....SS..#......#',
-  '#........#........#......#',
-  '#........#........#......#',
-  '#........#........#......#',
-  '#........................#',
-  '#........#........#......#',
-  '#........#........#......#',
-  '#........#........#......#',
-  '#........#........#......#',
-  '#........#........#......#',
-  '#........#........#......#',
-  '##########################',
+  '####################',
+  '#.W..W.#..SS#..W.W.#',
+  '#......#..SS#......#',
+  '#......#....#......#',
+  '#..................#',
+  '#......#....#......#',
+  '#......#....#......#',
+  '#......#....#......#',
+  '#......#....#......#',
+  '####################',
 ];
 
 export const MANSION2_FURNISH = [
-  { kind: 'bed', x: 84, y: 84, solid: true, w: 30, h: 10 },
-  { kind: 'nightstand', x: 138, y: 78, solid: true, w: 10, h: 6 },
-  { kind: 'telescope', x: 540, y: 66, solid: true, w: 12, h: 6 },
-  { kind: 'desk2', x: 510, y: 180, solid: true, w: 24, h: 8 },
-  { kind: 'portrait2', x: 300, y: 165, solid: false },
-  { kind: 'rug', x: 336, y: 200, solid: false },
+  { kind: 'bed', x: 60, y: 66, solid: true, w: 30, h: 10 },
+  { kind: 'nightstand', x: 108, y: 60, solid: true, w: 10, h: 6 },
+  { kind: 'telescope', x: 396, y: 54, solid: true, w: 12, h: 6 },
+  { kind: 'desk2', x: 384, y: 156, solid: true, w: 24, h: 8 },
+  { kind: 'portrait2', x: 228, y: 100, solid: false },
+  { kind: 'rug', x: 240, y: 150, solid: false },
 ];
 
 // --- The cathedral nave (heaven) --------------------------------------------
@@ -49,36 +45,30 @@ export const MANSION2_FURNISH = [
 // growing in the northeast corner, singers along the west wall who never
 // stop handing each other the melody.
 export const CATHEDRAL_MAP = [
-  '##########################',
-  '#........................#',
-  '#........................#',
-  '#........................#',
-  '#........................#',
-  '#........................#',
-  '#........................#',
-  '#........................#',
-  '#........................#',
-  '#........................#',
-  '#........................#',
-  '#........................#',
-  '#........................#',
-  '############DD############',
+  '##################',
+  '#................#',
+  '#................#',
+  '#................#',
+  '#................#',
+  '#................#',
+  '#................#',
+  '#................#',
+  '#................#',
+  '########DD########',
 ];
 
 export const CATHEDRAL_FURNISH = [
-  { kind: 'altar', x: 312, y: 84, solid: true, w: 22, h: 8 },
-  { kind: 'pile', x: 540, y: 90, solid: true, w: 26, h: 9 },
-  { kind: 'brazier', x: 216, y: 78, solid: true, w: 8, h: 5 },
-  { kind: 'brazier', x: 408, y: 78, solid: true, w: 8, h: 5 },
-  { kind: 'pew', x: 210, y: 168, solid: true, w: 28, h: 6 },
-  { kind: 'pew', x: 414, y: 168, solid: true, w: 28, h: 6 },
-  { kind: 'pew', x: 210, y: 216, solid: true, w: 28, h: 6 },
-  { kind: 'pew', x: 414, y: 216, solid: true, w: 28, h: 6 },
-  { kind: 'pew', x: 210, y: 264, solid: true, w: 28, h: 6 },
-  { kind: 'pew', x: 414, y: 264, solid: true, w: 28, h: 6 },
-  { kind: 'singer', x: 60, y: 120, solid: true, w: 10, h: 5 },
-  { kind: 'singer', x: 54, y: 174, solid: true, w: 10, h: 5 },
-  { kind: 'singer', x: 63, y: 228, solid: true, w: 10, h: 5 },
+  { kind: 'altar', x: 216, y: 66, solid: true, w: 22, h: 8 },
+  { kind: 'pile', x: 360, y: 72, solid: true, w: 26, h: 9 },
+  { kind: 'brazier', x: 150, y: 60, solid: true, w: 8, h: 5 },
+  { kind: 'brazier', x: 282, y: 60, solid: true, w: 8, h: 5 },
+  { kind: 'pew', x: 150, y: 126, solid: true, w: 28, h: 6 },
+  { kind: 'pew', x: 288, y: 126, solid: true, w: 28, h: 6 },
+  { kind: 'pew', x: 150, y: 162, solid: true, w: 28, h: 6 },
+  { kind: 'pew', x: 288, y: 162, solid: true, w: 28, h: 6 },
+  { kind: 'singer', x: 48, y: 96, solid: true, w: 10, h: 5 },
+  { kind: 'singer', x: 42, y: 138, solid: true, w: 10, h: 5 },
+  { kind: 'singer', x: 51, y: 180, solid: true, w: 10, h: 5 },
 ];
 
 // --- The cabin (night) ------------------------------------------------------
@@ -86,23 +76,21 @@ export const CATHEDRAL_FURNISH = [
 // pegs, which is exactly the kind of thing a person building a boat in
 // another world entirely might want.
 export const CABIN_MAP = [
-  '##############',
-  '#............#',
-  '#............#',
-  '#............#',
-  '#............#',
-  '#............#',
-  '#............#',
-  '#............#',
-  '######DD######',
+  '##########',
+  '#........#',
+  '#........#',
+  '#........#',
+  '#........#',
+  '#........#',
+  '####DD####',
 ];
 
 export const CABIN_FURNISH = [
-  { kind: 'stove', x: 48, y: 60, solid: true, w: 14, h: 7 },
-  { kind: 'wallaxe', x: 168, y: 48, solid: false },
-  { kind: 'cot', x: 264, y: 78, solid: true, w: 26, h: 8 },
-  { kind: 'table_small', x: 150, y: 138, solid: true, w: 16, h: 6 },
-  { kind: 'lantern', x: 216, y: 132, solid: true, w: 6, h: 4 },
+  { kind: 'stove', x: 40, y: 52, solid: true, w: 14, h: 7 },
+  { kind: 'wallaxe', x: 120, y: 42, solid: false },
+  { kind: 'cot', x: 190, y: 64, solid: true, w: 26, h: 8 },
+  { kind: 'table_small', x: 110, y: 104, solid: true, w: 16, h: 6 },
+  { kind: 'lantern', x: 160, y: 100, solid: true, w: 6, h: 4 },
 ];
 
 // --- The bail-bonds office (night, ghost-town outskirts) --------------------
@@ -110,24 +98,48 @@ export const CABIN_FURNISH = [
 // files, and a corkboard where red strings chase a suspect who is extremely
 // the Devil.
 export const OFFICE_MAP = [
-  '################',
-  '#..............#',
-  '#..............#',
-  '#..............#',
-  '#..............#',
-  '#..............#',
-  '#..............#',
-  '#..............#',
-  '#..............#',
-  '#######DD#######',
+  '############',
+  '#..........#',
+  '#..........#',
+  '#..........#',
+  '#..........#',
+  '#..........#',
+  '#..........#',
+  '#####DD#####',
 ];
 
 export const OFFICE_FURNISH = [
-  { kind: 'corkboard', x: 192, y: 48, solid: false },
-  { kind: 'filecabinet', x: 60, y: 54, solid: true, w: 12, h: 6 },
-  { kind: 'desk', x: 186, y: 120, solid: true, w: 26, h: 8 },
-  { kind: 'coatrack', x: 324, y: 60, solid: true, w: 8, h: 5 },
-  { kind: 'doorsign', x: 300, y: 210, solid: false },
+  { kind: 'corkboard', x: 144, y: 42, solid: false },
+  { kind: 'filecabinet', x: 44, y: 48, solid: true, w: 12, h: 6 },
+  { kind: 'desk', x: 140, y: 96, solid: true, w: 26, h: 8 },
+  { kind: 'coatrack', x: 240, y: 52, solid: true, w: 8, h: 5 },
+  { kind: 'doorsign', x: 216, y: 150, solid: false },
+];
+
+// --- Queue Town's shops (v0.21) ---------------------------------------------
+// Two tight rooms. Cortie's smells of oil and whetstone; Queebee's of ink
+// and a century of paper.
+export const SHOP_MAP = [
+  '############',
+  '#..........#',
+  '#..........#',
+  '#..........#',
+  '#..........#',
+  '#..........#',
+  '#####DD#####',
+];
+
+export const CORTIE_FURNISH = [
+  { kind: 'counter', x: 144, y: 72, solid: true, w: 28, h: 8 },
+  { kind: 'weaponrack', x: 52, y: 46, solid: true, w: 24, h: 8 },
+  { kind: 'wandcase', x: 232, y: 50, solid: true, w: 18, h: 6 },
+];
+
+export const QUEEBEE_FURNISH = [
+  { kind: 'counter', x: 144, y: 72, solid: true, w: 28, h: 8 },
+  { kind: 'bookshelf', x: 48, y: 46, solid: true, w: 22, h: 8 },
+  { kind: 'scrollrack', x: 236, y: 48, solid: true, w: 20, h: 7 },
+  { kind: 'inkdesk', x: 236, y: 118, solid: true, w: 24, h: 7 },
 ];
 
 // --- The registry -----------------------------------------------------------
@@ -146,46 +158,71 @@ export const INTERIORS = {
     tile: TILE,
     map: MANSION2_MAP,
     furnish: MANSION2_FURNISH,
-    spawn: { x: 14 * TILE, y: 3 * TILE + 6 }, // beside the stairwell
+    spawn: { x: 10 * TILE, y: 3 * TILE + 6 }, // beside the stairwell
     style: 'mansion',
     spots: [
-      { id: 'telescope', x: 540, y: 78, r: 40 },
-      { id: 'portrait2', x: 300, y: 190, r: 36 },
-      { id: 'bed', x: 90, y: 90, r: 36 },
+      { id: 'telescope', x: 396, y: 66, r: 36 },
+      { id: 'portrait2', x: 228, y: 120, r: 32 },
+      { id: 'bed', x: 66, y: 72, r: 32 },
     ],
   },
   cathedral: {
     tile: TILE,
     map: CATHEDRAL_MAP,
     furnish: CATHEDRAL_FURNISH,
-    spawn: { x: 13 * TILE, y: 13 * TILE - 18 },
+    spawn: { x: 9 * TILE, y: 9 * TILE - 18 },
     style: 'cathedral',
     spots: [
-      { id: 'altar', x: 312, y: 96, r: 44 },
-      { id: 'pile', x: 540, y: 102, r: 44 },
-      { id: 'singer', x: 60, y: 174, r: 48 },
+      { id: 'altar', x: 216, y: 78, r: 40 },
+      { id: 'pile', x: 360, y: 84, r: 40 },
+      { id: 'singer', x: 48, y: 138, r: 44 },
     ],
   },
   cabin: {
     tile: TILE,
     map: CABIN_MAP,
     furnish: CABIN_FURNISH,
-    spawn: { x: 7 * TILE, y: 8 * TILE - 18 },
+    spawn: { x: 5 * TILE, y: 6 * TILE - 18 },
     style: 'cabin',
     spots: [
-      { id: 'wallaxe', x: 168, y: 60, r: 36 },
-      { id: 'stove', x: 48, y: 70, r: 32 },
+      { id: 'wallaxe', x: 120, y: 54, r: 32 },
+      { id: 'stove', x: 40, y: 62, r: 30 },
     ],
   },
   office: {
     tile: TILE,
     map: OFFICE_MAP,
     furnish: OFFICE_FURNISH,
-    spawn: { x: 8 * TILE, y: 9 * TILE - 18 },
+    spawn: { x: 6 * TILE, y: 7 * TILE - 18 },
     style: 'office',
     spots: [
-      { id: 'detective', x: 192, y: 132, r: 46 },
-      { id: 'corkboard', x: 192, y: 66, r: 36 },
+      { id: 'detective', x: 144, y: 108, r: 40 },
+      { id: 'corkboard', x: 144, y: 56, r: 32 },
+    ],
+  },
+  cortie: {
+    tile: TILE,
+    map: SHOP_MAP,
+    furnish: CORTIE_FURNISH,
+    spawn: { x: 6 * TILE, y: 6 * TILE - 18 },
+    style: 'shop',
+    spots: [
+      { id: 'cortie-counter', x: 144, y: 84, r: 40 },
+      { id: 'weaponrack', x: 52, y: 58, r: 30 },
+      { id: 'wandcase', x: 232, y: 62, r: 30 },
+    ],
+  },
+  queebee: {
+    tile: TILE,
+    map: SHOP_MAP,
+    furnish: QUEEBEE_FURNISH,
+    spawn: { x: 6 * TILE, y: 6 * TILE - 18 },
+    style: 'shop',
+    spots: [
+      { id: 'queebee-counter', x: 144, y: 84, r: 40 },
+      { id: 'bookshelf', x: 48, y: 58, r: 30 },
+      { id: 'scrollrack', x: 236, y: 60, r: 30 },
+      { id: 'inkdesk', x: 236, y: 128, r: 30 },
     ],
   },
 };

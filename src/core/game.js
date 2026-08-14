@@ -53,6 +53,8 @@ export const PRICES = {
   axe: 8,
   rope: 2,
   manual: 12, // HOW TO BUILD A BOAT, ghost-press edition
+  sword: 15, // Cortie's honest steel
+  wand: 20, // Cortie's crooked little lightning rod
 };
 export const SELLS = { meat: 2, bone: 4, wood: 1 };
 export const BOAT_WOOD = 24; // planks a boat wants
@@ -86,31 +88,26 @@ export const LEVEL_POINTS = 2; // +1s to hand out per level, together or apart
 export const XP_DOG = 4; // finding the friendly lost dog
 export const XP_ZOMBIE = 1; // per zombie put back down
 
-// Magic (v0.16). The half-burnt leaf never hurt anyone — it teaches. Each
-// vision hands over the next spell in the book; casting spends focus, which
-// comes back slowly under the open sky.
+// Magic (v0.21): spells come in LEVELS now, and casting spends SLOTS that
+// only a REST gives back — a bed, a warm stove, the ragas, sitting with God.
+// Your mind sets the slots: INT shapes level 1, WIS level 2, CHA level 3.
+// The leaf still teaches the book in order; scrolls (Queebee's shelf) can be
+// cast once for free, or inscribed forever with paper or the book.
 export const SPELLS = [
-  {
-    id: 'ember',
-    name: 'EMBER',
-    cost: 1,
-    blurb: 'A ROSE-GOLD FLAME. 3 DAMAGE',
-  },
-  {
-    id: 'ward',
-    name: 'WARD',
-    cost: 1,
-    blurb: 'THE NEXT BITE FINDS NOTHING',
-  },
-  {
-    id: 'moonlight',
-    name: 'MOONLIGHT',
-    cost: 2,
-    blurb: 'DRINK THE MOON. +3 HP',
-  },
+  { id: 'ember', name: 'EMBER', level: 1, blurb: 'A ROSE-GOLD FLAME. 3 DAMAGE' },
+  { id: 'ward', name: 'WARD', level: 1, blurb: 'THE NEXT BITE FINDS NOTHING' },
+  { id: 'moonlight', name: 'MOONLIGHT', level: 2, blurb: 'DRINK THE MOON. +3 HP' },
+  // Scroll-taught (v0.21): Queebee stocks these.
+  { id: 'bolt', name: 'BOLT', level: 1, blurb: 'A VIOLET DART. 2 + INT DAMAGE', scroll: true },
+  { id: 'mend', name: 'MEND', level: 1, blurb: 'SMALL STITCHES OF LIGHT. +2 HP', scroll: true },
+  { id: 'shield', name: 'SHIELD', level: 2, blurb: 'A WARD THAT TAKES TWO BITES', scroll: true },
+  { id: 'starfall', name: 'STARFALL', level: 3, blurb: 'THE SKY LEANS IN. 4 TO ALL IN REACH', scroll: true },
 ];
-export const FOCUS_BASE = 3; // focus = 3 + WIS modifier
-export const FOCUS_REGEN = 20; // seconds per point of focus recovered
+export const SLOT_LEVELS = [1, 2, 3];
+export const SCROLL_PRICES = { bolt: 4, mend: 4, shield: 7, starfall: 12 };
+export const PAPER_PRICE = 1;
+export const BOOK_PRICE = 8;
+export const DC_WAND = 10; // INT: the wand answers to an educated flick
 
 // Turn-based combat (v0.16). Hostiles close by pull the world out of free
 // movement: you get a step budget and one action per turn, then they answer.
@@ -291,11 +288,18 @@ export class Game {
     this.boneNamed = false; // the bone's name stays between you two
     this.boatNamed = false; // so does hers
 
-    // Magic and battle (v0.16).
+    // Magic and battle (v0.21: leveled slots, restored by resting).
     this.spells = []; // spell ids learned, in the order the leaf taught them
-    this.focus = this.maxFocus();
-    this.focusTimer = 0;
+    this.slots = { 1: 0, 2: 0, 3: 0 };
+    for (const lv of SLOT_LEVELS) this.slots[lv] = this.maxSlots(lv);
+    this.breathed = false; // JUST BREATHE recovers one L1 slot, once per rest
+    this.scrolls = {}; // spell id -> count of scrolls held
+    this.paper = 0; // blank pages for inscribing
+    this.hasBook = false; // the blank book: inscribe without spending paper
+    this.hasSword = false; // Cortie's steel
+    this.hasWand = false; // Cortie's lightning rod
     this.warded = false; // WARD eats the next bite
+    this.shielded = false; // SHIELD eats the one after too
     this.mode = 'free'; // 'free' | 'turn' — the world's two gears
     this.turn = 'you'; // whose move, while turn-based
     this.moveLeft = 0; // px of movement left in your turn
@@ -912,19 +916,11 @@ export class Game {
       this.drunk = Math.max(0, this.drunk - dt);
       if (this.drunk === 0) {
         this.say('THE WORLD SETTLES BACK DOWN');
-        // Inebriation lends WIS, and WIS is the focus pool — sobering up
-        // takes the borrowed points back rather than leaving you over full.
-        this.focus = Math.min(this.focus, this.maxFocus());
+        // Sobering up clamps any slots the borrowed WIS was holding open.
+        for (const lv of SLOT_LEVELS) this.slots[lv] = Math.min(this.slots[lv], this.maxSlots(lv));
       }
     }
-    // Focus seeps back under the open sky, a point at a time.
-    if (this.spells.length && this.focus < this.maxFocus()) {
-      this.focusTimer += dt;
-      if (this.focusTimer >= FOCUS_REGEN) {
-        this.focusTimer = 0;
-        this.focus++;
-      }
-    }
+    // v0.21: slots do NOT seep back — only rest returns them.
   }
 
   /** True while a world-pausing screen (inventory, detail, map, level) is up. */
@@ -1102,8 +1098,8 @@ export class Game {
           return;
         }
       }
-      for (const c of this.world.cabinsInRect(p.x - 40, p.y - 40, 80, 80)) {
-        if (Math.abs(p.x - c.x) < 6 && p.y > c.y - 5 && p.y < c.y + 5) {
+      for (const c of this.world.cabinsInRect(p.x - 80, p.y - 80, 160, 160)) {
+        if (Math.abs(p.x - c.x) < 8 && p.y > c.y - 5 && p.y < c.y + 5) {
           this.enterInterior('cabin', `cb:${c.x},${c.y}`, { px: c.x, py: c.y + 12, dx: c.x - 15, dy: c.y + 16 });
           if (!this.encounterDone.has(`${this.mansionKey}:in`)) {
             this.encounterDone.add(`${this.mansionKey}:in`);
@@ -1112,12 +1108,32 @@ export class Game {
           return;
         }
       }
-      for (const o of this.world.officesInRect(p.x - 50, p.y - 50, 100, 100)) {
-        if (Math.abs(p.x - o.x) < 5 && p.y > o.y - 5 && p.y < o.y + 5) {
+      for (const o of this.world.officesInRect(p.x - 80, p.y - 80, 160, 160)) {
+        if (Math.abs(p.x - (o.x + 32)) < 8 && p.y > o.y - 5 && p.y < o.y + 5) {
           this.enterInterior('office', `of:${o.x},${o.y}`, { px: o.x, py: o.y + 12, dx: o.x - 15, dy: o.y + 16 });
           if (!this.encounterDone.has(`${this.mansionKey}:in`)) {
             this.encounterDone.add(`${this.mansionKey}:in`);
             this.announce(['GORSKI - BAIL BONDS, SAYS THE GLASS', 'THE LIGHT INSIDE IS THE COLOR OF COLD COFFEE']);
+          }
+          return;
+        }
+      }
+      for (const sh of this.world.cortiesInRect(p.x - 80, p.y - 80, 160, 160)) {
+        if (Math.abs(p.x - (sh.x + 31)) < 8 && p.y > sh.y - 5 && p.y < sh.y + 5) {
+          this.enterInterior('cortie', `co:${sh.x},${sh.y}`, { px: sh.x + 31, py: sh.y + 12, dx: sh.x + 16, dy: sh.y + 16 });
+          if (!this.encounterDone.has(`${this.mansionKey}:in`)) {
+            this.encounterDone.add(`${this.mansionKey}:in`);
+            this.announce(['STEEL, SAYS THE SIGN. THE HINGES AGREE LOUDLY', 'CORTIE DOES NOT LOOK UP. THE WHETSTONE DOES']);
+          }
+          return;
+        }
+      }
+      for (const sh of this.world.queebeesInRect(p.x - 80, p.y - 80, 160, 160)) {
+        if (Math.abs(p.x - (sh.x - 31)) < 8 && p.y > sh.y - 5 && p.y < sh.y + 5) {
+          this.enterInterior('queebee', `qb:${sh.x},${sh.y}`, { px: sh.x - 31, py: sh.y + 12, dx: sh.x - 46, dy: sh.y + 16 });
+          if (!this.encounterDone.has(`${this.mansionKey}:in`)) {
+            this.encounterDone.add(`${this.mansionKey}:in`);
+            this.announce(['THE BELL OVER THE DOOR IS A SMALL SILVER GHOST', 'QUEEBEE LOOKS UP OVER HER SPECTACLES. ONE EYEBROW FILES YOU']);
           }
           return;
         }
@@ -1316,6 +1332,10 @@ export class Game {
         push('ghost', `gh:${f.x},${f.y}`, pos.x, pos.y, 14, { temper: f.temper });
       }
       for (const f of near('townsignsInRect')) push('townsign', `ts:${f.x},${f.y}`, f.x, f.y, 14);
+      for (const f of near('wizardsInRect')) {
+        push('wizard', `wz:${f.x},${f.y}`, f.x, f.y, 16, { variant: f.variant });
+      }
+      for (const f of near('qtownsignsInRect')) push('qtownsign', `qs:${f.x},${f.y}`, f.x, f.y, 14);
     }
     return out;
   }
@@ -1463,6 +1483,27 @@ export class Game {
           { id: 'straighten', label: 'STRAIGHTEN IT' },
           { id: 'listen', label: 'LISTEN TO IT CREAK' },
           { id: 'take', label: 'TRY TO TAKE IT' },
+          { id: 'along', label: 'MOVE ALONG' },
+        ],
+      },
+      wizard: {
+        title: ['A WIZARD, GRUMPILY', 'A WIZARD, MID-GRUMBLE', 'A WIZARD, SQUINTING AT YOU'][
+          (it.data?.variant ?? 0) % 3
+        ],
+        options: [
+          { id: 'talk', label: 'SAY HELLO' },
+          { id: 'ask', label: 'ASK ABOUT THE TOWN' },
+          { id: 'hat', label: 'COMPLIMENT THE HAT' },
+          { id: 'spells', label: 'ASK ABOUT SPELLS' },
+          { id: 'leave', label: 'LEAVE HIM TO IT' },
+        ],
+      },
+      qtownsign: {
+        title: 'QUEUE TOWN, SAYS THE BOARD',
+        options: [
+          { id: 'read', label: 'READ IT' },
+          { id: 'glyph', label: 'TOUCH THE GLOWING GLYPH' },
+          { id: 'wait', label: 'STAND IN LINE, EXPERIMENTALLY' },
           { id: 'along', label: 'MOVE ALONG' },
         ],
       },
@@ -1665,9 +1706,13 @@ export class Game {
       else if (id === 'punch') this.attackFromSheet('fists');
       else if (id === 'swing') this.attackFromSheet('bone');
       else if (id === 'swing-axe') this.attackFromSheet('axe');
+      else if (id === 'swing-sword') this.attackFromSheet('sword');
+      else if (id === 'flick-wand') this.attackFromSheet('wand');
       else if (id === 'chop') this.chopTree();
       else if (id === 'build') this.buildBoat();
       else if (id === 'throw') this.throwBall();
+      else if (id.startsWith('cast-')) this.castScroll(id.slice(5));
+      else if (id.startsWith('inscribe-')) this.inscribeScroll(id.slice(9));
       else if (id === 'rub-lamp') this.rubLamp('lamp:carried', this.person.x, this.person.y);
       else if (id === 'smoke-pipe') {
         this.pipeSpent = true;
@@ -1745,9 +1790,9 @@ export class Game {
         this.announce([`THE GENIE POINTS. HOME IS FAR TO THE ${this.homeCompass()}`]);
       } else if (id === 'nothing') {
         const lines = ['THE GENIE STARES. NOBODY HAS EVER ASKED FOR THAT', 'HE GRANTS IT FLAWLESSLY. NOTHING ARRIVES'];
-        if (this.spells.length && this.focus < this.maxFocus()) {
-          this.focus += 1;
-          lines.push('YOU FEEL STRANGELY LOOKED AFTER (+1 FOCUS)');
+        if (this.spells.length && this.slots[1] < this.maxSlots(1)) {
+          this.slots[1] += 1;
+          lines.push('YOU FEEL STRANGELY LOOKED AFTER (+1 SLOT)');
         } else {
           lines.push('YOU FEEL STRANGELY LOOKED AFTER');
         }
@@ -1850,8 +1895,13 @@ export class Game {
       }
     } else if (c.kind === 'spell') {
       if (id === 'breathe') {
-        if (this.focus < this.maxFocus()) this.focus += 1;
-        this.announce(['IN. OUT. THE CHEAPEST SPELL, AND STILL NOBODY CASTS IT (+1 FOCUS)']);
+        if (!this.breathed && this.slots[1] < this.maxSlots(1)) {
+          this.breathed = true;
+          this.slots[1] += 1;
+          this.announce(['IN. OUT. THE CHEAPEST SPELL, AND STILL NOBODY CASTS IT (+1 SLOT)']);
+        } else {
+          this.announce(['IN. OUT.', 'THE BREATH IS FREE. THE SLOT WAS A ONE-TIME COURTESY']);
+        }
         if (this.mode === 'turn') this.endPlayerTurn(); // breathing takes the turn
       } else if (id === 'hum') {
         this.emit('spell-fail');
@@ -1869,9 +1919,9 @@ export class Game {
         this.emit('chirp');
         this.announce(['YOU CONFESS. THE LAKE HOLDS STILL FOR IT', 'GOD CLEANS ONE ANTENNA', 'YOU ARE NOT FORGIVEN. YOU ARE SOMETHING BETTER. HEARD']);
       } else if (id === 'sit') {
-        this.focus = this.maxFocus();
+        this.rest();
         this.hearts.push({ x: c.x, y: c.y - 21, t: HEART_TTL });
-        this.announce(['YOU SIT. GOD EXISTS. YOU EXIST', 'THE FROGS WATCH FROM THEIR LILIPADS', 'YOUR FOCUS RETURNS, ALL OF IT']);
+        this.announce(['YOU SIT. GOD EXISTS. YOU EXIST', 'THE FROGS WATCH FROM THEIR LILIPADS', 'SITTING WITH GOD IS A REST. EVERY SLOT RETURNS']);
       } else if (id === 'shoo') {
         this.emit('frog');
         if (!this.encounterDone.has('god:shooed')) {
@@ -1909,7 +1959,7 @@ export class Game {
           this.islandBlessed = true;
           this.emit('blessing');
           this.triggerGlitch(0.5);
-          this.announce(['THE COIN SETTLES LIKE IT ALWAYS LIVED THERE', "THE ISLANDER'S CALM: +2 MAX FOCUS, ALWAYS"]);
+          this.announce(['THE COIN SETTLES LIKE IT ALWAYS LIVED THERE', "THE ISLANDER'S CALM: ONE MORE SLOT, ALWAYS"]);
         } else {
           this.announce(['YOU HAVE NOTHING TO GIVE', 'THE SHRINE FINDS THIS EXTREMELY RELATABLE']);
         }
@@ -1942,6 +1992,102 @@ export class Game {
       } else if (id === 'back') {
         this.announce(['YOU BACK AWAY. IT DOES NOT FOLLOW', 'NOTHING HERE FOLLOWS. THAT IS THE PROBLEM']);
       }
+    } else if (c.kind === 'wizard') {
+      const GRUMPS = [
+        ['HRMPH, HE SAYS', 'IT IS A COMPLETE SENTENCE, THE WAY HE SAYS IT'],
+        ['HE LOOKS AT YOU. HE LOOKS AT HIS STAFF', 'HE DECIDES YOU ARE NOT WORTH THE STAFF'],
+        ['GOOD EVENING, YOU SAY. HE DISAGREES'],
+      ];
+      if (id === 'talk') {
+        this.wizardGrump = ((this.wizardGrump ?? -1) + 1) % GRUMPS.length;
+        this.announce(GRUMPS[this.wizardGrump]);
+      } else if (id === 'ask') {
+        this.announce([
+          'QUEUE TOWN, HE GRUMBLES. NAMED FOR THE WAITING',
+          'WIZARDS QUEUE FOR EVERYTHING. POWER, MOSTLY',
+          "CORTIE SELLS THE SHARP THINGS. QUEEBEE THE PAPER ONES",
+        ]);
+      } else if (id === 'hat') {
+        this.hearts.push({ x: c.x, y: c.y - 30, t: HEART_TTL });
+        this.announce(['THE SCOWL FLICKERS. THE HAT PREENS', 'IT IS A VERY GOOD HAT AND HE KNOWS IT']);
+      } else if (id === 'spells') {
+        this.announce([
+          'LEVELS, HE SAYS, HOLDING UP THREE FINGERS',
+          'YOUR MIND CARRIES SO MANY CASTINGS BETWEEN RESTS',
+          'INT FILLS THE FIRST SHELF. WIS THE SECOND. CHA THE THIRD',
+        ]);
+      }
+      // leave: he was already done with you.
+    } else if (c.kind === 'qtownsign') {
+      if (id === 'read') {
+        this.announce(['QUEUE TOWN', 'UNDERNEATH, SMALLER: NO CUTTING']);
+      } else if (id === 'glyph') {
+        this.triggerGlitch(0.4);
+        this.announce(['THE GLYPH IS WARM AND FAINTLY OFFENDED', 'YOU PUT YOUR FINGER DOWN. IT DIMS, SATISFIED']);
+      } else if (id === 'wait') {
+        this.announce(['YOU STAND IN LINE. THERE IS NO LINE', 'A PASSING WIZARD NODS. CORRECT FORM']);
+      }
+    } else if (c.kind === 'cortie-buy') {
+      const buy = (flag, price, lines) => {
+        if (this.coins < price) {
+          this.announce(['NOT ENOUGH COIN', 'CORTIE SHRUGS. STEEL WAITS. STEEL IS GOOD AT IT']);
+        } else {
+          this.coins -= price;
+          this[flag] = true;
+          this.emit('buy');
+          this.announce(lines);
+        }
+        this.openCortieBuy(c.key);
+      };
+      if (id === 'sword') buy('hasSword', PRICES.sword, ['A GOOD SWORD. IT HAS OPINIONS ABOUT ZOMBIES', 'CORTIE OILS THE SCABBARD, FREE']);
+      else if (id === 'wand') buy('hasWand', PRICES.wand, ['THE WAND HUMS AGAINST YOUR PALM', 'POINT IT AWAY FROM THE HAT, CORTIE SAYS']);
+      else if (id === 'look') {
+        this.announce(['RACKS OF STEEL AND CROOKED LIGHTNING', 'EVERYTHING IS SHARP, INCLUDING THE PRICES']);
+        this.openCortieBuy(c.key);
+      } else if (id === 'back') this.openSpotMenu(this.location, { id: 'cortie-counter' }, c.key);
+    } else if (c.kind === 'queebee-buy') {
+      const buyScroll = (spell) => {
+        const price = SCROLL_PRICES[spell];
+        if (this.coins < price) {
+          this.announce(['NOT ENOUGH COIN', 'QUEEBEE MARKS HER PLACE AND WAITS']);
+        } else {
+          this.coins -= price;
+          this.scrolls[spell] = (this.scrolls[spell] ?? 0) + 1;
+          this.emit('buy');
+          const spec = SPELLS.find((sp) => sp.id === spell);
+          this.announce([`ONE SCROLL OF ${spec.name}, TIED WITH VIOLET RIBBON`, 'CAST IT ONCE — OR INSCRIBE IT FOREVER, WITH PAPER OR THE BOOK']);
+        }
+        this.openQueebeeBuy(c.key);
+      };
+      if (id in SCROLL_PRICES) buyScroll(id);
+      else if (id === 'paper') {
+        if (this.coins < PAPER_PRICE) {
+          this.announce(['NOT ENOUGH COIN', 'THE PAPER RUSTLES, UNBOUGHT']);
+        } else {
+          this.coins -= PAPER_PRICE;
+          this.paper += 1;
+          this.emit('buy');
+          this.announce([`ONE BLANK PAGE (${this.paper} HELD)`, 'IT SMELLS OF POSSIBILITY AND A LITTLE OF GLUE']);
+        }
+        this.openQueebeeBuy(c.key);
+      } else if (id === 'book') {
+        if (this.coins < BOOK_PRICE) {
+          this.announce(['NOT ENOUGH COIN', 'THE BOOK CLOSES ITSELF, UNHURT']);
+        } else {
+          this.coins -= BOOK_PRICE;
+          this.hasBook = true;
+          this.emit('buy');
+          this.announce(['THE BLANK BOOK. PAGES FOREVER', 'INSCRIBE INTO IT AND NEVER BUY PAPER AGAIN']);
+        }
+        this.openQueebeeBuy(c.key);
+      } else if (id === 'how') {
+        this.announce([
+          'A SCROLL CASTS ITS SPELL ONCE, FREE, AND BURNS',
+          'OR: INSCRIBE IT — SPEND A PAGE (OR USE THE BOOK) AND THE SCROLL',
+          'THE SPELL IS YOURS FOREVER AFTER. SLOTS APPLY',
+        ]);
+        this.openQueebeeBuy(c.key);
+      } else if (id === 'back') this.openSpotMenu(this.location, { id: 'queebee-counter' }, c.key);
     } else if (c.kind === 'townsign') {
       if (id === 'read') {
         this.announce(['WELCOME, IT SAYS. THE TOWN NAME IS WEATHER NOW', 'POP. 0 AND RISING']);
@@ -2054,10 +2200,8 @@ export class Game {
           'THE RAGAS DO NOT END. THEY HAND EACH OTHER THE MELODY',
           'THE SINGERS NOD. YOU WERE ALWAYS PART OF THE CHORD',
         ];
-        if (this.spells.length && this.focus < this.maxFocus()) {
-          this.focus = this.maxFocus();
-          lines.push('YOUR FOCUS RETURNS, ALL OF IT');
-        }
+        this.rest();
+        if (this.spells.length) lines.push('THE MUSIC IS A REST. EVERY SLOT RETURNS');
         this.announce(lines);
       } else if (id === 'gold') {
         this.emit('gold');
@@ -2272,9 +2416,9 @@ export class Game {
         this.announce(['THE MOON DEFERS TO YOUR JUDGMENT', 'TYPICAL']);
         break;
       case 'sit': {
-        if (this.spells.length && this.focus < this.maxFocus()) {
-          this.focus += 1;
-          this.announce(['NOTHING IMPROVES. IT HELPS ANYWAY (+1 FOCUS)']);
+        if (this.spells.length && this.slots[1] < this.maxSlots(1)) {
+          this.slots[1] += 1;
+          this.announce(['NOTHING IMPROVES. IT HELPS ANYWAY (+1 SLOT)']);
         } else {
           this.announce(['NOTHING IMPROVES. IT HELPS ANYWAY']);
         }
@@ -2400,6 +2544,32 @@ export class Game {
       case 'margins':
         this.announce(['THE MARGINS SAY: SHE FLOATS. UNDERLINED TWICE', 'THE PEN WAS RUNNING OUT. THE FAITH WAS NOT']);
         break;
+      // SWORD
+      case 'hone-sword':
+        this.announce(['THE EDGE IS TRUE', 'CORTIE OILED IT. YOU CAN TELL. IT SMELLS RESPONSIBLE']);
+        break;
+      case 'flourish':
+        this.emit('chop');
+        this.announce(['A CLEAN FIGURE-EIGHT. THE NIGHT APPLAUDS SILENTLY', 'YOU CHECK NOBODY SAW. SOMETHING SAW']);
+        break;
+      case 'sheathe':
+        this.announce(['THE SLOW SHEATHE. THE COOLEST THING A PERSON CAN DO', 'THE DOG WAGS ONCE, OBJECTIVELY CORRECT']);
+        break;
+      // WAND
+      case 'point-wand':
+        this.triggerGlitch(0.25);
+        this.announce(['YOU POINT IT AT A TREE. THE TREE STIFFENS', 'POWER IS MOSTLY AIM, PLUS RESTRAINT']);
+        break;
+      case 'listen-wand':
+        this.announce(['IT HUMS A NOTE JUST UNDER HEARING', 'YOUR TEETH AGREE IT IS THERE']);
+        break;
+      case 'warm-wand':
+        this.announce(['IT WARMS LIKE A SMALL OPINIONATED STONE', 'IT LIKES YOU. PROBABLY']);
+        break;
+      // SCROLLS
+      case 'riffle':
+        this.announce(['THEY RUSTLE LIKE SMALL CONTAINED WEATHER', 'ONE OF THEM HUMS YOUR NAME. YOU PUT IT DOWN']);
+        break;
       // LAMP (carried)
       case 'polish-lamp':
         this.polishedLamps.add('lamp:carried');
@@ -2474,6 +2644,11 @@ export class Game {
         ...(this.hasRope ? [{ id: 'rope', label: 'ROPE', icon: 'rope' }] : []),
         ...(this.hasManual ? [{ id: 'manual', label: 'MANUAL', icon: 'manual' }] : []),
         ...(this.hasBoat ? [{ id: 'boat', label: 'BOAT', icon: 'boat' }] : []),
+        ...(this.hasSword ? [{ id: 'sword', label: 'SWORD', icon: 'sword' }] : []),
+        ...(this.hasWand ? [{ id: 'wand', label: 'WAND', icon: 'wand' }] : []),
+        ...(Object.values(this.scrolls).some((n) => n > 0)
+          ? [{ id: 'scrolls-item', label: 'SCROLLS', icon: 'scroll' }]
+          : []),
         ...(this.hasLamp ? [{ id: 'lamp', label: 'LAMP', icon: 'lamp' }] : []),
         ...(this.hasPipe ? [{ id: 'pipe', label: 'PIPE', icon: 'pipe' }] : []),
         { id: 'close', label: 'CLOSE' },
@@ -2657,6 +2832,50 @@ export class Game {
           { id: 'christen', label: 'NAME HER' },
         ],
       },
+      sword: {
+        title: 'THE SWORD',
+        body: [`SWINGS AT DC ${DC_BONE}, ${this.fistDamage() + 3} DMG`, "CORTIE'S HONEST STEEL"],
+        options: [
+          ...(person ? [{ id: 'swing-sword', label: 'SWING THE SWORD' }] : []),
+          { id: 'hone-sword', label: 'CHECK THE EDGE' },
+          { id: 'flourish', label: 'TRY A FLOURISH' },
+          { id: 'sheathe', label: 'SHEATHE IT, SLOWLY' },
+        ],
+      },
+      wand: {
+        title: 'THE WAND',
+        body: [`FLICKS AT DC ${DC_WAND} (INT), ${2 + Math.max(0, this.mod('int'))} DMG`, 'POINT IT AWAY FROM THE HAT'],
+        options: [
+          ...(person ? [{ id: 'flick-wand', label: 'FLICK THE WAND' }] : []),
+          { id: 'point-wand', label: 'POINT IT AT THINGS' },
+          { id: 'listen-wand', label: 'LISTEN TO IT HUM' },
+          { id: 'warm-wand', label: 'WARM IT IN YOUR PALM' },
+        ],
+      },
+      'scrolls-item': {
+        title: 'SCROLLS',
+        body: [
+          ...Object.entries(this.scrolls)
+            .filter(([, n]) => n > 0)
+            .map(([sid, n]) => {
+              const spec = SPELLS.find((sp) => sp.id === sid);
+              return `${spec.name} (L${spec.level}) X${n}`;
+            }),
+          `PAGES ${this.paper}${this.hasBook ? ' + THE BOOK' : ''}`,
+        ],
+        options: [
+          ...Object.entries(this.scrolls)
+            .filter(([, n]) => n > 0)
+            .flatMap(([sid]) => {
+              const spec = SPELLS.find((sp) => sp.id === sid);
+              return [
+                { id: `cast-${sid}`, label: `CAST ${spec.name} (FREE)` },
+                { id: `inscribe-${sid}`, label: `INSCRIBE ${spec.name}` },
+              ];
+            }),
+          { id: 'riffle', label: 'RIFFLE THROUGH THEM' },
+        ],
+      },
       lamp: {
         title: this.encounterDone.has('lamp:carried') ? 'THE LAMP, QUIET NOW' : 'THE LAMP',
         body: [
@@ -2730,20 +2949,74 @@ export class Game {
 
   // --- Magic ---------------------------------------------------------------
 
-  /** Focus pool: 3 + WIS modifier, never below 1. */
-  maxFocus() {
-    return Math.max(1, FOCUS_BASE + this.mod('wis')) + (this.islandBlessed ? 2 : 0);
+  /**
+   * Spell slots per level (v0.21): the mind sets the shelf. Level 1 leans
+   * on INT, level 2 on WIS, level 3 on CHA. The island's calm adds a first-
+   * level slot, always.
+   */
+  maxSlots(level) {
+    const base =
+      level === 1
+        ? Math.max(1, 2 + this.mod('int')) + (this.islandBlessed ? 1 : 0)
+        : level === 2
+          ? Math.max(0, 1 + this.mod('wis'))
+          : Math.max(0, this.mod('cha'));
+    return base;
+  }
+
+  /** A rest — a bed, a warm stove, the ragas, God — returns every slot. */
+  rest() {
+    for (const lv of SLOT_LEVELS) this.slots[lv] = this.maxSlots(lv);
+    this.breathed = false;
+    if (this.spells.length) this.say('YOUR SLOTS RETURN, EVERY LEVEL OF THEM');
+  }
+
+  /** Cast straight off a scroll: free, once, and the scroll burns. */
+  castScroll(id) {
+    if (!(this.scrolls[id] > 0)) return;
+    this.scrolls[id] -= 1;
+    this.emit('spell-cast');
+    this.say('THE SCROLL BURNS AS IT SPEAKS');
+    this.castSpellEffect(id);
+    if (this.mode === 'turn') this.endPlayerTurn();
+  }
+
+  /**
+   * Inscribe a scroll: spend a page (or use the book) and the scroll, and
+   * the spell joins your list forever.
+   */
+  inscribeScroll(id) {
+    if (!(this.scrolls[id] > 0)) return;
+    const spec = SPELLS.find((sp) => sp.id === id);
+    if (this.spells.includes(id)) {
+      this.announce([`YOU KNOW ${spec.name}. THE SCROLL SIGHS, UNBURNT`]);
+      return;
+    }
+    if (this.paper > 0) this.paper -= 1;
+    else if (!this.hasBook) {
+      this.announce(['NOTHING TO INSCRIBE ONTO', 'QUEEBEE SELLS PAGES. AND THE BOOK']);
+      return;
+    }
+    this.scrolls[id] -= 1;
+    this.spells.push(id);
+    this.emit('spell-learn');
+    this.triggerGlitch(0.5);
+    this.announce([
+      `YOU INSCRIBE ${spec.name}, LETTER BY BURNING LETTER`,
+      'THE INK SETS. THE SPELL IS YOURS FOREVER',
+    ]);
   }
 
   /** A vision teaches the next spell in the book (if any are left). */
   learnSpell() {
-    const next = SPELLS.find((s) => !this.spells.includes(s.id));
+    // The leaf teaches its own book, never Queebee's scroll-spells.
+    const next = SPELLS.find((s) => !s.scroll && !this.spells.includes(s.id));
     if (!next) {
       this.say('THE LEAF HAS NOTHING LEFT TO TEACH');
       return;
     }
     this.spells.push(next.id);
-    this.focus = this.maxFocus();
+    this.rest(); // a vision is a rest for the mind
     this.emit('spell-learn');
     this.say(`YOU LEARN ${next.name}: ${next.blurb}`);
   }
@@ -2759,12 +3032,12 @@ export class Game {
       key: 'spell',
       x: this.person.x,
       y: this.person.y,
-      title: `FOCUS ${this.focus} OF ${this.maxFocus()}`,
+      title: `SLOTS  L1 ${this.slots[1]}/${this.maxSlots(1)}  L2 ${this.slots[2]}/${this.maxSlots(2)}  L3 ${this.slots[3]}/${this.maxSlots(3)}`,
       body: SPELLS.filter((s) => this.spells.includes(s.id)).map((s) => `${s.name}: ${s.blurb}`),
       options: [
         ...SPELLS.filter((s) => this.spells.includes(s.id)).map((s) => ({
           id: s.id,
-          label: `${s.name} (${s.cost})`,
+          label: `${s.name} (L${s.level})`,
         })),
         { id: 'breathe', label: 'JUST BREATHE (0)' },
         { id: 'hum', label: 'HUM THE WORDS (0)' },
@@ -2773,17 +3046,28 @@ export class Game {
     });
   }
 
-  /** Cast a known spell, if focus allows. Costs your turn in battle. */
+  /**
+   * Cast a known spell by spending a slot of its level (or the next level
+   * up, burning bright). Costs your turn in battle.
+   */
   castSpell(id) {
     const spell = SPELLS.find((s) => s.id === id);
     if (!spell || !this.spells.includes(id)) return;
-    if (this.focus < spell.cost) {
+    const lv = SLOT_LEVELS.find((l) => l >= spell.level && this.slots[l] > 0);
+    if (!lv) {
       this.emit('spell-fail');
-      this.announce(['NOT ENOUGH FOCUS. THE WORDS SCATTER']);
+      this.announce([`NO LEVEL ${spell.level} SLOT LEFT. REST, SOMEWHERE KIND`]);
       if (this.mode === 'turn') this.endPlayerTurn();
       return;
     }
-    this.focus -= spell.cost;
+    this.slots[lv] -= 1;
+    if (lv > spell.level) this.say('A BIGGER SLOT BURNS FOR A SMALLER SPELL');
+    this.castSpellEffect(id);
+    if (this.mode === 'turn') this.endPlayerTurn();
+  }
+
+  /** The spell's actual effect — shared by slot casts and scroll casts. */
+  castSpellEffect(id) {
     this.triggerGlitch(0.35);
     if (id === 'ember') {
       this.emit('spell-cast');
@@ -2819,8 +3103,60 @@ export class Game {
       this.heal(3);
       this.hearts.push({ x: this.person.x, y: this.person.y - 30, t: 1.6 });
       this.announce(['YOU DRINK THE MOON (+3 HP)']);
+    } else if (id === 'bolt') {
+      this.emit('spell-cast');
+      const target = this.nearestFoe();
+      const dmg = 2 + Math.max(0, this.mod('int'));
+      if (!target) {
+        this.announce(['THE BOLT CRACKS INTO THE DARK AND FINDS NOTHING']);
+      } else {
+        this.dealSpellDamage(target, dmg, {
+          kills: 'THE BOLT TAKES IT. THE AIR SMELLS OF VIOLETS AND OZONE',
+          hurts: `THE BOLT BITES (${dmg}). IT KEEPS COMING`,
+        });
+      }
+    } else if (id === 'mend') {
+      this.emit('heal');
+      this.heal(2);
+      this.hearts.push({ x: this.person.x, y: this.person.y - 30, t: 1.6 });
+      this.announce(['SMALL STITCHES OF LIGHT (+2 HP)']);
+    } else if (id === 'shield') {
+      this.warded = true;
+      this.shielded = true; // the second bite too
+      this.emit('ward');
+      this.announce(['A SHIELD SETTLES OVER YOU, PATIENT AS PLATE']);
+    } else if (id === 'starfall') {
+      this.emit('spell-cast');
+      this.triggerGlitch(0.8);
+      const foes = this.hostilesNear(ENCOUNTER_RADIUS);
+      if (!foes.length) {
+        this.announce(['THE SKY LEANS IN, FINDS NOBODY, AND STRAIGHTENS UP']);
+      } else {
+        this.announce(['THE SKY LEANS IN']);
+        for (const f of foes) {
+          this.dealSpellDamage(f, 4, {
+            kills: `${FOES[f.kind].name} GOES OUT UNDER THE STARS`,
+            hurts: `${FOES[f.kind].name} STAGGERS UNDER THE FALL`,
+          });
+        }
+      }
     }
-    if (this.mode === 'turn') this.endPlayerTurn();
+  }
+
+  /** Spell damage against one foe: shared kill/stagger bookkeeping. */
+  dealSpellDamage(target, dmg, lines) {
+    const spec = FOES[target.kind];
+    const left = (this.zombieHp.get(target.key) ?? spec.hp) - dmg;
+    if (left <= 0) {
+      this.encounterDone.add(target.key);
+      this.zombieHp.delete(target.key);
+      this.emit('vanish');
+      this.announce([lines.kills]);
+      this.gainXp(spec.xp);
+    } else {
+      this.zombieHp.set(target.key, left);
+      this.announce([lines.hurts]);
+    }
   }
 
   // --- Turn-based combat ---------------------------------------------------
@@ -2937,6 +3273,7 @@ export class Game {
     this.turn = 'you';
     this.battleFoes = [];
     this.warded = false;
+    this.shielded = false;
     this.dazed = false; // thrown dirt does not carry to the next fight
     this.emit('battle-end');
     this.say(line);
@@ -2967,6 +3304,8 @@ export class Game {
         ...(inReach ? [{ id: 'fists', label: 'ATTACK WITH FISTS' }] : []),
         ...(inReach && this.hasBone ? [{ id: 'bone', label: 'SWING THE BONE' }] : []),
         ...(inReach && this.hasAxe ? [{ id: 'axe', label: 'SWING THE AXE' }] : []),
+        ...(inReach && this.hasSword ? [{ id: 'sword', label: 'SWING THE SWORD' }] : []),
+        ...(inReach && this.hasWand ? [{ id: 'wand', label: 'FLICK THE WAND' }] : []),
         ...(this.spells.length ? [{ id: 'cast', label: 'CAST A SPELL' }] : []),
         { id: 'taunt', label: 'SHOUT SOMETHING BRAVE' },
         { id: 'dirt', label: 'THROW DIRT IN ITS EYES' },
@@ -3000,7 +3339,8 @@ export class Game {
     for (const foe of this.hostilesNear(ENCOUNTER_RADIUS)) {
       if (dazed) break; // their answer goes wide
       if (this.warded) {
-        this.warded = false;
+        if (this.shielded) this.shielded = false; // the shield holds for one more
+        else this.warded = false;
         this.emit('ward');
         this.say('THE WARD TAKES THE BITE FOR YOU');
         continue;
@@ -3035,6 +3375,69 @@ export class Game {
   /** A named interior spot's menu (the detective, the altar, the pegs...). */
   openSpotMenu(kind, spot, key) {
     const MENUS = {
+      'cortie-counter': {
+        title: 'CORTIE LOOKS UP FROM A WHETSTONE',
+        options: [
+          { id: 'wares', label: 'SEE THE RACK' },
+          { id: 'talk', label: 'TALK SHOP' },
+          { id: 'town3', label: 'ASK ABOUT QUEUE TOWN' },
+          { id: 'leave', label: 'LEAVE HIM TO THE EDGE' },
+        ],
+      },
+      'queebee-counter': {
+        title: 'QUEEBEE PEERS OVER HER SPECTACLES',
+        options: [
+          { id: 'wares', label: 'SEE THE SHELF' },
+          { id: 'talk', label: 'TALK PAPER' },
+          { id: 'inscribe-how', label: 'ASK ABOUT INSCRIBING' },
+          { id: 'leave', label: 'LEAVE HER TO THE INK' },
+        ],
+      },
+      weaponrack: {
+        title: 'THE WEAPON RACK, STANDING AT ATTENTION',
+        options: [
+          { id: 'admire', label: 'ADMIRE THE STEEL' },
+          { id: 'thumb', label: 'THUMB AN EDGE' },
+          { id: 'count', label: 'COUNT THE WANDS' },
+          { id: 'step', label: 'STEP BACK' },
+        ],
+      },
+      wandcase: {
+        title: 'THE WAND CASE, GLINTING',
+        options: [
+          { id: 'peer', label: 'PEER THROUGH THE GLASS' },
+          { id: 'tap-glass', label: 'TAP THE GLASS' },
+          { id: 'reflect', label: 'CHECK YOUR REFLECTION' },
+          { id: 'step', label: 'STEP BACK' },
+        ],
+      },
+      bookshelf: {
+        title: 'A SHELF OF SPINES, ALL COLORS OF PLUM',
+        options: [
+          { id: 'browse', label: 'BROWSE THE SPINES' },
+          { id: 'sniff-books', label: 'SMELL THE PAPER' },
+          { id: 'straighten-b', label: 'STRAIGHTEN ONE' },
+          { id: 'step', label: 'STEP BACK' },
+        ],
+      },
+      scrollrack: {
+        title: 'PIGEONHOLES OF ROLLED THUNDER',
+        options: [
+          { id: 'peek', label: 'PEEK IN A HOLE' },
+          { id: 'count-scrolls', label: 'COUNT THE EMPTIES' },
+          { id: 'resist', label: 'RESIST UNROLLING ONE' },
+          { id: 'step', label: 'STEP BACK' },
+        ],
+      },
+      inkdesk: {
+        title: "QUEEBEE'S DESK. THE INK IS STILL WET",
+        options: [
+          { id: 'read-desk', label: 'READ THE OPEN PAGE' },
+          { id: 'quill', label: 'ADMIRE THE QUILL' },
+          { id: 'spill', label: 'WORRY ABOUT THE SPILL' },
+          { id: 'step', label: 'STEP BACK' },
+        ],
+      },
       detective: {
         title: 'THE DETECTIVE LOOKS UP FROM THE DEVIL FILE',
         options: [
@@ -3136,6 +3539,60 @@ export class Game {
   /** Resolve an interior spot menu. Returns true when it handled the id. */
   resolveSpot(c, id) {
     const spot = c.kind.slice(5);
+    if (spot === 'cortie-counter') {
+      if (id === 'wares') this.openCortieBuy(c.key);
+      else if (id === 'talk') {
+        this.announce(['A BLADE WANTS STRENGTH. A WAND WANTS BRAINS', 'HE TAPS HIS TEMPLE, THEN THE WHETSTONE. BOTH, IDEALLY']);
+      } else if (id === 'town3') {
+        this.announce(['GRUMPY? THEY ARE WIZARDS, HE SAYS', 'WAITING IS THE WHOLE DISCIPLINE. THE TOWN IS NAMED FOR IT']);
+      }
+      return true;
+    }
+    if (spot === 'queebee-counter') {
+      if (id === 'wares') this.openQueebeeBuy(c.key);
+      else if (id === 'talk') {
+        this.announce(['PAPER REMEMBERS WHAT MINDS FORGET, SHE SAYS', 'SHE UNDERLINES SOMETHING TWICE, FONDLY']);
+      } else if (id === 'inscribe-how') {
+        this.announce([
+          'A SCROLL CASTS ONCE AND BURNS. OR:',
+          'INSCRIBE IT — A PAGE (OR THE BOOK) MAKES IT YOURS FOREVER',
+          'THE SPELL JOINS YOUR LIST. SLOTS APPLY AS EVER',
+        ]);
+      }
+      return true;
+    }
+    if (spot === 'weaponrack') {
+      if (id === 'admire') this.announce(['THE STEEL ADMIRES YOU BACK, COLDLY']);
+      else if (id === 'thumb') this.announce(['SHARP. CORTIE CLEARS HIS THROAT, ONCE', 'YOU PUT YOUR THUMB AWAY']);
+      else if (id === 'count') this.announce(['THREE WANDS, EACH PRETENDING TO BE ASLEEP']);
+      return true;
+    }
+    if (spot === 'wandcase') {
+      if (id === 'peer') this.announce(['THE WAND TIPS GLOW FAINTLY, LIKE BANKED COALS']);
+      else if (id === 'tap-glass') {
+        this.triggerGlitch(0.3);
+        this.announce(['EVERY WAND POINTS AT YOU AT ONCE', 'THEN THEY PRETEND THEY DID NOT']);
+      } else if (id === 'reflect') this.announce(['YOU, WARPED IN SHOP GLASS, AMONG LIGHTNING', 'IT SUITS YOU']);
+      return true;
+    }
+    if (spot === 'bookshelf') {
+      if (id === 'browse') this.announce(['TITLES IN LANGUAGES THAT DECLINE TO BE READ', 'ONE SPINE SAYS, SIMPLY: NO']);
+      else if (id === 'sniff-books') this.announce(['DUST, INK, AND ONE CENTURY PER SHELF']);
+      else if (id === 'straighten-b') this.announce(['YOU STRAIGHTEN ONE. THE SHELF SIGHS', 'QUEEBEE PRETENDS NOT TO BE PLEASED']);
+      return true;
+    }
+    if (spot === 'scrollrack') {
+      if (id === 'peek') this.announce(['ROLLED TIGHT, TIED IN VIOLET, HUMMING SMALL']);
+      else if (id === 'count-scrolls') this.announce(['TWO PIGEONHOLES STAND EMPTY', 'SOMEBODY CAST FIRST AND PAID AFTER, QUEEBEE SAYS DARKLY']);
+      else if (id === 'resist') this.announce(['YOU DO NOT UNROLL ONE', 'THE RESTRAINT IS NOTED SOMEWHERE']);
+      return true;
+    }
+    if (spot === 'inkdesk') {
+      if (id === 'read-desk') this.announce(['THE OPEN PAGE IS A LEDGER OF NAMES AND SPELLS', 'YOURS IS NOT IN IT. YET, SAYS THE HANDWRITING']);
+      else if (id === 'quill') this.announce(['THE QUILL IS FROM NO BIRD YOU COULD NAME']);
+      else if (id === 'spill') this.announce(['THE SPILL IS SHAPED LIKE A SMALL DOG', 'EVERYTHING GOOD IS, EVENTUALLY']);
+      return true;
+    }
     if (spot === 'detective') {
       if (id === 'case') {
         this.emit('typewriter');
@@ -3178,9 +3635,9 @@ export class Game {
     }
     if (spot === 'altar') {
       if (id === 'pray') {
-        this.focus = this.maxFocus();
+        this.rest();
         this.emit('pray');
-        this.announce(['YOU PRAY TO WHATEVER LISTENS. THE GOLD LISTENS', 'YOUR FOCUS RETURNS, ALL OF IT']);
+        this.announce(['YOU PRAY TO WHATEVER LISTENS. THE GOLD LISTENS', 'PRAYER IS A REST. EVERY SLOT RETURNS']);
       } else if (id === 'candle') {
         if (this.coins >= 1) {
           this.coins -= 1;
@@ -3209,9 +3666,9 @@ export class Game {
     }
     if (spot === 'singer') {
       if (id === 'listen') {
-        this.focus = this.maxFocus();
+        this.rest();
         this.emit('raga');
-        this.announce(['THE MELODY PASSES THROUGH YOU LIKE WEATHER', 'YOUR FOCUS RETURNS, ALL OF IT']);
+        this.announce(['THE MELODY PASSES THROUGH YOU LIKE WEATHER', 'THE MUSIC IS A REST. EVERY SLOT RETURNS']);
       } else if (id === 'hum') {
         this.emit('raga');
         this.announce(['YOU HUM. THE SINGER SMILES WITHOUT STOPPING', 'FOR FOUR NOTES, YOU ARE PART OF THE CHORD']);
@@ -3242,6 +3699,7 @@ export class Game {
         if (!this.encounterDone.has(wk)) {
           this.encounterDone.add(wk);
           this.heal(1);
+          this.rest();
           this.announce(['THE COAL DOES ITS ONE KIND THING (+1 HP)']);
         } else {
           this.announce(['THE COAL IS SPENT FOR TONIGHT', 'IT GLOWS ANYWAY. FOR MORALE']);
@@ -3283,6 +3741,7 @@ export class Game {
         if (!this.encounterDone.has(bk)) {
           this.encounterDone.add(bk);
           this.heal(2);
+          this.rest();
           this.announce(['YOU LIE DOWN FOR EXACTLY ONE MINUTE (+2 HP)', 'THE CEILING HAS A WATER STAIN SHAPED LIKE A DOG']);
         } else {
           this.announce(['THE BED HAS GIVEN WHAT IT HAS TO GIVE TONIGHT']);
@@ -3353,6 +3812,45 @@ export class Game {
     });
   }
 
+  /** Cortie's rack: steel and crooked lightning (v0.21). */
+  openCortieBuy(key) {
+    this.openChoice({
+      kind: 'cortie-buy',
+      key,
+      x: this.person.x,
+      y: this.person.y,
+      title: `CORTIE'S RACK - YOU HOLD ${this.coins}C`,
+      options: [
+        ...(this.hasSword ? [] : [{ id: 'sword', label: `SWORD - ${PRICES.sword}C` }]),
+        ...(this.hasWand ? [] : [{ id: 'wand', label: `WAND - ${PRICES.wand}C` }]),
+        { id: 'look', label: 'JUST LOOK AT EVERYTHING' },
+        { id: 'back', label: 'BACK' },
+      ],
+    });
+  }
+
+  /** Queebee's shelf: scrolls, paper, and the blank book (v0.21). */
+  openQueebeeBuy(key) {
+    const scrollRows = Object.entries(SCROLL_PRICES).map(([id, price]) => {
+      const spec = SPELLS.find((sp) => sp.id === id);
+      return { id, label: `SCROLL OF ${spec.name} (L${spec.level}) - ${price}C` };
+    });
+    this.openChoice({
+      kind: 'queebee-buy',
+      key,
+      x: this.person.x,
+      y: this.person.y,
+      title: `QUEEBEE'S SHELF - YOU HOLD ${this.coins}C`,
+      options: [
+        ...scrollRows,
+        { id: 'paper', label: `BLANK PAGE - ${PAPER_PRICE}C (${this.paper} HELD)` },
+        ...(this.hasBook ? [] : [{ id: 'book', label: `THE BLANK BOOK - ${BOOK_PRICE}C` }]),
+        { id: 'how', label: 'ASK HOW SCROLLS WORK' },
+        { id: 'back', label: 'BACK' },
+      ],
+    });
+  }
+
   /** The zombie fight menu (options depend on what you're carrying). */
   zombieMenu(key, x, y) {
     return {
@@ -3395,11 +3893,30 @@ export class Game {
       return;
     }
 
-    const weapon = id === 'bone' && this.hasBone ? 'bone' : id === 'axe' && this.hasAxe ? 'axe' : null;
-    const r = this.check('str');
-    const dc = weapon === 'bone' ? DC_BONE : weapon === 'axe' ? DC_AXE : DC_FISTS;
+    const weapon =
+      id === 'bone' && this.hasBone
+        ? 'bone'
+        : id === 'axe' && this.hasAxe
+          ? 'axe'
+          : id === 'sword' && this.hasSword
+            ? 'sword'
+            : id === 'wand' && this.hasWand
+              ? 'wand'
+              : null;
+    // The wand is the one weapon that answers to the MIND.
+    const r = weapon === 'wand' ? this.check('int') : this.check('str');
+    const dc =
+      weapon === 'bone' ? DC_BONE : weapon === 'axe' ? DC_AXE : weapon === 'sword' ? DC_BONE : weapon === 'wand' ? DC_WAND : DC_FISTS;
     const dmg =
-      weapon === 'bone' ? this.boneDamage() : weapon === 'axe' ? this.fistDamage() + 2 : this.fistDamage();
+      weapon === 'bone'
+        ? this.boneDamage()
+        : weapon === 'axe'
+          ? this.fistDamage() + 2
+          : weapon === 'sword'
+            ? this.fistDamage() + 3
+            : weapon === 'wand'
+              ? 2 + Math.max(0, this.mod('int'))
+              : this.fistDamage();
     const DIES = {
       zombie: 'THE ZOMBIE CRUMBLES. THE FOREST EXHALES',
       ghost: 'THE SIGNAL DROPS FOR GOOD. IT LOOKS RELIEVED',
@@ -3416,14 +3933,24 @@ export class Game {
         return;
       }
       const left = hp - dmg;
-      if (weapon) this.emit(weapon === 'bone' ? 'bonk' : 'chop');
+      if (weapon) this.emit(weapon === 'bone' ? 'bonk' : weapon === 'wand' ? 'spell-cast' : 'chop');
       if (left <= 0) {
         this.encounterDone.add(c.key);
         this.zombieHp.delete(c.key);
         this.emit('vanish');
         this.triggerGlitch(0.4);
         this.announce([
-          `${this.rollText(r)} - ${weapon ? (weapon === 'bone' ? 'BONK! THE BONE RINGS TRUE' : 'THE AXE REMEMBERS ITS FIRST JOB') : 'YOU LAND ONE'}`,
+          `${this.rollText(r)} - ${
+            weapon === 'bone'
+              ? 'BONK! THE BONE RINGS TRUE'
+              : weapon === 'axe'
+                ? 'THE AXE REMEMBERS ITS FIRST JOB'
+                : weapon === 'sword'
+                  ? 'THE STEEL SINGS ONE CLEAN NOTE'
+                  : weapon === 'wand'
+                    ? 'THE WAND CRACKS VIOLET'
+                    : 'YOU LAND ONE'
+          }`,
           DIES[kind],
         ]);
         this.gainXp(spec.xp);
@@ -3431,7 +3958,17 @@ export class Game {
         if (this.mode === 'turn') this.endPlayerTurn();
       } else {
         this.zombieHp.set(c.key, left);
-        this.announce([`${this.rollText(r)} - ${weapon ? (weapon === 'bone' ? 'BONK! IT STAGGERS' : 'THE AXE BITES. IT STAGGERS') : 'YOU LAND ONE. IT STAGGERS'}`]);
+        this.announce([`${this.rollText(r)} - ${
+          weapon === 'bone'
+            ? 'BONK! IT STAGGERS'
+            : weapon === 'axe'
+              ? 'THE AXE BITES. IT STAGGERS'
+              : weapon === 'sword'
+                ? 'THE STEEL BITES. IT STAGGERS'
+                : weapon === 'wand'
+                  ? 'VIOLET SPARKS. IT STAGGERS'
+                  : 'YOU LAND ONE. IT STAGGERS'
+        }`]);
         if (this.mode === 'turn') this.endPlayerTurn();
         else this.openChoice(this.zombieMenu(c.key, c.x, c.y));
       }
