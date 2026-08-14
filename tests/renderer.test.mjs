@@ -11,18 +11,19 @@ import { wrapText } from '../src/gfx/font.js';
 import { Game } from '../src/core/game.js';
 import { World } from '../src/core/world.js';
 import {
-  godSpot, townAt, minotaurAt, signAt, biomeAt, ISLAND_REGION, REGION,
+  godSpot, townAt, minotaurAt, signAt, biomeAt, qtownAt, ISLAND_REGION, REGION,
 } from '../src/core/terrain.js';
 import { viewFor, setScreenSize, VIEW_MIN_W, VIEW_MIN_H } from '../src/core/screen.js';
+import { PALETTE } from '../src/gfx/palette.js';
 
 function fakeCanvas(w = SCREEN_W, h = SCREEN_H) {
   const ctx = {
     fillStyle: '#000000',
     ops: { fillRect: 0, drawImage: 0 },
-    rects: [],
+    rects: [], // [x, y, w, h, fillStyle] — the color rides along for assertions
     fillRect(x, y, rw, rh) {
       this.ops.fillRect++;
-      this.rects.push([x, y, rw, rh]);
+      this.rects.push([x, y, rw, rh, this.fillStyle]);
     },
     drawImage() { this.ops.drawImage++; },
   };
@@ -357,8 +358,8 @@ test('the sheet always counts the pockets: coins and wood', () => {
 
 // --- v0.20: interiors, the ghost town, heaven's residents --------------------
 
-test('every v0.20 interior renders from its INTERIORS spec', () => {
-  for (const kind of ['mansion2', 'cathedral', 'cabin', 'office']) {
+test('every interior renders from its INTERIORS spec (v0.21: shops included)', () => {
+  for (const kind of ['mansion2', 'cathedral', 'cabin', 'office', 'cortie', 'queebee']) {
     const g = new Game(1, { story: false });
     if (kind === 'cathedral') g.plane = 'heaven'; // the nave sits in heaven
     g.goldGiven = 5; // grow the pile of god a few courses
@@ -373,6 +374,15 @@ test('every v0.20 interior renders from its INTERIORS spec', () => {
       assert.ok(x >= -1 && y >= -1 && x + w <= SCREEN_W + 1 && y + h <= SCREEN_H + 1,
         `${kind} pixel (${x},${y}) off screen`);
     }
+    // The merchants hold their counters (scenery, like the detective):
+    // Cortie's gold appraising eyes are the only gold in his shop; Queebee's
+    // purple hat and robe are the only purple in hers.
+    if (kind === 'cortie') {
+      assert.ok(canvas.ctx.rects.some((p) => p[4] === PALETTE.gold), 'Cortie sizes you up');
+    }
+    if (kind === 'queebee') {
+      assert.ok(canvas.ctx.rects.some((p) => p[4] === PALETTE.purple), 'Queebee behind her counter');
+    }
   }
 });
 
@@ -380,9 +390,14 @@ test('the ghost town renders: ruins, ghosts, Pirts, the sign, the office', () =>
   const g = new Game(3, { story: false });
   let town = null;
   for (let rx = -15; rx <= 15 && !town; rx++) {
-    for (let ry = -15; ry <= 15 && !town; ry++) town = townAt(g.world.seed, rx, ry);
+    for (let ry = -15; ry <= 15 && !town; ry++) {
+      const t = townAt(g.world.seed, rx, ry);
+      // Some towns' offices land past their region edge and never spawn (a
+      // worldgen quirk) — this smoke wants a street WITH its office end.
+      if (t && g.world.officesInRect(t.office.x - 50, t.office.y - 50, 100, 100).length) town = t;
+    }
   }
-  assert.ok(town, 'seed 3 raises a town within 15 regions');
+  assert.ok(town, 'seed 3 raises a town (office and all) within 15 regions');
   g.person.x = town.cx;
   g.person.y = town.cy;
   g.dog.x = town.cx - 20;
@@ -395,12 +410,91 @@ test('the ghost town renders: ruins, ghosts, Pirts, the sign, the office', () =>
     r.render(g);
   }
   assert.ok(canvas.ctx.ops.fillRect > 1000, 'main street painted');
+  // v0.21: the big ruin facades rasterize once and blit from the cache.
+  assert.ok(
+    [...r.treeCache.keys()].some((k) => k.startsWith('st:night:big-ruin:')),
+    'big ruin facades cached',
+  );
   // The office end of the street, facade and doorway.
   g.person.x = town.office.x;
   g.person.y = town.office.y + 40;
+  r.camInit = false; // snap to the new stage
   const before = canvas.ctx.ops.fillRect;
   r.render(g);
   assert.ok(canvas.ctx.ops.fillRect > before, 'the office facade painted');
+  assert.ok(r.treeCache.has('st:night:big-office'), 'the big office facade cached');
+});
+
+// --- v0.21: big facades, Queue Town, the garland twinkle, the detailed map ---
+
+test('the big cabin and mansion blit cached, with their animated touches', () => {
+  const canvas = fakeCanvas();
+  const r = makeRenderer(canvas);
+  const g = new Game(1, { story: false });
+  g.world.collides = () => false;
+  g.world.chunkAt(0, 0).cabins.push({ x: -140, y: 40 });
+  g.world.chunkAt(0, 0).mansions.push({ x: 120, y: 60 });
+  // t=3.653: sin(t*0.43)=1 — the attic burns; the cabin window stays lit.
+  g.time = 3.653;
+  r.render(g);
+  assert.ok(canvas.ctx.ops.drawImage > 0, 'facades blit from the cache');
+  assert.ok(r.treeCache.has('st:night:big-cabin') && r.treeCache.has('st:night:big-mansion'));
+  const brass = canvas.ctx.rects.filter((p) => p[4] === PALETTE.brass);
+  assert.ok(brass.length > 150, `the attic pane fills brass (${brass.length} px)`);
+  // t=7.854: sin(t*0.6)=-1 — the window's dark beat; the attic sleeps.
+  canvas.ctx.rects.length = 0;
+  g.time = 7.854;
+  r.render(g);
+  const fog = canvas.ctx.rects.filter((p) => p[4] === PALETTE.fog);
+  assert.ok(fog.length >= 100, `the cabin window goes fog-dark (${fog.length} px)`);
+  assert.equal(canvas.ctx.rects.filter((p) => p[4] === PALETTE.brass).length, 0, 'no attic light');
+});
+
+test('Queue Town renders: towers, both shops, the sign, grumping wizards', () => {
+  const g = new Game(1, { story: false });
+  let qt = null;
+  for (let rx = -20; rx <= 20 && !qt; rx++) {
+    for (let ry = -20; ry <= 20 && !qt; ry++) qt = qtownAt(g.world.seed, rx, ry);
+  }
+  assert.ok(qt, 'seed 1 deals a Queue Town within 20 regions');
+  g.person.x = qt.cx;
+  g.person.y = qt.cy;
+  g.dog.x = qt.cx - 20;
+  g.dog.y = qt.cy;
+  const canvas = fakeCanvas();
+  const r = makeRenderer(canvas);
+  // Several grump beats: idle, head-shake, slump, and the staff tap all draw.
+  for (let i = 0; i < 10; i++) {
+    g.time += 0.21;
+    r.render(g);
+  }
+  assert.ok(canvas.ctx.ops.fillRect > 1000, 'the town painted');
+  for (const key of ['st:night:tower', 'st:night:shop-cortie', 'st:night:shop-queebee']) {
+    assert.ok(r.treeCache.has(key), `${key} cached and blitted`);
+  }
+  const inView = g.world.wizardsInRect(qt.cx - SCREEN_W / 2, qt.cy - SCREEN_H / 2, SCREEN_W, SCREEN_H);
+  assert.ok(inView.length > 0, 'wizards on stage');
+  // The new interactables drive the glow: wizards and the town sign both
+  // appear on the clickable list, and a hovered wizard gets the neon ring.
+  const kinds = new Set(g.interactables().map((it) => it.kind));
+  assert.ok(kinds.has('wizard'), 'wizards are clickable');
+  assert.ok(kinds.has('qtownsign'), 'the sign is clickable');
+  const w0 = inView[0];
+  g.hover = { kind: 'wizard', key: `wz:${w0.x},${w0.y}`, x: w0.x, y: w0.y, r: 16 };
+  const glow = fakeCanvas();
+  const r2 = makeRenderer(glow);
+  r2.drawInteractGlow(g, w0.x - SCREEN_W / 2, w0.y - SCREEN_H / 2);
+  const ring = glow.ctx.rects.filter((p) => p[4] === PALETTE.magenta);
+  assert.ok(ring.length >= 13, `the hovered wizard glows (${ring.length} ring px)`);
+});
+
+test('garland twinkle: tree sprites bucket time at 0.25s in the cache key', () => {
+  const r = makeRenderer(fakeCanvas());
+  const tree = { kind: 'tree', x: 0, y: 0, size: 40, variant: 'ember', detailSeed: 5 };
+  const a = r.treeSprite(tree, 0);
+  assert.equal(r.treeSprite(tree, 0.24), a, 'same bucket, same canvas');
+  assert.notEqual(r.treeSprite(tree, 0.26), a, 'the next bucket re-rasterizes the lights');
+  assert.equal(r.treeSprite(tree), a, 'no time still means bucket zero (deterministic tests)');
 });
 
 test('a heaven frame renders God, the frogs, signposts, the shrine, the minotaur', () => {
@@ -463,6 +557,76 @@ test('memory glyphs mark the town, the island, and God', () => {
   assert.ok(memoryGlyphs({ biome: 'lake', god: true }, 15).length > 0, 'god glyph');
   // The island cell shows land in the sea, not a river channel.
   assert.ok(island.length < 15, 'no 15-row river channel across the island');
+});
+
+test('the Queue Town glyph: a tower silhouette with a lit sign dot', () => {
+  const qg = memoryGlyphs({ biome: 'redwood', qtown: true }, 15);
+  assert.ok(qg.length >= 5, 'the glyph has its parts');
+  assert.ok(qg.some((p) => p.c === PALETTE.magenta), 'the finial glows magenta');
+  assert.ok(qg.some((p) => p.c === PALETTE.violet), 'arcane violet: a window and the sign dot');
+  // Fits inside even the smallest (15px) cell.
+  for (const p of qg) {
+    assert.ok(p.x >= 0 && p.y >= 0 && p.x + p.w <= 15 && p.y + p.h <= 15, `glyph pixel in cell (${p.x},${p.y})`);
+  }
+});
+
+test('map detail rides UNDER the memory fade: the dither lattice is unchanged', () => {
+  // The fade densities are sacred: fresh paints exactly the step-2 lattice,
+  // faded exactly the step-3 lattice, outline exactly four corner pips —
+  // whatever biome tinting or pool shaping colors those pixels.
+  const entry = { biome: 'lake', water: true }; // pool + duotone, no glyphs
+  const paint = (level) => {
+    const canvas = fakeCanvas();
+    const r = makeRenderer(canvas);
+    r.drawMemoryCell(0, 0, 15, entry, level);
+    return canvas.ctx.rects;
+  };
+  const fresh = paint('fresh');
+  assert.equal(fresh.length, 113, 'fresh: the full step-2 lattice, nothing more');
+  for (const [x, y, w, h] of fresh) {
+    assert.equal((((x - y) % 2) + 2) % 2, 0, `fresh pixel (${x},${y}) on the step-2 lattice`);
+    assert.ok(w === 1 && h === 1);
+  }
+  const faded = paint('faded');
+  assert.equal(faded.length, 75, 'faded: the sparser step-3 lattice');
+  for (const [x, y] of faded) {
+    assert.equal((((x - y) % 3) + 3) % 3, 0, `faded pixel (${x},${y}) on the step-3 lattice`);
+  }
+  assert.equal(paint('outline').length, 4, 'outline: four corner pips, nothing more');
+  // And the detail itself: a lake cell holds a rounded pool (deep water at
+  // heart, brighter edge), not a flat sheet — with dry shore in the corners.
+  const colors = new Set(fresh.map((p) => p[4]));
+  assert.ok(colors.has(PALETTE.waterDeep), 'the pool has a deep heart');
+  assert.ok(colors.has(PALETTE.waterEdge), 'and a brighter rim');
+  assert.ok(colors.size > 2, 'and shore around it — not a flat water cell');
+  const corner = fresh.find(([x, y]) => x === 0 && y === 0);
+  assert.ok(corner && corner[4] !== PALETTE.waterDeep && corner[4] !== PALETTE.waterEdge,
+    'the cell corner is shore, not water');
+});
+
+test('the map screen: tinted cells, the qtown glyph, and a pulsing you-marker', () => {
+  const g = new Game(1, { story: false });
+  g.time = 400;
+  const put = (rx, ry, extra, seenAt) => g.memory.set(`${rx},${ry}`, {
+    rx, ry, biome: 'oak', water: false, bridge: false, cabin: false, mansion: false,
+    cave: false, town: false, qtown: false, island: false, god: false, seenAt, ...extra,
+  });
+  put(0, 0, { biome: 'redwood', qtown: true }, 400); // fresh: glyphs and all
+  put(1, 0, { biome: 'lake', water: true }, 400); // fresh: the pool
+  put(0, 1, {}, 200); // faded: tint only
+  put(1, 1, {}, 50); // outline: corner pips
+  g.openMap();
+  assert.equal(g.choice.kind, 'map');
+  const canvas = fakeCanvas();
+  const r = makeRenderer(canvas);
+  // Several frames: the you-marker pulses on the RENDER clock (game.time is
+  // frozen by the pause), swelling through orchid to magenta and back.
+  for (let i = 0; i < 9; i++) r.render(g);
+  const colors = new Set(canvas.ctx.rects.map((p) => p[4]));
+  assert.ok(colors.has(PALETTE.waterDeep), 'the remembered lake pools');
+  assert.ok(colors.has(PALETTE.plumDeep), 'the redwood cell wears its tint');
+  assert.ok(colors.has(PALETTE.orchid), 'the you-marker breathes (orchid phase)');
+  assert.ok(colors.has(PALETTE.magenta), 'and crests (magenta phase / qtown finial)');
 });
 
 test('ground noise is smooth: neighbours differ by a little, not a lot', () => {

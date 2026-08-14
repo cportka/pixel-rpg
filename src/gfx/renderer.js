@@ -24,19 +24,27 @@ import {
   CATHEDRAL_SPRITE, CATHEDRAL_COLORS, templeGrowthPixels, ragaPixels,
 } from './encounters.js';
 import {
-  CABIN_SPRITE, CABIN_COLORS, cabinWindowLit, CAVE_SPRITE, CAVE_COLORS, caveGlint,
+  cabinWindowLit, CAVE_SPRITE, CAVE_COLORS, caveGlint,
   rockPixels, TUFT_PIXELS,
-  MANSION_SPRITE, MANSION_COLORS, mansionAtticLit,
+  mansionAtticLit,
   CLOCK_SPRITE, PORTRAIT_SPRITE, SHELF_SPRITE, TABLE_SPRITE, CHAIR_SPRITE,
   CANDELABRA_SPRITE, CHANDELIER_SPRITE, FURNISH_COLORS, flameColor,
   TELEVISION_SPRITE, TELEVISION_COLORS, tvGlowPixels,
   BED_SPRITE, NIGHTSTAND_SPRITE, TELESCOPE_SPRITE, DESK2_SPRITE, PORTRAIT2_SPRITE,
+  BIG_CABIN_SPRITE, BIG_CABIN_COLORS, BIG_MANSION_SPRITE, BIG_MANSION_COLORS,
+  BIG_RUIN_SPRITES, BIG_OFFICE_SPRITE, BIG_OFFICE_COLORS,
 } from './structures.js';
 import {
   GHOST_SPRITES, ghostMosh, moshTint, PIRTS_SPRITE, PIRTS_COLORS,
-  DETECTIVE_SPRITE, DETECTIVE_COLORS, RUIN_SPRITES, TOWN_SIGN_SPRITE, TOWN_SIGN_COLORS,
+  DETECTIVE_SPRITE, DETECTIVE_COLORS, TOWN_SIGN_SPRITE, TOWN_SIGN_COLORS,
   OFFICE_FURNISH as OFFICE_FURNISH_ART, CABIN_FURNISH as CABIN_FURNISH_ART,
 } from './town.js';
+import {
+  WIZARD_SPRITES, wizardGrump, CORTIE_SPRITE, CORTIE_COLORS,
+  QUEEBEE_SPRITE, QUEEBEE_COLORS, TOWER_SPRITE, TOWER_COLORS,
+  SHOP_CORTIE_SPRITE, SHOP_QUEEBEE_SPRITE, QTOWN_SIGN_SPRITE, QTOWN_SIGN_COLORS,
+  SHOP_FURNISH,
+} from './qtown.js';
 import {
   MINOTAUR_FRAMES, MINOTAUR_COLORS, CRICKET_SPRITE, CRICKET_COLORS, cricketChirp,
   FROG_SPRITE, FROG_COLORS, LILYPAD_SPRITE, LILYPAD_COLORS, frogMenace,
@@ -50,7 +58,7 @@ import {
 import { INTERIORS } from '../core/interiors.js';
 import { ICONS } from './icons.js';
 import {
-  MAX_HP, XP_PER_LEVEL, BATTLE_MOVE, SPELLS, minotaurPos, ghostPos,
+  MAX_HP, XP_PER_LEVEL, BATTLE_MOVE, SPELLS, minotaurPos, ghostPos, ZOMBIE_LEASH,
 } from '../core/game.js';
 import {
   isWater, onBridge, regionAt, biomeAt, REGION, godSpot, lilypadsAt,
@@ -267,6 +275,16 @@ export function memoryGlyphs(entry, size) {
     out.push({ x: mid - 3, y: mid - 1, w: 7, h: 3, c: PALETTE.loam });
     out.push({ x: mid, y: mid, w: 1, h: 1, c: PALETTE.smoke }); // the shrine
   }
+  if (entry.qtown) {
+    // Queue Town (v0.21): a crooked tower silhouette — magenta finial,
+    // leaning cone, one lit arcane window — and the sign's glyph-dot.
+    out.push({ x: mid + 1, y: mid - 6, w: 1, h: 1, c: PALETTE.magenta }); // the finial
+    out.push({ x: mid, y: mid - 5, w: 3, h: 2, c: PALETTE.plum }); // the cone
+    out.push({ x: mid - 1, y: mid - 3, w: 5, h: 1, c: PALETTE.plumDeep }); // its eaves
+    out.push({ x: mid, y: mid - 2, w: 3, h: 6, c: PALETTE.dusk }); // the stone body
+    out.push({ x: mid + 1, y: mid, w: 1, h: 1, c: PALETTE.violet }); // a window hums
+    out.push({ x: mid - 3, y: mid + 3, w: 1, h: 1, c: PALETTE.violet }); // the sign dot
+  }
   if (entry.god) {
     // God is here: a small gold cross of light on the lake shore.
     out.push({ x: mid + 2, y: mid - 1, w: 1, h: 3, c: PALETTE.gold });
@@ -293,7 +311,9 @@ export function uiButtons(game) {
 
 // One lookup for every generic-interior furnishing: mansion2's pieces are
 // authored in structures.js against the mansion FURNISH_COLORS ramp; the
-// cathedral's live in creatures.js; the cabin's and office's in town.js.
+// cathedral's live in creatures.js; the cabin's and office's in town.js;
+// the shop kinds (counter, weaponrack, wandcase, bookshelf, scrollrack,
+// inkdesk) ship from qtown.js already shaped { map, colors } (v0.21).
 // ('rug' is absent on purpose — it reuses the mansion's dithered-oval code.)
 const INTERIOR_FURNISH_ART = {
   bed: { map: BED_SPRITE, colors: FURNISH_COLORS },
@@ -304,7 +324,32 @@ const INTERIOR_FURNISH_ART = {
   ...CATHEDRAL_FURNISH_ART,
   ...CABIN_FURNISH_ART,
   ...OFFICE_FURNISH_ART,
+  ...SHOP_FURNISH,
 };
+
+/**
+ * Anchored (base-center, negative y up) offsets of a big facade's chars —
+ * the small overlay sets the animated touches repaint over the cached base.
+ */
+function anchoredPixels(map, chars) {
+  const w = map[0].length;
+  const h = map.length;
+  const out = [];
+  map.forEach((row, y) => {
+    for (let x = 0; x < w; x++) {
+      if (chars.includes(row[x])) out.push({ x: x - Math.floor(w / 2), y: y - h, ch: row[x] });
+    }
+  });
+  return out;
+}
+
+// The big cabin's window glass ('W') and its amber spill ('a') — the base
+// canvas bakes them lit (their usual state); the dark beat overlays fog
+// glass and puts the log wall back where the glow fell.
+const BIG_CABIN_WINDOW_PX = anchoredPixels(BIG_CABIN_SPRITE, 'Wa');
+// The big mansion's attic pane ('A') — void in the base, brass when
+// mansionAtticLit decides somebody who isn't there turns the light on.
+const BIG_MANSION_ATTIC_PX = anchoredPixels(BIG_MANSION_SPRITE, 'A');
 
 // Per-style interior dressing (night PALETTE keys only — the cathedral sits
 // in heaven, where the standard draw-time remap brightens these to gold).
@@ -328,6 +373,13 @@ const INTERIOR_STYLES = {
     floor: PALETTE.dusk, seam: PALETTE.umbra,
     wallFace: PALETTE.plumDeep, wallTrim: PALETTE.smokeDeep, wallCap: PALETTE.umbra,
     stud: PALETTE.umbra, mat: PALETTE.soil, matTrim: PALETTE.brass,
+  },
+  // v0.21: Queue Town's two shops — warm timber under candlelight. Soil/clay
+  // planks, an amber wash on the door mat, brass trim where a candle finds it.
+  shop: {
+    floor: PALETTE.clay, seam: PALETTE.soil,
+    wallFace: PALETTE.dirt, wallTrim: PALETTE.loam, wallCap: PALETTE.soil,
+    stud: PALETTE.soil, mat: PALETTE.amber, matTrim: PALETTE.brass,
   },
 };
 
@@ -450,12 +502,23 @@ export class Renderer {
    * Rasterize (and cache) a tree's block cloud onto its own canvas.
    * The key includes every field treePixels() reads — detailSeed alone
    * collides across distinct trees (independent 32-bit draws).
+   *
+   * v0.21, the garland twinkle: treePixels(tree, time) animates only the
+   * light pixels, so `time` joins the cache key QUANTIZED to 0.25s buckets.
+   * Chosen over the uncached-overlay alternative (re-running treePixels
+   * every frame and diffing against the time-0 set) because a bucketed
+   * re-rasterize touches each visible tree only once per bucket (a handful
+   * per 15fps frame, well inside the budget), keeps the draw itself a
+   * single blit, and can never strand a stale flare-halo pixel on the base
+   * canvas the way a positional diff would. finishFrame sweeps dead buckets
+   * aggressively so the cache stays capped.
    */
-  treeSprite(tree) {
-    const key = `${this.plane}:${tree.kind}:${tree.variant}:${tree.size}:${tree.detailSeed}`;
+  treeSprite(tree, time = 0) {
+    const bucket = Math.floor(time * 4); // 0.25s twinkle buckets
+    const key = `${this.plane}:${tree.kind}:${tree.variant}:${tree.size}:${tree.detailSeed}:${bucket}`;
     let entry = this.treeCache.get(key);
     if (!entry) {
-      const geo = treePixels(tree);
+      const geo = treePixels(tree, bucket / 4);
       const w = geo.maxX - geo.minX + 1;
       const h = geo.maxY - geo.minY + 1;
       const c = this.createCanvas(w, h);
@@ -481,6 +544,38 @@ export class Renderer {
     for (const [key, entry] of this.treeCache) {
       if (this.frame - entry.lastUsed > staleFrames) this.treeCache.delete(key);
     }
+  }
+
+  /**
+   * Rasterize (and cache) a static structure facade, anchored bottom-center.
+   * The v0.21 big facades run to 230x170 — repainting ~39k fillRects per
+   * building per frame is the wrong trade at 15fps, so like trees they
+   * rasterize once per (plane, key) and blit. Animated touches (the cabin
+   * window, the mansion attic) repaint as small overlays on the blit.
+   */
+  structureSprite(key, map, colors) {
+    const cacheKey = `st:${this.plane}:${key}`;
+    let entry = this.treeCache.get(cacheKey);
+    if (!entry) {
+      const w = map[0].length;
+      const h = map.length;
+      const c = this.createCanvas(w, h);
+      const g = c.getContext('2d');
+      for (let y = 0; y < h; y++) {
+        const row = map[y];
+        for (let x = 0; x < w; x++) {
+          const ch = row[x];
+          if (ch === '.') continue;
+          const col = colors[ch] ?? PALETTE.smoke;
+          g.fillStyle = this.plane === 'heaven' ? heavenColor(col) : col;
+          g.fillRect(x, y, 1, 1);
+        }
+      }
+      entry = { canvas: c, offX: -Math.floor(w / 2), offY: -h, lastUsed: 0 };
+      this.treeCache.set(cacheKey, entry);
+    }
+    entry.lastUsed = this.frame;
+    return entry;
   }
 
   /**
@@ -724,7 +819,8 @@ export class Renderer {
       drawables.push({
         y: tree.y,
         draw: () => {
-          const s = this.treeSprite(tree);
+          // game.time animates the garland twinkle (bucketed in the cache key).
+          const s = this.treeSprite(tree, game.time);
           ctx.drawImage(s.canvas, Math.round(tree.x - viewX) + s.offX, Math.round(tree.y - viewY) + s.offY);
         },
       });
@@ -834,22 +930,29 @@ export class Renderer {
         },
       });
     }
-    for (const z of game.world.zombiesInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+    // v0.21: zombies lock on and shamble — game.zombiePos carries the chase
+    // offset, and the query rect pads by the leash so a zombie whose POST
+    // slid offscreen still draws where it actually stands.
+    for (const z of game.world.zombiesInRect(
+      viewX - ZOMBIE_LEASH, viewY - ZOMBIE_LEASH,
+      SCREEN_W + ZOMBIE_LEASH * 2, SCREEN_H + ZOMBIE_LEASH * 2,
+    )) {
       if (game.encounterDone.has(`z:${z.x},${z.y}`)) continue; // crumbled
+      const zpos = game.zombiePos(z);
       drawables.push({
-        y: z.y,
+        y: zpos.y,
         draw: () => {
           if (this.plane === 'heaven') {
             // The zombie's spot holds an angel up here: it hovers a slow
             // pixel instead of lurching, and casts no shadow at all.
-            const ax = Math.round(z.x - viewX) - Math.floor(ANGEL_SPRITE[0].length / 2);
-            const ay = Math.round(z.y - viewY) - ANGEL_SPRITE.length + angelBob(game.time, z.phase);
+            const ax = Math.round(zpos.x - viewX) - Math.floor(ANGEL_SPRITE[0].length / 2);
+            const ay = Math.round(zpos.y - viewY) - ANGEL_SPRITE.length + angelBob(game.time, z.phase);
             drawSpriteWithColors(ANGEL_SPRITE, ANGEL_COLORS, ax, ay);
             return;
           }
-          const zx = Math.round(z.x - viewX) - Math.floor(ZOMBIE_SPRITE[0].length / 2) + zombieSway(game.time, z.phase);
-          const zy = Math.round(z.y - viewY) - ZOMBIE_SPRITE.length;
-          this.drawShadow(z.x - viewX, Math.round(z.y - viewY), 12);
+          const zx = Math.round(zpos.x - viewX) - Math.floor(ZOMBIE_SPRITE[0].length / 2) + zombieSway(game.time, z.phase);
+          const zy = Math.round(zpos.y - viewY) - ZOMBIE_SPRITE.length;
+          this.drawShadow(zpos.x - viewX, Math.round(zpos.y - viewY), 12);
           drawSpriteWithColors(ZOMBIE_SPRITE, ZOMBIE_COLORS, zx, zy);
         },
       });
@@ -881,39 +984,42 @@ export class Renderer {
         },
       });
     }
-    for (const c of game.world.cabinsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+    // v0.21 big facades. The accessors' pads predate the big sprites, so the
+    // query RECT grows here (per world.js's contract — never the pad there):
+    // enough that an anchor just past the old pad still paints its facade.
+    for (const c of game.world.cabinsInRect(viewX - 30, viewY, SCREEN_W + 60, SCREEN_H + 30)) {
       drawables.push({
         y: c.y,
         draw: () => {
-          const bx = Math.round(c.x - viewX) - CABIN_SPRITE[0].length / 2;
-          const by = Math.round(c.y - viewY) - CABIN_SPRITE.length;
-          const lit = cabinWindowLit(game.time);
-          CABIN_SPRITE.forEach((row, ry) => {
-            for (let rx = 0; rx < row.length; rx++) {
-              const ch = row[rx];
-              if (ch === '.') continue;
-              ctx.fillStyle = ch === 'W' && !lit ? PALETTE.fog : CABIN_COLORS[ch];
-              ctx.fillRect(bx + rx, by + ry, 1, 1);
+          const bx = Math.round(c.x - viewX);
+          const by = Math.round(c.y - viewY);
+          const s = this.structureSprite('big-cabin', BIG_CABIN_SPRITE, BIG_CABIN_COLORS);
+          ctx.drawImage(s.canvas, bx + s.offX, by + s.offY);
+          if (!cabinWindowLit(game.time)) {
+            // The dark beat: fog glass, and the log wall back under the glow.
+            for (const p of BIG_CABIN_WINDOW_PX) {
+              ctx.fillStyle = p.ch === 'W' ? PALETTE.fog : PALETTE.dirt;
+              ctx.fillRect(bx + p.x, by + p.y, 1, 1);
             }
-          });
+          }
         },
       });
     }
-    for (const m of game.world.mansionsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+    // The mansion is 230x170 — the tallest thing in the woods, so the widest
+    // query bump of the lot.
+    for (const m of game.world.mansionsInRect(viewX - 32, viewY, SCREEN_W + 64, SCREEN_H + 32)) {
       drawables.push({
         y: m.y,
         draw: () => {
-          const bx = Math.round(m.x - viewX) - MANSION_SPRITE[0].length / 2;
-          const by = Math.round(m.y - viewY) - MANSION_SPRITE.length;
-          const atticLit = mansionAtticLit(game.time);
-          MANSION_SPRITE.forEach((row, ry) => {
-            for (let rx = 0; rx < row.length; rx++) {
-              const ch = row[rx];
-              if (ch === '.') continue;
-              ctx.fillStyle = ch === 'A' && atticLit ? PALETTE.brass : MANSION_COLORS[ch];
-              ctx.fillRect(bx + rx, by + ry, 1, 1);
-            }
-          });
+          const bx = Math.round(m.x - viewX);
+          const by = Math.round(m.y - viewY);
+          const s = this.structureSprite('big-mansion', BIG_MANSION_SPRITE, BIG_MANSION_COLORS);
+          ctx.drawImage(s.canvas, bx + s.offX, by + s.offY);
+          if (mansionAtticLit(game.time)) {
+            // Nobody is up there. The light disagrees.
+            ctx.fillStyle = PALETTE.brass;
+            for (const p of BIG_MANSION_ATTIC_PX) ctx.fillRect(bx + p.x, by + p.y, 1, 1);
+          }
         },
       });
     }
@@ -932,17 +1038,18 @@ export class Renderer {
       });
     }
 
-    // --- The ghost town (night, v0.20). Every accessor is empty on heaven
-    // seeds, so none of this needs a plane check.
-    for (const ru of game.world.ruinsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
-      const art = RUIN_SPRITES[ru.variant % RUIN_SPRITES.length];
+    // --- The ghost town (night, v0.20; big facades v0.21). Every accessor
+    // is empty on heaven seeds, so none of this needs a plane check. The
+    // ruins run to 150x110, past the accessor's pad — the query rect grows.
+    for (const ru of game.world.ruinsInRect(viewX - 40, viewY, SCREEN_W + 80, SCREEN_H + 40)) {
+      const variant = ru.variant % BIG_RUIN_SPRITES.length;
+      const art = BIG_RUIN_SPRITES[variant];
       drawables.push({
         y: ru.y,
-        draw: () => drawSpriteWithColors(
-          art.map, art.colors,
-          Math.round(ru.x - viewX) - Math.floor(art.map[0].length / 2),
-          Math.round(ru.y - viewY) - art.map.length,
-        ),
+        draw: () => {
+          const s = this.structureSprite(`big-ruin:${variant}`, art.map, art.colors);
+          ctx.drawImage(s.canvas, Math.round(ru.x - viewX) + s.offX, Math.round(ru.y - viewY) + s.offY);
+        },
       });
     }
     for (const ts of game.world.townsignsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
@@ -977,29 +1084,77 @@ export class Renderer {
         draw: () => this.drawGhost(game, gh, pos, viewX, viewY),
       });
     }
-    for (const o of game.world.officesInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+    for (const o of game.world.officesInRect(viewX - 24, viewY, SCREEN_W + 48, SCREEN_H + 24)) {
       drawables.push({
         y: o.y,
         draw: () => {
-          // The bail-bonds office wears the general store's bones — but its
-          // window burns amber (someone still works here) and its doorway
-          // stands open, aligned with the 8px gap world.collides carves.
-          const art = RUIN_SPRITES[0];
-          const ox = Math.round(o.x - viewX);
-          const oy = Math.round(o.y - viewY);
-          const bx = ox - Math.floor(art.map[0].length / 2);
-          const by = oy - art.map.length;
-          drawSpriteWithColors(art.map, art.colors, bx, by);
-          ctx.fillStyle = PALETTE.amber;
-          ctx.fillRect(bx + 6, by + 11, 4, 5);
-          ctx.fillStyle = PALETTE.gold;
-          ctx.fillRect(bx + 7, by + 12, 2, 2);
-          ctx.fillStyle = PALETTE.void;
-          ctx.fillRect(ox - 4, oy - 9, 9, 9); // the doorway, carved open
-          ctx.fillStyle = PALETTE.gold;
-          ctx.fillRect(ox - 2, oy - 1, 5, 1); // lamplight under the door
-          ctx.fillStyle = PALETTE.brass;
-          ctx.fillRect(ox + 6, oy - 8, 3, 4); // the plate that says BB
+          // The bail-bonds office, at town scale (v0.21): brick under a
+          // moonlit cornice, the amber BB window and lit transom baked into
+          // the sprite, its open doorway aligned with world.collides's gap.
+          const s = this.structureSprite('big-office', BIG_OFFICE_SPRITE, BIG_OFFICE_COLORS);
+          ctx.drawImage(s.canvas, Math.round(o.x - viewX) + s.offX, Math.round(o.y - viewY) + s.offY);
+        },
+      });
+    }
+
+    // --- Queue Town (night, v0.21): towers, the two shops, the sign, and
+    // the wizards sulking between them. Accessors are empty off-qtown.
+    for (const t of game.world.towersInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      drawables.push({
+        y: t.y,
+        draw: () => {
+          const s = this.structureSprite('tower', TOWER_SPRITE, TOWER_COLORS);
+          ctx.drawImage(s.canvas, Math.round(t.x - viewX) + s.offX, Math.round(t.y - viewY) + s.offY);
+        },
+      });
+    }
+    for (const [field, key, art] of [
+      ['cortiesInRect', 'shop-cortie', SHOP_CORTIE_SPRITE],
+      ['queebeesInRect', 'shop-queebee', SHOP_QUEEBEE_SPRITE],
+    ]) {
+      for (const sh of game.world[field](viewX, viewY, SCREEN_W, SCREEN_H)) {
+        drawables.push({
+          y: sh.y,
+          draw: () => {
+            const s = this.structureSprite(key, art.map, art.colors);
+            ctx.drawImage(s.canvas, Math.round(sh.x - viewX) + s.offX, Math.round(sh.y - viewY) + s.offY);
+          },
+        });
+      }
+    }
+    for (const qs of game.world.qtownsignsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      drawables.push({
+        y: qs.y,
+        draw: () => drawSpriteWithColors(
+          QTOWN_SIGN_SPRITE, QTOWN_SIGN_COLORS,
+          Math.round(qs.x - viewX) - Math.floor(QTOWN_SIGN_SPRITE[0].length / 2),
+          Math.round(qs.y - viewY) - QTOWN_SIGN_SPRITE.length,
+        ),
+      });
+    }
+    for (const w of game.world.wizardsInRect(viewX, viewY, SCREEN_W, SCREEN_H)) {
+      drawables.push({
+        y: w.y,
+        draw: () => {
+          const art = WIZARD_SPRITES[w.variant % WIZARD_SPRITES.length];
+          const grump = wizardGrump(game.time, w.phase);
+          // dy slumps the whole figure a pixel; dx shakes only the head rows
+          // (everything above the first robe row — the body stays planted);
+          // 'tap' lifts the staff pixels a pixel for the beat.
+          const wx = Math.round(w.x - viewX) - Math.floor(art.map[0].length / 2);
+          const wy = Math.round(w.y - viewY) - art.map.length + grump.dy;
+          this.drawShadow(w.x - viewX, Math.round(w.y - viewY), 12);
+          const shoulders = art.map.findIndex((row) => row.includes('r'));
+          art.map.forEach((row, ry) => {
+            const rowDx = ry < shoulders ? grump.dx : 0;
+            for (let rx = 0; rx < row.length; rx++) {
+              const ch = row[rx];
+              if (ch === '.') continue;
+              const lift = grump.frame === 'tap' && (ch === 's' || ch === 'S') ? -1 : 0;
+              ctx.fillStyle = art.colors[ch];
+              ctx.fillRect(wx + rx + rowDx, wy + ry + lift, 1, 1);
+            }
+          });
         },
       });
     }
@@ -1555,6 +1710,33 @@ export class Renderer {
         },
       });
     }
+    if (kind === 'cortie' || kind === 'queebee') {
+      // The merchant holds the counter — scenery with a price list, the
+      // detective idiom: drawn a step behind it so the countertop overlaps
+      // the robe.
+      const art = kind === 'cortie'
+        ? { map: CORTIE_SPRITE, colors: CORTIE_COLORS }
+        : { map: QUEEBEE_SPRITE, colors: QUEEBEE_COLORS };
+      const counter = spec.furnish.find((f) => f.kind === 'counter');
+      const mx = counter?.x ?? 144;
+      const my = (counter?.y ?? 72) - 6;
+      drawables.push({
+        y: my,
+        draw: () => {
+          const dx = mx - viewX;
+          const dy = my - viewY;
+          this.drawShadow(dx, dy, 10);
+          art.map.forEach((row, ry) => {
+            for (let rx = 0; rx < row.length; rx++) {
+              const c = row[rx];
+              if (c === '.') continue;
+              ctx.fillStyle = art.colors[c];
+              ctx.fillRect(dx - Math.floor(art.map[0].length / 2) + rx, dy - art.map.length + ry, 1, 1);
+            }
+          });
+        },
+      });
+    }
     const cast = game.together ? [game.person, game.dog] : [game.person];
     for (const chr of cast) {
       const frames =
@@ -1872,23 +2054,37 @@ export class Renderer {
       }
     }
 
-    this.sweepCache();
+    // Bucketed tree sprites (the garland twinkle) retire fast: once the
+    // cache fills, anything not blitted for ~half a second is a dead
+    // bucket — sweep it, keeping the footprint near the visible set.
+    this.sweepCache(400, 8);
   }
 
   /**
    * One remembered region as a map cell. Freshness decides how much is left:
-   * fresh — dense dither in the biome's color plus landmark marks; faded —
+   * fresh — dense dither in the biome's colors plus landmark marks; faded —
    * sparse dither, landmarks forgotten; outline — four corner pips, nothing
    * more. (Dithering, not alpha: memory fades the pixel-art way.)
+   *
+   * v0.21 detail rides UNDER that fade, never through it: the biome duotone
+   * and the lake's rounded pool only recolor pixels the fade lattice was
+   * already going to paint — the step-2/step-3/outline degradation is
+   * byte-identical in which pixels exist. Tints keep to the low-contrast
+   * dusk/moss/clay family (the map stays a whisper); heaven remaps them at
+   * fillStyle time like everything else.
    */
   drawMemoryCell(px, py, size, entry, level) {
     const ctx = this.ctx;
     const TINT = {
-      grass: PALETTE.moss,
-      oak: PALETTE.plum,
-      redwood: PALETTE.plumDeep,
-      lake: PALETTE.waterEdge,
-      mountain: PALETTE.smokeDeep,
+      grass: [PALETTE.moss, PALETTE.dusk],
+      oak: [PALETTE.plum, PALETTE.dusk],
+      redwood: [PALETTE.plumDeep, PALETTE.dusk],
+      lake: [PALETTE.moss, PALETTE.dusk], // the dry ring; the pool draws itself
+      mountain: [PALETTE.smokeDeep, PALETTE.dusk],
+      desert: [PALETTE.clay, PALETTE.dusk],
+      beach: [PALETTE.clay, PALETTE.dusk],
+      glacier: [PALETTE.waterEdge, PALETTE.smokeDeep],
+      island: [PALETTE.moss, PALETTE.waterEdge],
     };
     if (level === 'outline') {
       ctx.fillStyle = PALETTE.smokeDeep;
@@ -1898,10 +2094,27 @@ export class Renderer {
       ctx.fillRect(px + size - 1, py + size - 1, 1, 1);
       return;
     }
-    const step = level === 'fresh' ? 2 : 3;
-    ctx.fillStyle = TINT[entry.biome] ?? PALETTE.smokeDeep;
+    const step = level === 'fresh' ? 2 : 3; // the sacred fade densities
+    const duo = TINT[entry.biome] ?? [PALETTE.smokeDeep, PALETTE.dusk];
+    const mid = (size - 1) / 2;
+    const pool = entry.biome === 'lake';
     for (let dy = 0; dy < size; dy++) {
       for (let dx = dy % step; dx < size; dx += step) {
+        let c;
+        if (pool) {
+          // A rounded pool in the cell instead of a flat sheet: deep water
+          // at heart, a brighter edge ring, dry shore in the corners.
+          const nx = (dx - mid) / (mid + 0.001);
+          const ny = (dy - mid) / (mid + 0.001);
+          const d = nx * nx * 1.15 + ny * ny * 1.5;
+          c = d > 1 ? duo[(dx + dy) % 4 === 0 ? 1 : 0]
+            : d > 0.62 ? PALETTE.waterEdge : PALETTE.waterDeep;
+        } else {
+          // The duotone: mostly the biome tone, a scatter of dusk so the
+          // cell reads as ground, not paint. Deterministic in (dx, dy).
+          c = duo[(dx * 5 + dy * 3) % 7 < 2 ? 1 : 0];
+        }
+        ctx.fillStyle = c;
         ctx.fillRect(px + dx, py + dy, 1, 1);
       }
     }
@@ -1987,8 +2200,8 @@ export class Renderer {
     );
   }
 
-  /** A moonlit ring: you, on either map. */
-  drawYouRing(x, y, rad = 3) {
+  /** A moonlit ring: you, on either map. The map screen's version pulses. */
+  drawYouRing(x, y, rad = 3, pulse = false) {
     const ctx = this.ctx;
     ctx.fillStyle = PALETTE.moonlight;
     ctx.fillRect(x - 1, y - rad, 3, 1);
@@ -1996,6 +2209,18 @@ export class Renderer {
     ctx.fillRect(x - rad, y - 1, 1, 3);
     ctx.fillRect(x + rad, y - 1, 1, 3);
     ctx.fillRect(x, y, 1, 1);
+    if (!pulse) return;
+    // The you-are-here breath: a diamond that swells and warms on the
+    // RENDER clock (this.frame — game.time freezes while the map pauses,
+    // and a pulse that doesn't pulse is just a smudge).
+    const ph = Math.floor(this.frame / 3) % 3;
+    if (ph === 0) return;
+    const r2 = rad + 1 + ph;
+    ctx.fillStyle = ph === 2 ? PALETTE.magenta : PALETTE.orchid;
+    ctx.fillRect(x - r2, y, 1, 1);
+    ctx.fillRect(x + r2, y, 1, 1);
+    ctx.fillRect(x, y - r2, 1, 1);
+    ctx.fillRect(x, y + r2, 1, 1);
   }
 
   /**
@@ -2050,6 +2275,7 @@ export class Renderer {
       gx + (prx - rx0) * cell + Math.floor(cell / 2),
       gy + (pry - ry0) * cell + Math.floor(cell / 2),
       Math.max(3, Math.floor(cell / 5)),
+      true, // the map screen's marker pulses (v0.21)
     );
 
     // A legend, so the pictograms mean something the first time you look.
@@ -2061,6 +2287,7 @@ export class Renderer {
       { key: { cabin: true, biome: 'oak' }, label: 'CABIN' },
       { key: { mansion: true, biome: 'oak' }, label: 'MANSION' },
       { key: { cave: true, biome: 'mountain' }, label: 'CAVE' },
+      { key: { qtown: true, biome: 'redwood' }, label: 'QTOWN' },
     ];
     const ly = bottom + 10;
     let lx = panel.x + 12;
