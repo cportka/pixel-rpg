@@ -324,7 +324,7 @@ test('with the bone and its meat, the sheet grows item icons — and the gnaw', 
 test('sheet header lines show level, XP, HP, weight, and drunkenness', () => {
   const g = flatGame();
   const lines = sheetLines(g);
-  assert.equal(lines.length, 3, 'sober: level, HP, weight');
+  assert.equal(lines.length, 4, 'sober: level, HP, weight, pockets (v0.20)');
   assert.equal(lines[0], `LVL 1  XP 0 OF ${XP_PER_LEVEL}`);
   assert.equal(lines[1], `HP ${g.hp} OF ${MAX_HP}`);
   assert.equal(lines[2], 'WEIGHT 0 OF 300 LBS');
@@ -357,7 +357,7 @@ test('the sheet panel lays its icon grid out on screen, no overlaps', () => {
   g.drunk = 60;
   g.openSheet();
   const panel = choicePanel(g);
-  assert.equal(panel.body.length, 4, 'LVL, HP, WEIGHT, DRUNK');
+  assert.equal(panel.body.length, 5, 'LVL, HP, WEIGHT, COINS/WOOD, DRUNK');
   assert.equal(panel.icons.length, ABILITIES.length + 3, 'six stats + bone, meat, ball');
   assert.ok(panel.x >= 0 && panel.y >= 0 && panel.x + panel.w <= SCREEN_W && panel.y + panel.h <= SCREEN_H);
   for (const cell of panel.icons) {
@@ -401,11 +401,11 @@ test('the battle menu: no bone option bare-handed, befriend only in round one', 
   const g = zombieGame();
   assert.equal(g.choice.kind, 'battle');
   assert.equal(g.choice.title, 'A ZOMBIE IS ON YOU');
-  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'fists', 'wait']);
+  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'fists', 'taunt', 'dirt', 'study', 'wait']);
   g.resolveChoice('wait');
   assert.equal(g.round, 2, 'holding your ground still spends the turn');
   g.openBattleMenu();
-  assert.deepEqual(g.choice.options.map((o) => o.id), ['fists', 'wait'], 'the friendly beat was round one');
+  assert.deepEqual(g.choice.options.map((o) => o.id), ['fists', 'taunt', 'dirt', 'study', 'wait'], 'the friendly beat was round one');
 });
 
 test('befriending the zombie just gets you bitten (-2 HP)', () => {
@@ -451,7 +451,7 @@ test('the last hostile down lets the world back into free movement', () => {
 
 test('the bone is the better club: DC 9, 3 damage, and it bonks', () => {
   const g = zombieGame({ bone: true });
-  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'fists', 'bone', 'wait']);
+  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'fists', 'bone', 'taunt', 'dirt', 'study', 'wait']);
   const key = g.zombieKey;
   g.events.length = 0;
   g.rng = () => 0.45; // roll 10: lands with the bone, would miss bare-handed
@@ -605,7 +605,7 @@ test('your move is a budget: spend it and the action menu opens itself', () => {
   assert.ok(g.choice, 'so the action menu opened on its own');
   assert.equal(g.choice.kind, 'battle');
   assert.equal(g.choice.title, 'IT SHAMBLES CLOSER', 'out of reach, so no fists');
-  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'wait']);
+  assert.deepEqual(g.choice.options.map((o) => o.id), ['befriend', 'taunt', 'dirt', 'study', 'wait']);
 });
 
 // --- Magic ------------------------------------------------------------------
@@ -660,7 +660,7 @@ test('the spell menu is a pause screen, and needs a spell to open', () => {
   assert.equal(g.choice.kind, 'spell');
   assert.match(g.choice.title, /^FOCUS \d+ OF \d+$/);
   assert.ok(g.menuPaused(), 'the world waits while you read the book');
-  assert.deepEqual(g.choice.options.map((o) => o.id), [SPELLS[0].id, 'back']);
+  assert.deepEqual(g.choice.options.map((o) => o.id), [SPELLS[0].id, 'breathe', 'hum', 'back']);
 });
 
 test('the SPELLS icon joins the sheet only once you know one', () => {

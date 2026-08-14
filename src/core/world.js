@@ -6,7 +6,7 @@
 // chunks can be generated lazily in any order. Chunks are cached in a Map.
 
 import { coordRng, pick } from './rng.js';
-import { biomeAt, isWater, regionInfo, REGION } from './terrain.js';
+import { biomeAt, isWater, regionInfo, REGION, setBiomeSet } from './terrain.js';
 
 export const CHUNK = 240; // px per chunk side
 
@@ -21,8 +21,11 @@ const PRUNE_KEEP_RADIUS = 6; // chunks kept around the player when pruning
 const PRUNE_THRESHOLD = 220; // cache size that triggers a prune sweep
 
 export class World {
-  constructor(seed) {
+  /** @param {'night'|'heaven'} biomeSet which biome deck this world deals from */
+  constructor(seed, biomeSet = 'night') {
     this.seed = seed >>> 0;
+    this.biomeSet = biomeSet;
+    setBiomeSet(this.seed, biomeSet);
     this.chunks = new Map();
   }
 
@@ -159,12 +162,52 @@ export class World {
     return this.featuresInRect('tufts', x, y, w, h, 6);
   }
 
+  /** Signs to God near the rect (heaven). */
+  signsInRect(x, y, w, h) {
+    return this.featuresInRect('signs', x, y, w, h, 24);
+  }
+
+  /** Ghost-town ruins near the rect (tall facades — big pad). */
+  ruinsInRect(x, y, w, h) {
+    return this.featuresInRect('ruins', x, y, w, h, 48);
+  }
+
+  /** Ghosts near the rect (pad covers drift ±26 + half sprite + mosh tear). */
+  ghostsInRect(x, y, w, h) {
+    return this.featuresInRect('ghosts', x, y, w, h, 40);
+  }
+
+  /** Pirts, wherever his town is, near the rect. */
+  pirtsInRect(x, y, w, h) {
+    return this.featuresInRect('pirts', x, y, w, h, 26);
+  }
+
+  /** Leaning town signs near the rect. */
+  townsignsInRect(x, y, w, h) {
+    return this.featuresInRect('townsigns', x, y, w, h, 26);
+  }
+
+  /** Bail-bonds offices near the rect. */
+  officesInRect(x, y, w, h) {
+    return this.featuresInRect('offices', x, y, w, h, 48);
+  }
+
+  /** Island shrines near the rect. */
+  shrinesInRect(x, y, w, h) {
+    return this.featuresInRect('shrines', x, y, w, h, 26);
+  }
+
+  /** The minotaur's den, if this rect grazes one. */
+  minotaursInRect(x, y, w, h) {
+    return this.featuresInRect('minotaurs', x, y, w, h, 120);
+  }
+
   /**
    * Does a feet-box (x, y, w, h — top-left corner, world px) collide with a
    * tree trunk, a structure, a rock, or water? Bushes and canopies never
    * block; walking behind trees is the point. Bridges read as dry land.
    */
-  collides(x, y, w, h) {
+  collides(x, y, w, h, opts = {}) {
     for (const chunk of this.chunksInRect(x - CHUNK, y - CHUNK, w + 2 * CHUNK, h + 2 * CHUNK)) {
       for (const t of chunk.trees) {
         if (t.kind !== 'tree') continue;
@@ -196,12 +239,29 @@ export class World {
           if (!(x + w / 2 > c.x - 5 && x + w / 2 < c.x + 5 && y + h > c.y - 3)) return true;
         }
       }
+      for (const b of chunk.ruins) {
+        // A ruin's ground floor is solid; the collapsed upper story is scenery.
+        if (x < b.x + 18 && x + w > b.x - 18 && y < b.y + 1 && y + h > b.y - 10) return true;
+      }
+      for (const o of chunk.offices) {
+        // The office facade is solid except its doorway (center 8px).
+        if (x < o.x + 20 && x + w > o.x - 20 && y < o.y + 1 && y + h > o.y - 10) {
+          const cx = x + w / 2;
+          if (!(cx > o.x - 4 && cx < o.x + 4)) return true;
+        }
+      }
+      for (const sh of chunk.shrines) {
+        if (x < sh.x + 8 && x + w > sh.x - 8 && y < sh.y + 1 && y + h > sh.y - 5) return true;
+      }
     }
     // Water: sample the box corners and center (feet boxes are a few px).
-    for (const [px, py] of [
-      [x, y], [x + w, y], [x, y + h], [x + w, y + h], [x + w / 2, y + h / 2],
-    ]) {
-      if (isWater(this.seed, px, py)) return true;
+    // A swimmer (opts.swim — heaven's warm water) passes right through.
+    if (!opts.swim) {
+      for (const [px, py] of [
+        [x, y], [x + w, y], [x, y + h], [x + w, y + h], [x + w / 2, y + h / 2],
+      ]) {
+        if (isWater(this.seed, px, py)) return true;
+      }
     }
     return false;
   }
@@ -222,6 +282,13 @@ const BIOME_GEN = {
   lake: { trees: (r) => Math.floor(r() * 2), size: [48, 24], gap: 51, bushes: (r) => Math.floor(r() * 2), tufts: [3, 3] },
   redwood: { trees: (r) => 3 + Math.floor(r() * 4), size: [75, 42], gap: 39, bushes: (r) => Math.floor(r() * 2), tufts: [0, 0] },
   mountain: { trees: (r) => (r() < 0.4 ? 1 : 0), size: [39, 21], gap: 51, bushes: (r) => (r() < 0.5 ? 1 : 0), tufts: [0, 0], rocks: [2, 4] },
+  // Heaven's sun-struck lands (v0.20). Deserts are near-empty and wide-open;
+  // beaches keep a scatter of lean trees; glaciers are bare with ice
+  // boulders; the island is a small dense paradise.
+  desert: { trees: (r) => (r() < 0.12 ? 1 : 0), size: [30, 15], gap: 63, bushes: (r) => (r() < 0.3 ? 1 : 0), tufts: [0, 2], rocks: [0, 2] },
+  beach: { trees: (r) => (r() < 0.2 ? 1 : 0), size: [33, 18], gap: 57, bushes: (r) => (r() < 0.4 ? 1 : 0), tufts: [2, 4] },
+  glacier: { trees: (r) => (r() < 0.1 ? 1 : 0), size: [36, 15], gap: 63, bushes: () => 0, tufts: [0, 0], rocks: [1, 3] },
+  island: { trees: (r) => 1 + Math.floor(r() * 2), size: [45, 21], gap: 45, bushes: (r) => Math.floor(r() * 2), tufts: [4, 4] },
 };
 
 /** Pure chunk generator — same (seed, cx, cy) always returns identical content. */
@@ -372,6 +439,24 @@ export function generateChunk(seed, cx, cy) {
   const mansions = inChunk(info.mansion) ? [{ x: info.mansion.x, y: info.mansion.y }] : [];
   const caves = inChunk(info.cave) ? [{ x: info.cave.x, y: info.cave.y }] : [];
 
+  // v0.20 landmarks: heaven's signs to God, its island shrine, and the
+  // minotaur's den; night's ghost towns (ruins, ghosts, Pirts, the leaning
+  // sign, the bail-bonds office). Fixed per region — no rng draws.
+  const signs = inChunk(info.sign) ? [{ x: info.sign.x, y: info.sign.y }] : [];
+  const shrines =
+    info.island && inChunk({ x: info.island.cx, y: info.island.cy })
+      ? [{ x: Math.round(info.island.cx), y: Math.round(info.island.cy) }]
+      : [];
+  const minotaurs = inChunk(info.minotaur)
+    ? [{ x: info.minotaur.x, y: info.minotaur.y, phase: info.minotaur.phase }]
+    : [];
+  const town = info.town;
+  const ruins = town ? town.ruins.filter(inChunk) : [];
+  const ghosts = town ? town.ghosts.filter(inChunk) : [];
+  const pirts = town && inChunk(town.pirts) ? [{ x: town.pirts.x, y: town.pirts.y }] : [];
+  const townsigns = town && inChunk(town.sign) ? [{ x: town.sign.x, y: town.sign.y }] : [];
+  const offices = town && inChunk(town.office) ? [{ x: town.office.x, y: town.office.y }] : [];
+
   // Nothing grows or lurks in the water (filtered after generation so the
   // rng sequence — and thus dry-land layouts — never shift).
   const dry = (f) => !isWater(seed, f.x, f.y);
@@ -392,5 +477,13 @@ export function generateChunk(seed, cx, cy) {
     cabins,
     mansions,
     caves,
+    signs,
+    shrines,
+    minotaurs,
+    ruins,
+    ghosts,
+    pirts,
+    townsigns,
+    offices,
   };
 }

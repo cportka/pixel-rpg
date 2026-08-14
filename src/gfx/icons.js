@@ -166,4 +166,94 @@ export const ICONS = {
     ],
     colors: C,
   },
+  // COIN — one small bright disc (v0.20).
+  coin: {
+    sprite: [
+      '.........',
+      '..ggggg..',
+      '.gkkggga.',
+      '.gkgggga.',
+      '.gggggga.',
+      '.gggggga.',
+      '..gggaa..',
+      '.........',
+      '.........',
+    ],
+    colors: { g: PALETTE.gold, k: PALETTE.goldRose, a: PALETTE.amber },
+  },
+  // WOOD — planks, stacked the way they immediately stop being.
+  wood: {
+    sprite: [
+      '.........',
+      '..llllll.',
+      '..cccccc.',
+      '.llllll..',
+      '.cccccc..',
+      '..llllll.',
+      '..cccccc.',
+      '.........',
+      '.........',
+    ],
+    colors: { l: PALETTE.loam, c: PALETTE.clay },
+  },
+  // AXE — brass head, clay haft.
+  axe: {
+    sprite: [
+      '.bbb.....',
+      'bbbbb....',
+      'bbkbb....',
+      '.bbbh....',
+      '....hh...',
+      '.....hh..',
+      '......hh.',
+      '.......h.',
+      '.........',
+    ],
+    colors: { b: PALETTE.brass, k: PALETTE.gold, h: PALETTE.clay },
+  },
+  // ROPE — the honest tool, coiled properly.
+  rope: {
+    sprite: [
+      '.........',
+      '..aaaaa..',
+      '.aa...aa.',
+      '.a.....a.',
+      '.a.....a.',
+      '.aa...aa.',
+      '..aaaaa..',
+      '....aa...',
+      '.........',
+    ],
+    colors: { a: PALETTE.amber },
+  },
+  // MANUAL — HOW TO BUILD A BOAT, ghost-press edition.
+  manual: {
+    sprite: [
+      '.........',
+      '.uuuuuuu.',
+      '.uWWWWWu.',
+      '.uWsssWu.',
+      '.uWWWWWu.',
+      '.uWsssWu.',
+      '.uWWWWWu.',
+      '.uuuuuuu.',
+      '.........',
+    ],
+    colors: { u: PALETTE.purple, W: PALETTE.moonlight, s: PALETTE.smoke },
+  },
+  // BOAT — she floats. somehow, she floats.
+  boat: {
+    sprite: [
+      '....c....',
+      '....cWW..',
+      '....cWWW.',
+      '....cWW..',
+      '....c....',
+      '.bbbbbbb.',
+      '..ccccc..',
+      '...aaa...',
+      '.........',
+    ],
+    colors: { c: PALETTE.clay, W: PALETTE.moonlight, b: PALETTE.brass, a: PALETTE.amber },
+  },
 };

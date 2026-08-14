@@ -179,14 +179,23 @@ test('the portrait opens its menu once, and only once', () => {
   assert.equal(g.choice, null, 'seen once is seen forever');
 });
 
-test('the stairs announce their lock once; the clock ticks nearby', () => {
+test('the lock rusted through: the stairs climb to the second floor and back', () => {
   const g = enter(mansionGame());
   runSeconds(g, 8); // let the entry captions drain (say() queues politely)
+  const worldReturn = g.mansionReturn;
   g.person.x = 14 * TILE + 8;
   g.person.y = 3 * TILE;
   g.update(STEP, {});
-  assert.equal(g.caption.text, 'THE STAIRS ARE LOCKED');
-  assert.ok(g.captionQueue.includes('WHO LOCKS STAIRS?'));
+  assert.equal(g.location, 'mansion2', 'up the stairs');
+  assert.equal(g.caption.text, 'THE LOCK HAS RUSTED THROUGH');
+  assert.ok(g.captionQueue.includes('THE STAIRS REMEMBER FEET. THEY CREAK ANYWAY'));
+  assert.equal(g.mansionReturn, worldReturn, 'the way back outside rides along');
+  // Walk onto the stairwell tiles: back down, still inside the mansion.
+  g.person.x = 14.5 * 24;
+  g.person.y = 1.5 * 24;
+  g.update(STEP, {});
+  assert.equal(g.location, 'mansion', 'back on the ground floor');
+  assert.equal(g.mansionReturn, worldReturn, 'and the exit still leads outside');
 
   const clock = FURNISH.find((f) => f.kind === 'clock');
   g.person.x = clock.x;

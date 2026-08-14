@@ -12,12 +12,16 @@
 import { World, CHUNK } from './world.js';
 import {
   regionAt, regionLandmarks, REGION, RIVER_COL, RIVER_W, riverNear, bridgeYNear, isWater,
+  godSpot, lilypadsAt,
 } from './terrain.js';
 import { SCREEN_W, SCREEN_H } from './screen.js';
 import {
   SPAWN as MANSION_SPAWN, mansionCollides, onDoor, nearStairs, nearPortrait, nearClock,
   nearTelevision,
 } from './mansion.js';
+import {
+  INTERIORS, interiorCollides, interiorOnDoor, interiorOnStairs,
+} from './interiors.js';
 import { mulberry32, hashCoords } from './rng.js';
 import { PERSON, DOG, makeCharacter, moveCharacter, updateFollower, feetBox } from './entities.js';
 
@@ -27,6 +31,34 @@ export const MEET_RADIUS = 45; // px at which the person finds the dog
 export const HINT_PERIOD = 12; // seconds between whimper hints while alone
 export const HEAVEN_SEED_SALT = 0x48454156; // 'HEAV' — heaven's world derives from it
 export const BASK_HEAL = 1; // HP an angel's light pools in you
+
+// The foe table (v0.20): everything that answers on its turn. Ghosts pass
+// through you and take a coin with them; the minotaur hits like a wall
+// looking for a door.
+export const FOES = {
+  zombie: { hp: 4, dmg: 2, xp: 1, name: 'THE ZOMBIE' },
+  ghost: { hp: 2, dmg: 1, xp: 1, steals: 1, name: 'THE GHOST' },
+  minotaur: { hp: 8, dmg: 3, xp: 5, name: 'THE MINOTAUR' },
+};
+export const DC_DIRECTIONS = 13; // WIS: offering the minotaur a way onward
+export const DC_AXE = 11; // STR: the axe splits the difference between fist and bone
+export const DC_DIRT = 10; // DEX: dirt in the eyes buys one clean round
+export const DC_CHOP = 8; // STR: trees are mostly willing; better rolls, more planks
+export const MINOTAUR_RANGE = 90; // px of maze he paces around his den
+
+// The economy (v0.20). Coins are the soul's pocket change — they ride
+// through the television with you.
+export const PRICES = {
+  draught: 3, // +3 HP in a bottle
+  axe: 8,
+  rope: 2,
+  manual: 12, // HOW TO BUILD A BOAT, ghost-press edition
+};
+export const SELLS = { meat: 2, bone: 4, wood: 1 };
+export const BOAT_WOOD = 24; // planks a boat wants
+export const WEIGHT = { wood: 1, axe: 6, rope: 2, manual: 1 }; // lbs
+export const SWIM_SPEED = 0.45; // of walking speed; heaven's water is warm
+export const SAIL_SPEED = 1.25; // the boat knows the way
 export const AMBIENT_PERIOD = 26; // seconds between ambient lines when together
 export const TAP_ARRIVE = 5; // px at which a tap-move target counts as reached
 export const TAP_GIVE_UP = 2.5; // seconds without progress before abandoning a tap target
@@ -119,6 +151,38 @@ const AMBIENT_LINES = [
   'HOME IS OUT THERE SOMEWHERE',
 ];
 
+// The lamp's menu reopens after a polish, so it lives here once.
+const LAMP_TITLE = 'AN OLD LAMP GLINTS IN THE LITTER';
+const LAMP_OPTIONS = [
+  { id: 'rub', label: 'RUB THE LAMP' },
+  { id: 'polish', label: 'POLISH IT ON YOUR SLEEVE' },
+  { id: 'ear', label: 'HOLD IT TO YOUR EAR' },
+  { id: 'walkaway', label: 'LEAVE IT BE' },
+];
+
+/**
+ * Where a minotaur stands at a moment: a slow lissajous around his den —
+ * the maze of this life has no exit, so he paces it forever. Pure, shared
+ * with the renderer.
+ */
+export function minotaurPos(m, time) {
+  const dx = Math.sin(time * 0.16 + m.phase) * MINOTAUR_RANGE;
+  const dy = Math.sin(time * 0.23 + m.phase * 1.7) * MINOTAUR_RANGE * 0.7;
+  return {
+    x: m.x + dx,
+    y: m.y + dy,
+    facing: Math.cos(time * 0.16 + m.phase) >= 0 ? 1 : -1,
+  };
+}
+
+/** Where a ghost drifts at a moment — a slow haunt around its post. */
+export function ghostPos(g, time) {
+  return {
+    x: g.x + Math.sin(time * 0.5 + g.phase) * 26,
+    y: g.y + Math.cos(time * 0.37 + g.phase) * 18,
+  };
+}
+
 export class Game {
   /**
    * @param {number} seed world seed
@@ -174,6 +238,10 @@ export class Game {
     this.choice = null; // active menu: { kind, key, x, y, title, options: [{id, label}] }
     this.choiceIndex = 0;
     this.choiceCooldown = null; // { key, x, y } — recently closed, re-arms at distance
+    // Every key dismissed since you last walked clear. One slot alone
+    // ping-pongs when two encounters overlap (Pirts beside a ghost, the
+    // detective under his corkboard): closing B re-armed A each tick.
+    this.cooldownKeys = new Set();
     this.encounterDone = new Set(); // encounter keys that resolved for good
     this.dumpstersOut = new Set(); // dumpsters whose fire was smothered
     this.encounterCheck = 0;
@@ -190,6 +258,23 @@ export class Game {
     this.planeStash = null; // the other plane's snapshot (null until first ascent)
     this.goldGiven = 0; // courses added to the pile of god (heaven-wide)
     this.styxSeen = false; // the river announces itself once per ascent
+
+    // The soul's pockets (v0.20) — coins, timber, and tools cross planes.
+    this.coins = 0;
+    this.wood = 0;
+    this.hasAxe = false;
+    this.hasRope = false;
+    this.hasManual = false;
+    this.hasBoat = false;
+    this.swimming = false; // recomputed each step; true while feet are wet
+    this.godMet = false; // you only meet God for the first time once
+    this.islandBlessed = false; // the shrine's calm: +2 max focus, always
+    this.tippedDetective = false; // he pays for a good tip exactly once
+    this.polishedLamps = new Set(); // lamps polished: +1 on the next rub there
+    this.dazed = false; // thrown dirt: the foes' next answer goes wide
+    this.meatNibbled = false; // the +2 serving splits into two +1 nibbles
+    this.boneNamed = false; // the bone's name stays between you two
+    this.boatNamed = false; // so does hers
 
     // Magic and battle (v0.16).
     this.spells = []; // spell ids learned, in the order the leaf taught them
@@ -268,7 +353,47 @@ export class Game {
 
   /** The collision surface for wherever we are (world, or mansion walls). */
   phys() {
-    return this.location === 'mansion' ? { collides: mansionCollides } : this.world;
+    if (this.location !== 'world') {
+      const kind = this.location;
+      return { collides: (x, y, w, h) => interiorCollides(kind, x, y, w, h) };
+    }
+    if (this.plane === 'heaven') {
+      // Heaven's water is warm and does not mind: swimmers pass through.
+      return { collides: (x, y, w, h) => this.world.collides(x, y, w, h, { swim: true }) };
+    }
+    return this.world;
+  }
+
+  /** Coins in, with the little caption. */
+  gainCoins(n) {
+    if (n === 0) return;
+    this.coins = Math.max(0, this.coins + n);
+    this.emit('coin');
+    if (n > 0) this.say(`+${n} COIN${n === 1 ? '' : 'S'}`);
+  }
+
+  /**
+   * Step inside any roofed place (v0.20). kind names an INTERIORS entry;
+   * back is where the world resumes when you leave. mansionKey/mansionReturn
+   * kept their names from the mansion era but serve every interior now.
+   */
+  enterInterior(kind, key, back) {
+    this.location = kind;
+    this.mansionKey = key;
+    this.mansionReturn = back;
+    const spawn = INTERIORS[kind].spawn;
+    this.person.x = spawn.x;
+    this.person.y = spawn.y;
+    if (this.together) {
+      this.dog.x = spawn.x - 20;
+      this.dog.y = spawn.y + 3;
+    }
+    this.clearMoveTarget();
+    this.ball = null;
+    this.fetch = 'idle';
+    if (this.mode === 'turn') this.endBattle('THE DOOR SHUTS THE FIGHT OUTSIDE');
+    this.emit('door');
+    this.triggerGlitch(0.5);
   }
 
   /** Step through the front door. The world position waits outside. */
@@ -302,6 +427,11 @@ export class Game {
 
   /** Back out the front door into the night. */
   exitMansion() {
+    this.exitInterior();
+  }
+
+  /** Leave whatever roof you are under; the world resumes where it waited. */
+  exitInterior() {
     this.location = 'world';
     const r = this.mansionReturn;
     // The lawn is not guaranteed clear (a tree can grow right up to the
@@ -314,6 +444,19 @@ export class Game {
       const ds = this.findClearSpot(spot.x - 17, spot.y + 5, this.dog);
       this.dog.x = ds.x;
       this.dog.y = ds.y;
+    }
+    // A world encounter dismissed just inside its ring (the cathedral's
+    // gold, a dumpster by the cabin steps) must not pounce the moment you
+    // step out: anchor the cooldown at the doorstep and pre-block whatever
+    // encounter feature shares it.
+    this.choiceCooldown = { key: 'door', x: spot.x, y: spot.y };
+    for (const d of this.world.dumpstersInRect(
+      spot.x - ENCOUNTER_RADIUS - 12,
+      spot.y - ENCOUNTER_RADIUS - 12,
+      (ENCOUNTER_RADIUS + 12) * 2,
+      (ENCOUNTER_RADIUS + 12) * 2,
+    )) {
+      this.cooldownKeys.add(`d:${d.x},${d.y}`);
     }
     this.mansionKey = null;
     this.clearMoveTarget();
@@ -343,6 +486,7 @@ export class Game {
       encounterDone: this.encounterDone,
       zombieHp: this.zombieHp,
       choiceCooldown: this.choiceCooldown,
+      cooldownKeys: this.cooldownKeys,
       px: this.person.x,
       py: this.person.y,
       dx: this.dog.x,
@@ -363,6 +507,7 @@ export class Game {
     this.encounterDone = snap.encounterDone;
     this.zombieHp = snap.zombieHp;
     this.choiceCooldown = snap.choiceCooldown;
+    this.cooldownKeys = snap.cooldownKeys ?? new Set();
     this.person.x = snap.px;
     this.person.y = snap.py;
     this.dog.x = snap.dx;
@@ -385,20 +530,27 @@ export class Game {
    */
   freshHeaven() {
     const hseed = (this.world.seed ^ HEAVEN_SEED_SALT) >>> 0;
-    const world = new World(hseed);
+    const world = new World(hseed, 'heaven'); // the heaven deck: island, signs, the minotaur
     const px = 0;
     const py = 30;
     // The nearest Styx east of home: its column center, and the bridge you
     // will cross it on. Cerberus sits past the far bank, level with the deck.
     const river = riverNear(hseed, RIVER_COL * REGION, py);
     const by = bridgeYNear(hseed, river.band, py);
-    const spot = { x: river.center + RIVER_W + 36, y: by };
+    // The bank at the BRIDGE's latitude — the meander shifts between y=30
+    // and the deck — probed eastward until the ground is actually dry:
+    // Cerberus waits past the far bank, never in a lake.
+    const bank = riverNear(hseed, RIVER_COL * REGION, by);
+    let cbx = bank.center + RIVER_W + 36;
+    for (let i = 0; i < 40 && isWater(hseed, cbx, by); i++) cbx += 24;
+    const spot = { x: cbx, y: by };
     return {
       world,
       memory: new Map(),
       encounterDone: new Set(),
       zombieHp: new Map(),
       choiceCooldown: null,
+      cooldownKeys: new Set(),
       px,
       py,
       dx: spot.x,
@@ -426,6 +578,7 @@ export class Game {
     this.announce([
       'THE GLASS IS NOT GLASS. YOU STEP THROUGH',
       'EVERYTHING UP HERE IS ROSE AND GOLD',
+      'HAND-PAINTED SIGNS POINT THE WAY TO GOD',
       'A THREE-THROATED HOWL ROLLS ACROSS THE LIGHT',
     ]);
     this.hintTimer = HINT_PERIOD - 3; // the first howl points the way soon
@@ -450,17 +603,85 @@ export class Game {
     ]);
   }
 
+  /** Interior tick: doors, stairs, spot menus — dispatched by kind. */
+  updateInterior(dt) {
+    if (this.location === 'mansion') return this.updateMansion(dt);
+    const kind = this.location;
+    const p = this.person;
+    if (this.active === 'person' && interiorOnDoor(kind, p.x, p.y)) {
+      this.exitInterior();
+      return;
+    }
+    if (kind === 'mansion2' && this.active === 'person' && interiorOnStairs(kind, p.x, p.y)) {
+      // Back down the stairwell: the ground floor resumes; the world return
+      // info rides along untouched.
+      const back = this.mansionReturn;
+      const key = this.mansionKey.replace(/:up$/, '');
+      this.location = 'mansion';
+      this.mansionKey = key;
+      this.mansionReturn = back;
+      this.person.x = 14.5 * 24;
+      this.person.y = 4 * 24;
+      if (this.together) {
+        this.dog.x = this.person.x - 20;
+        this.dog.y = this.person.y + 3;
+      }
+      this.clearMoveTarget();
+      this.emit('door');
+      return;
+    }
+    // Re-arm closed menus at distance — but only this interior's own keys.
+    // A world cooldown's stored position is in world coordinates; measuring
+    // it against interior coordinates would clear it every time, and the
+    // dismissed menu would pounce again the moment you stepped back out.
+    if (this.choiceCooldown) {
+      const cd = this.choiceCooldown;
+      const prefix = `${this.mansionKey}:`;
+      if (cd.key.startsWith(prefix) && Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) {
+        this.choiceCooldown = null;
+        for (const k of this.cooldownKeys) if (k.startsWith(prefix)) this.cooldownKeys.delete(k);
+      }
+    }
+    // Named spots open their menus when the person wanders close.
+    if (!this.choice) {
+      for (const spot of INTERIORS[kind].spots) {
+        const key = `${this.mansionKey}:${spot.id}`;
+        if (this.choiceCooldown?.key === key || this.cooldownKeys.has(key)) continue;
+        if (Math.hypot(spot.x - p.x, spot.y - p.y) > spot.r) continue;
+        this.openSpotMenu(kind, spot, key);
+        return;
+      }
+    }
+    void dt;
+  }
+
   updateMansion(dt) {
     const p = this.person;
     if (this.active === 'person' && onDoor(p.x, p.y)) {
-      this.exitMansion();
+      this.exitInterior();
+      return;
+    }
+    // The stairs (v0.20): the lock rusted through. Standing on the stair
+    // tiles climbs to the second floor.
+    if (this.active === 'person' && nearStairs(p.x, p.y)) {
+      const back = this.mansionReturn;
+      this.enterInterior('mansion2', `${this.mansionKey}:up`, back);
+      if (!this.encounterDone.has(`${this.mansionKey}:up:first`)) {
+        this.encounterDone.add(`${this.mansionKey}:up:first`);
+        this.announce(['THE LOCK HAS RUSTED THROUGH', 'THE STAIRS REMEMBER FEET. THEY CREAK ANYWAY']);
+      }
       return;
     }
     // Re-arm a closed menu once you actually walk away (the television is
-    // the one mansion encounter that comes back).
+    // the one mansion encounter that comes back). Same interior-key scoping
+    // as updateInterior: never wipe a world cooldown against indoor coords.
     if (this.choiceCooldown) {
       const cd = this.choiceCooldown;
-      if (Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) this.choiceCooldown = null;
+      const prefix = `${this.mansionKey}:`;
+      if (cd.key.startsWith(prefix) && Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) {
+        this.choiceCooldown = null;
+        for (const k of this.cooldownKeys) if (k.startsWith(prefix)) this.cooldownKeys.delete(k);
+      }
     }
     const pk = `${this.mansionKey}:port`;
     if (!this.choice && !this.encounterDone.has(pk) && nearPortrait(p.x, p.y)) {
@@ -477,6 +698,8 @@ export class Game {
         title: 'AN OLD PORTRAIT',
         options: [
           { id: 'look', label: 'LOOK CLOSER' },
+          { id: 'name', label: 'ASK ITS NAME' },
+          { id: 'frame', label: 'STRAIGHTEN THE FRAME' },
           { id: 'away', label: 'LOOK AWAY' },
         ],
       });
@@ -498,18 +721,11 @@ export class Game {
         options: [
           { id: 'inside', label: 'STEP INSIDE' },
           { id: 'channel', label: 'CHANGE THE CHANNEL' },
+          { id: 'down', label: 'TURN IT DOWN' },
           { id: 'away', label: 'STEP AWAY' },
         ],
       });
       return;
-    }
-    const sk = `${this.mansionKey}:stairs`;
-    if (!this.encounterDone.has(sk) && nearStairs(p.x, p.y)) {
-      this.encounterDone.add(sk);
-      // say(), not announce(): the portrait's payoff lines must survive
-      // walking from one beat straight into the other.
-      this.say('THE STAIRS ARE LOCKED');
-      this.say('WHO LOCKS STAIRS?');
     }
     this.clockTick += dt;
     if (this.clockTick >= 2) {
@@ -596,7 +812,15 @@ export class Game {
 
   /** What they're hauling now. The forest travels light, so far. */
   carriedWeight() {
-    return (this.hasBone ? BONE_WEIGHT : 0) + (this.boneMeat ? MEAT_WEIGHT : 0);
+    return (
+      (this.hasBone ? BONE_WEIGHT : 0) +
+      (this.boneMeat ? MEAT_WEIGHT : 0) +
+      this.wood * WEIGHT.wood +
+      (this.hasAxe ? WEIGHT.axe : 0) +
+      (this.hasRope ? WEIGHT.rope : 0) +
+      (this.hasManual ? WEIGHT.manual : 0)
+      // The boat is not carried. The boat carries YOU.
+    );
   }
 
   /** Which compass way is home? (The genie knows.) */
@@ -836,6 +1060,16 @@ export class Game {
     const prevDX = this.dog.x;
     const prevDY = this.dog.y;
 
+    // Heaven's water is warm and swimmable (v0.20): slow strokes — or the
+    // boat's easy glide, once you've built her. Night water stays a wall.
+    const wasSwimming = this.swimming;
+    this.swimming =
+      this.plane === 'heaven' &&
+      this.location === 'world' &&
+      isWater(this.world.seed, this.person.x, this.person.y);
+    this.person.speed = PERSON.speed * (this.swimming ? (this.hasBoat ? SAIL_SPEED : SWIM_SPEED) : 1);
+    if (this.swimming && !wasSwimming) this.emit(this.hasBoat ? 'sail' : 'splash');
+
     // Player-controlled character: keys win over a tap target.
     const dirX = dirXLock ? 0 : (input.right ? 1 : 0) - (input.left ? 1 : 0);
     const dirY = dirXLock ? 0 : (input.down ? 1 : 0) - (input.up ? 1 : 0);
@@ -883,19 +1117,53 @@ export class Game {
 
     this.tickTimers(dt);
 
-    // Inside the mansion, the interior runs its own small world.
-    if (this.location === 'mansion') {
-      this.updateMansion(dt);
+    // Under any roof, the interior runs its own small world.
+    if (this.location !== 'world') {
+      this.updateInterior(dt);
       return;
     }
 
-    // The mansion door: step into the doorway and you're inside.
+    // Doorways (v0.20: every big landmark opens): the mansion, the cabin,
+    // the bail-bonds office — and in heaven, the cathedral.
     if (this.active === 'person') {
       const p = this.person;
       for (const m of this.world.mansionsInRect(p.x - 60, p.y - 60, 120, 120)) {
         if (Math.abs(p.x - m.x) < 8 && p.y > m.y - 6 && p.y < m.y + 5) {
           this.enterMansion(m);
           return;
+        }
+      }
+      for (const c of this.world.cabinsInRect(p.x - 40, p.y - 40, 80, 80)) {
+        if (Math.abs(p.x - c.x) < 6 && p.y > c.y - 5 && p.y < c.y + 5) {
+          this.enterInterior('cabin', `cb:${c.x},${c.y}`, { px: c.x, py: c.y + 12, dx: c.x - 15, dy: c.y + 16 });
+          if (!this.encounterDone.has(`${this.mansionKey}:in`)) {
+            this.encounterDone.add(`${this.mansionKey}:in`);
+            this.announce(['THE DOOR NOBODY EVER SAW OPEN. IT OPENS', 'ONE ROOM. ONE LIFE. SOMEBODY LEFT IN A HURRY']);
+          }
+          return;
+        }
+      }
+      for (const o of this.world.officesInRect(p.x - 50, p.y - 50, 100, 100)) {
+        if (Math.abs(p.x - o.x) < 5 && p.y > o.y - 5 && p.y < o.y + 5) {
+          this.enterInterior('office', `of:${o.x},${o.y}`, { px: o.x, py: o.y + 12, dx: o.x - 15, dy: o.y + 16 });
+          if (!this.encounterDone.has(`${this.mansionKey}:in`)) {
+            this.encounterDone.add(`${this.mansionKey}:in`);
+            this.announce(['GORSKI - BAIL BONDS, SAYS THE GLASS', 'THE LIGHT INSIDE IS THE COLOR OF COLD COFFEE']);
+          }
+          return;
+        }
+      }
+      if (this.plane === 'heaven') {
+        for (const d of this.world.dumpstersInRect(p.x - 60, p.y - 60, 120, 120)) {
+          // In heaven the dumpster spots hold cathedrals; their doors stand open.
+          if (Math.abs(p.x - d.x) < 7 && p.y > d.y - 6 && p.y < d.y + 5) {
+            this.enterInterior('cathedral', `ca:${d.x},${d.y}`, { px: d.x, py: d.y + 12, dx: d.x - 15, dy: d.y + 16 });
+            if (!this.encounterDone.has(`${this.mansionKey}:in`)) {
+              this.encounterDone.add(`${this.mansionKey}:in`);
+              this.announce(['THE NAVE SWALLOWS SOUND AND GIVES BACK MUSIC', 'THE RAGAS WERE ALREADY GOING. THEY ALWAYS WERE']);
+            }
+            return;
+          }
         }
       }
     }
@@ -1017,13 +1285,18 @@ export class Game {
     if (this.choice) return; // never clobber an open menu (e.g. a level-up)
     if (this.location !== 'world') return; // the mansion has its own manners
     if (this.active !== 'person') return; // the dog is unbothered by all of it
+    if (this.mode === 'turn') return; // the battle owns the screen — no shopping mid-fight
     const p = this.person;
-    // Re-arm a recently closed menu only once you've actually walked away.
+    // Re-arm recently closed menus only once you've actually walked away.
     if (this.choiceCooldown) {
       const cd = this.choiceCooldown;
-      if (Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) this.choiceCooldown = null;
+      if (Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) {
+        this.choiceCooldown = null;
+        this.cooldownKeys.clear();
+      }
     }
-    const blocked = (key) => this.encounterDone.has(key) || this.choiceCooldown?.key === key;
+    const blocked = (key) =>
+      this.encounterDone.has(key) || this.choiceCooldown?.key === key || this.cooldownKeys.has(key);
     const near = (method) =>
       this.world[method](p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2);
 
@@ -1039,6 +1312,7 @@ export class Game {
             options: [
               { id: 'listen', label: 'LISTEN TO THE RAGAS' },
               { id: 'gold', label: 'ADD TO THE PILE OF GOD' },
+              { id: 'confess', label: 'CONFESS NOTHING IN PARTICULAR' },
               { id: 'walkaway', label: 'STEP BACK INTO THE LIGHT' },
             ],
           }
@@ -1050,6 +1324,7 @@ export class Game {
             options: [
               { id: 'search', label: 'SEARCH THE DUMPSTER' },
               { id: 'putout', label: 'PUT OUT THE FIRE (HOW?)' },
+              { id: 'warm', label: 'WARM YOUR HANDS' },
               { id: 'walkaway', label: 'WALK AWAY' },
             ],
           },
@@ -1062,17 +1337,15 @@ export class Game {
           { id: 'talk', label: 'TALK TO HIM' },
           { id: 'pet', label: 'PET HIM' },
           { id: 'grab', label: 'GRAB HIM' },
+          { id: 'stare', label: 'STARE BACK' },
         ],
       },
       {
         method: 'lampsInRect',
         prefix: 'l',
         kind: 'lamp',
-        title: 'AN OLD LAMP GLINTS IN THE LITTER',
-        options: [
-          { id: 'rub', label: 'RUB THE LAMP' },
-          { id: 'walkaway', label: 'LEAVE IT BE' },
-        ],
+        title: LAMP_TITLE,
+        options: LAMP_OPTIONS,
       },
       {
         method: 'pipesInRect',
@@ -1082,6 +1355,7 @@ export class Game {
         options: [
           { id: 'smoke', label: 'SMOKE THE PIPE' },
           { id: 'sniff', label: 'SNIFF IT' },
+          { id: 'tap', label: 'TAP OUT THE ASH' },
           { id: 'walkaway', label: 'LEAVE IT BE' },
         ],
       },
@@ -1096,10 +1370,126 @@ export class Game {
       }
     }
 
+    // God (v0.20): a cricket on the east shore of a lake, ringed by
+    // redwoods, occasionally menaced by frogs, entirely unbothered.
+    if (this.plane === 'heaven') {
+      const god = godSpot(this.world.seed);
+      if (god && !blocked('god') && Math.hypot(god.x - p.x, god.y - p.y) <= 48) {
+        if (!this.godMet) {
+          this.godMet = true;
+          this.emit('chirp');
+          this.announce([
+            'THE SIGNS ALL POINTED HERE',
+            'GOD IS A CRICKET. GOD HAS ALWAYS BEEN A CRICKET',
+          ]);
+          this.gainXp(3);
+        }
+        this.openChoice({
+          kind: 'god',
+          key: 'god',
+          x: god.x,
+          y: god.y,
+          title: 'GOD, EXISTING AS A CRICKET',
+          options: [
+            { id: 'question', label: 'ASK THE BIG QUESTION' },
+            { id: 'confess', label: 'CONFESS' },
+            { id: 'sit', label: 'SIT WITH GOD A WHILE' },
+            { id: 'shoo', label: 'SHOO THE FROGS' },
+            { id: 'leave', label: 'LEAVE QUIETLY' },
+          ],
+        });
+        return;
+      }
+      for (const sn of near('signsInRect')) {
+        const key = `sn:${sn.x},${sn.y}`;
+        if (blocked(key)) continue;
+        this.emit('sign');
+        this.openChoice({
+          kind: 'sign',
+          key,
+          x: sn.x,
+          y: sn.y,
+          title: 'A SIGN, HAND-PAINTED, PATIENT',
+          options: [
+            { id: 'read', label: 'READ IT' },
+            { id: 'follow', label: 'FOLLOW WHERE IT POINTS' },
+            { id: 'lean', label: 'LEAN ON IT' },
+            { id: 'walkon', label: 'WALK ON' },
+          ],
+        });
+        return;
+      }
+      for (const sh of near('shrinesInRect')) {
+        const key = `sh:${sh.x},${sh.y}`;
+        if (blocked(key)) continue;
+        this.openChoice({
+          kind: 'shrine',
+          key,
+          x: sh.x,
+          y: sh.y,
+          title: 'THE ISLAND SHRINE. YOU MADE IT',
+          options: [
+            { id: 'offer', label: 'LEAVE AN OFFERING (1 COIN)' },
+            { id: 'shade', label: 'SIT IN ITS SHADE' },
+            { id: 'stones', label: 'READ THE STACKED STONES' },
+            { id: 'swim', label: 'SWIM ON' },
+          ],
+        });
+        return;
+      }
+    } else {
+      // Night (v0.20): the ghost town's people, such as they are.
+      for (const pt of near('pirtsInRect')) {
+        const key = `pi:${pt.x},${pt.y}`;
+        if (this.choiceCooldown?.key === key || this.cooldownKeys.has(key)) continue; // Pirts never one-shots
+        this.emit('ghost');
+        this.openPirtsMenu(key, pt.x, pt.y);
+        return;
+      }
+      for (const gh of near('ghostsInRect')) {
+        if (gh.temper === 'hostile') continue; // the battle system owns those
+        const key = `gh:${gh.x},${gh.y}`;
+        if (blocked(key)) continue;
+        this.emit('ghost');
+        this.openChoice({
+          kind: 'ghost',
+          key,
+          x: gh.x,
+          y: gh.y,
+          title: gh.temper === 'sullen' ? 'A GHOST, BUFFERING ITS GRIEF' : 'A GHOST DRIFTS THROUGH ITS OLD ROUTINE',
+          options: [
+            { id: 'what', label: 'ASK WHAT HAPPENED HERE' },
+            { id: 'coin', label: 'OFFER A COIN' },
+            { id: 'sit', label: 'KEEP IT COMPANY' },
+            { id: 'back', label: 'BACK AWAY SLOWLY' },
+          ],
+        });
+        return;
+      }
+      for (const ts of near('townsignsInRect')) {
+        const key = `ts:${ts.x},${ts.y}`;
+        if (blocked(key)) continue;
+        this.openChoice({
+          kind: 'townsign',
+          key,
+          x: ts.x,
+          y: ts.y,
+          title: 'A LEANING SIGN',
+          options: [
+            { id: 'read', label: 'READ IT' },
+            { id: 'straighten', label: 'STRAIGHTEN IT' },
+            { id: 'listen', label: 'LISTEN TO IT CREAK' },
+            { id: 'along', label: 'MOVE ALONG' },
+          ],
+        });
+        return;
+      }
+    }
+
     // Zombies get their own path: options depend on the bone, and they groan.
-    // While turn-based, the round structure owns them instead. In heaven the
-    // same spots hold angels, and the angels hold no grudges.
-    if (this.mode === 'turn') return;
+    // (While turn-based, the round structure owns them — the guard at the
+    // top already returned.) In heaven the same spots hold angels, and the
+    // angels hold no grudges.
     for (const z of near('zombiesInRect')) {
       const key = `z:${z.x},${z.y}`;
       if (blocked(key)) continue;
@@ -1136,7 +1526,11 @@ export class Game {
     // a pause screen — or the mansion's portrait — must not wipe the
     // cooldown of an encounter you fled outside.
     if (!['sheet', 'detail', 'map', 'levelup', 'portrait', 'spell', 'battle'].includes(c.kind)) {
-      this.choiceCooldown = { key: c.key, x: c.x, y: c.y };
+      // Anchored where YOU stand, not where the feature is: a padded feature
+      // can trigger from beyond the re-arm ring, and a feature-anchored
+      // cooldown would clear itself while you stood perfectly still.
+      this.choiceCooldown = { key: c.key, x: this.person.x, y: this.person.y };
+      this.cooldownKeys.add(c.key); // stays blocked even if a neighbor closes after
     }
     this.emit('menu-confirm');
 
@@ -1149,21 +1543,26 @@ export class Game {
           this.boneMeat = true;
           this.emit('heal');
           this.hearts.push({ x: c.x, y: c.y - 24, t: 1.6 });
-          this.announce([`${this.rollText(r)} - YOU PULL OUT A MEATY BONE`]);
-          this.openChoice({
-            kind: 'bone',
-            key: `${c.key}:bone`,
-            x: c.x,
-            y: c.y,
-            title: 'A MEATY BONE',
-            options: [
-              { id: 'eat', label: 'GNAW OFF THE MEAT (+2 HP)' },
-              { id: 'save', label: 'SAVE IT FOR LATER' },
-            ],
-          });
+          this.gainCoins(2);
+          this.announce([
+            `${this.rollText(r)} - YOU PULL OUT A MEATY BONE`,
+            'AND TWO COINS, FIRE-WARM (+2 COINS)',
+          ]);
+          this.openChoice(this.boneMenu(`${c.key}:bone`, c.x, c.y));
         } else {
           this.announce([`${this.rollText(r)} - THE FIRE BITES YOU (-1 HP)`]);
           this.damage(1);
+        }
+      } else if (id === 'warm') {
+        const wk = `${c.key}:warmed`;
+        if (!this.encounterDone.has(wk)) {
+          this.encounterDone.add(wk);
+          this.heal(1);
+          this.emit('heal');
+          this.hearts.push({ x: c.x, y: c.y - 24, t: 1.6 });
+          this.announce(['THE FIRE DOES ONE KIND THING TONIGHT (+1 HP)', 'IT WILL DENY THIS LATER']);
+        } else {
+          this.announce(['THE FIRE HAS BEEN KIND ONCE ALREADY', 'IT HAS A REPUTATION TO KEEP']);
         }
       } else if (id === 'putout') {
         const r = this.check('str');
@@ -1179,16 +1578,27 @@ export class Game {
       // walkaway: nothing — the cooldown lets you leave in peace.
     } else if (c.kind === 'bone') {
       if (id === 'eat') this.eatBoneMeat();
-      else this.announce(['YOU POCKET THE MEATY BONE']);
+      else if (id === 'sniff') {
+        this.emit('eat');
+        this.announce(['DINNER AND HISTORY, IN THAT ORDER']);
+        this.openChoice(this.boneMenu(c.key, c.x, c.y)); // eat/save stays on the table
+      } else if (id === 'heft') {
+        this.announce([`${BONE_WEIGHT} LBS OF SOMEBODY'S GOOD IDEA`, 'IT BALANCES LIKE IT MISSES WORK']);
+      } else this.announce(['YOU POCKET THE MEATY BONE']);
     } else if (c.kind === 'sheet') {
       if (id === 'spells') this.openSpellMenu();
       else if (id !== 'close') this.openIconDetail(id);
     } else if (c.kind === 'detail') {
       if (id === 'back') this.openSheet();
       else if (id === 'eat') this.eatBoneMeat();
+      else if (id === 'nibble') this.nibbleMeat();
       else if (id === 'punch') this.attackFromSheet('fists');
       else if (id === 'swing') this.attackFromSheet('bone');
+      else if (id === 'swing-axe') this.attackFromSheet('axe');
+      else if (id === 'chop') this.chopTree();
+      else if (id === 'build') this.buildBoat();
       else if (id === 'throw') this.throwBall();
+      else this.resolveDetailFlavor(id);
     } else if (c.kind === 'levelup') {
       if (ABILITIES.includes(id) && this.statPoints > 0) {
         this.stats[id]++;
@@ -1202,23 +1612,42 @@ export class Game {
     } else if (c.kind === 'portrait') {
       this.encounterDone.add(c.key); // it only needs to be seen once
       if (id === 'look') this.announce(['IT IS NO ONE YOU KNOW', 'IT KNOWS YOU, THOUGH']);
-      else this.announce(['THE EYES FOLLOW YOU ANYWAY']);
+      else if (id === 'name') {
+        this.emit('clock');
+        this.announce(['YOU ASK ITS NAME', 'THE HOUSE SWALLOWED IT YEARS AGO']);
+      } else if (id === 'frame') {
+        this.triggerGlitch(0.3);
+        this.announce(['YOU NUDGE IT LEVEL. IT WAS ALREADY LEVEL', 'SOMEWHERE UPSTAIRS, SOMETHING TILTS TO COMPENSATE']);
+      } else this.announce(['THE EYES FOLLOW YOU ANYWAY']);
     } else if (c.kind === 'zombie') {
       this.resolveZombie(c, id);
     } else if (c.kind === 'cat') {
-      this.encounterDone.add(c.key); // however this goes, the cat is gone
-      this.triggerGlitch(0.4);
-      if (id === 'talk') {
-        this.emit('vanish');
-        this.announce(['THE CAT DISSOLVES INTO STATIC']);
+      if (id === 'stare') {
+        // The one exit that leaves him sitting there: you blink first, the
+        // cooldown covers your retreat, and he keeps regarding you.
+        this.triggerGlitch(0.3);
+        this.announce(['YOU BLINK FIRST. YOU WERE ALWAYS GOING TO', 'THE CAT FILES THIS UNDER EXPECTED']);
       } else {
-        this.emit('vanish');
-        this.announce(['THE CAT SCRATCHES YOU (-1 HP) AND VANISHES']);
-        this.damage(1);
+        this.encounterDone.add(c.key); // however else this goes, the cat is gone
+        this.triggerGlitch(0.4);
+        if (id === 'talk') {
+          this.emit('vanish');
+          this.announce(['THE CAT DISSOLVES INTO STATIC']);
+        } else {
+          this.emit('vanish');
+          this.announce(['THE CAT SCRATCHES YOU (-1 HP) AND VANISHES']);
+          this.damage(1);
+        }
       }
     } else if (c.kind === 'lamp') {
       if (id === 'rub') {
         const r = this.check('cha');
+        if (this.polishedLamps.has(c.key)) {
+          // A polished lamp answers a shade easier — once.
+          this.polishedLamps.delete(c.key);
+          r.mod += 1;
+          r.total += 1;
+        }
         const roll = r.total;
         if (roll >= DC_GENIE) {
           this.emit('genie');
@@ -1236,11 +1665,20 @@ export class Game {
               { id: 'health', label: 'WISH FOR HEALTH' },
               { id: 'home', label: 'WISH FOR HOME' },
               { id: 'wishes', label: 'WISH FOR MORE WISHES' },
+              { id: 'nothing', label: 'WISH FOR NOTHING' },
             ],
           });
         } else {
           this.announce([`${this.rollText(r)} - ONLY DUST AND A FAINT COUGH INSIDE`]);
         }
+      } else if (id === 'polish') {
+        this.polishedLamps.add(c.key);
+        this.triggerGlitch(0.3);
+        this.announce(['THE BRASS COMES UP LIKE A SMALL DROWNED SUN', 'SOMETHING INSIDE SHIFTS ITS WEIGHT']);
+        this.openChoice({ kind: 'lamp', key: c.key, x: c.x, y: c.y, title: LAMP_TITLE, options: LAMP_OPTIONS });
+      } else if (id === 'ear') {
+        this.emit('whimper');
+        this.announce(['INSIDE: SNORING. FAINT, ANCIENT, CONTENT', 'YOU SET IT DOWN GENTLY. LET SOMETHING SLEEP']);
       }
       // walkaway: the lamp keeps glinting.
     } else if (c.kind === 'genie') {
@@ -1253,6 +1691,15 @@ export class Game {
         this.announce(['YOUR WOUNDS UNWIND (FULL HP)']);
       } else if (id === 'home') {
         this.announce([`THE GENIE POINTS. HOME IS FAR TO THE ${this.homeCompass()}`]);
+      } else if (id === 'nothing') {
+        const lines = ['THE GENIE STARES. NOBODY HAS EVER ASKED FOR THAT', 'HE GRANTS IT FLAWLESSLY. NOTHING ARRIVES'];
+        if (this.spells.length && this.focus < this.maxFocus()) {
+          this.focus += 1;
+          lines.push('YOU FEEL STRANGELY LOOKED AFTER (+1 FOCUS)');
+        } else {
+          lines.push('YOU FEEL STRANGELY LOOKED AFTER');
+        }
+        this.announce(lines);
       } else {
         this.announce(['THE GENIE ROLLS HIS EYES AND VANISHES']);
       }
@@ -1285,32 +1732,278 @@ export class Game {
         }
       } else if (id === 'sniff') {
         this.announce(['IT SMELLS LIKE REGRET AND LAWN CLIPPINGS']);
+      } else if (id === 'tap') {
+        this.triggerGlitch(0.25);
+        this.announce(['THE ASH MAKES ONE SMALL GRAY GHOST AND JOINS THE NIGHT']);
       }
       // walkaway: it keeps smoldering.
     } else if (c.kind === 'battle') {
+      const foe = this.nearestFoe();
       if (id === 'wait') {
         this.say('YOU HOLD YOUR GROUND');
         this.endPlayerTurn();
-      } else if (id === 'befriend') {
-        this.announce(['THE ZOMBIE DOES NOT WANT FRIENDS']);
+      } else if (id === 'study') {
+        const STUDY = {
+          zombie: ['IT SHAMBLES ON A BAD HIP. LEFT SIDE', 'KNOWING THIS CHANGES NOTHING. IT HELPS ANYWAY'],
+          ghost: ['IT LOOPS THE SAME FOUR FRAMES OF GRIEF', 'BETWEEN FRAME TWO AND THREE, IT IS NOWHERE AT ALL'],
+          minotaur: ['HE CHECKS EVERY GAP TWICE, LIKE A MAN WHO LOST HIS KEYS', 'THE MAZE IS NOT AROUND HIM. THAT IS THE PROBLEM'],
+        };
+        this.announce(STUDY[foe?.kind ?? 'zombie']);
         this.endPlayerTurn();
+      } else if (id === 'taunt') {
+        const UNMOVED = {
+          zombie: 'THE ZOMBIE IS UNMOVED. YOU ARE, SLIGHTLY',
+          ghost: 'THE GHOST PLAYS IT BACK, GLITCHED. IT SOUNDS BRAVER THAT WAY',
+          minotaur: 'THE MINOTAUR NODS, POLITE. HE HAS HEARD ECHOES BEFORE',
+        };
+        this.announce(['YOU SHOUT. THE WOODS SWALLOW IT WHOLE', UNMOVED[foe?.kind ?? 'zombie']]);
+        this.endPlayerTurn();
+      } else if (id === 'dirt') {
+        // DEX, at last: land it and their answer goes wide this round.
+        const r = this.check('dex');
+        if (r.total >= DC_DIRT) {
+          this.dazed = true;
+          const BLIND = {
+            zombie: 'IT PAWS AT WHAT IS LEFT OF ITS EYES',
+            ghost: 'THE DIRT SAILS THROUGH. IT FLINCHES ON PRINCIPLE',
+            minotaur: 'HE SHAKES HIS GREAT HEAD, BLINDED A BEAT',
+          };
+          this.announce([`${this.rollText(r)} - ${BLIND[foe?.kind ?? 'zombie']}`]);
+        } else {
+          this.announce([`${this.rollText(r)} - THE NIGHT THROWS IT BACK`]);
+        }
+        this.endPlayerTurn();
+      } else if (id === 'befriend') {
+        const NOPE = {
+          zombie: 'THE ZOMBIE DOES NOT WANT FRIENDS',
+          ghost: 'IT GLITCHES THROUGH YOUR OUTSTRETCHED HAND',
+          minotaur: 'HE DOES NOT HEAR YOU OVER THE MAZE',
+        };
+        this.announce([NOPE[foe?.kind ?? 'zombie']]);
+        this.endPlayerTurn();
+      } else if (id === 'maze') {
+        this.announce([
+          'WHAT DO I DO NEXT, HE ASKS THE AIR',
+          'EVERY DOOR I FIND IS ANOTHER ROOM OF ME',
+          'HE IS NOT TALKING TO YOU. HE NEVER STOPPED WALKING',
+        ]);
+        this.endPlayerTurn();
+      } else if (id === 'directions') {
+        // WIS vs DC 13: you cannot lead him out, but you can point him
+        // somewhere kinder. The fight ends if it lands.
+        const r = this.check('wis');
+        if (foe && r.total >= DC_DIRECTIONS) {
+          this.encounterDone.add(foe.key);
+          this.zombieHp.delete(foe.key);
+          this.emit('vanish');
+          this.triggerGlitch(0.5);
+          this.announce([
+            `${this.rollText(r)} - YOU POINT AT NOTHING, CONFIDENTLY`,
+            'HE STARES. THEN HE LAUGHS, ONCE, LIKE A DOOR UNSTICKING',
+            'A MAZE IS JUST A PATH THAT LOVES YOU TOO MUCH TO END',
+            'HE WANDERS ON. LIGHTER. STILL LOST. LESS ALONE',
+          ]);
+          this.gainXp(FOES.minotaur.xp);
+        } else {
+          this.announce([`${this.rollText(r)} - THE WORDS COME OUT AS WALLS`]);
+          this.endPlayerTurn();
+        }
       } else if (id === 'cast') {
         this.openSpellMenu();
       } else {
-        const foe = this.nearestFoe();
         if (!foe) this.endPlayerTurn();
-        else this.resolveZombie({ kind: 'zombie', key: `z:${foe.x},${foe.y}`, x: foe.x, y: foe.y }, id);
+        else this.resolveZombie({ kind: 'zombie', foe: foe.kind, key: foe.key, x: foe.x, y: foe.y }, id);
       }
     } else if (c.kind === 'spell') {
-      if (id !== 'back') this.castSpell(id);
+      if (id === 'breathe') {
+        if (this.focus < this.maxFocus()) this.focus += 1;
+        this.announce(['IN. OUT. THE CHEAPEST SPELL, AND STILL NOBODY CASTS IT (+1 FOCUS)']);
+        if (this.mode === 'turn') this.endPlayerTurn(); // breathing takes the turn
+      } else if (id === 'hum') {
+        this.emit('spell-fail');
+        this.announce(['YOU HUM THE SYLLABLES WITHOUT THE INTENT', "THE DOG'S EAR TURNS. THE MOON DOES NOT"]);
+      } else if (id !== 'back') this.castSpell(id);
       else if (this.mode === 'turn') this.openBattleMenu();
       else this.openSheet();
+    } else if (c.kind.startsWith('spot:')) {
+      this.resolveSpot(c, id);
+    } else if (c.kind === 'god') {
+      if (id === 'question') {
+        this.emit('chirp');
+        this.announce(['YOU ASK IT. THE WHOLE THING. ALL OF IT', 'CHIRP.', 'SOMEHOW THAT COVERS IT']);
+      } else if (id === 'confess') {
+        this.emit('chirp');
+        this.announce(['YOU CONFESS. THE LAKE HOLDS STILL FOR IT', 'GOD CLEANS ONE ANTENNA', 'YOU ARE NOT FORGIVEN. YOU ARE SOMETHING BETTER. HEARD']);
+      } else if (id === 'sit') {
+        this.focus = this.maxFocus();
+        this.hearts.push({ x: c.x, y: c.y - 21, t: HEART_TTL });
+        this.announce(['YOU SIT. GOD EXISTS. YOU EXIST', 'THE FROGS WATCH FROM THEIR LILIPADS', 'YOUR FOCUS RETURNS, ALL OF IT']);
+      } else if (id === 'shoo') {
+        this.emit('frog');
+        if (!this.encounterDone.has('god:shooed')) {
+          this.encounterDone.add('god:shooed');
+          this.gainXp(1);
+        }
+        this.announce(['YOU SHOO THE FROGS. THE FROGS FILE A COMPLAINT', 'GOD DID NOT NEED THE HELP', 'GOD APPRECIATES IT ANYWAY']);
+      } else if (id === 'leave') {
+        this.announce(['YOU LEAVE QUIETLY', 'BEHIND YOU, A CHIRP. IT SOUNDS LIKE TAKE CARE']);
+      }
+    } else if (c.kind === 'sign') {
+      const god = godSpot(this.world.seed);
+      if (id === 'read') {
+        this.announce(['GOD, IT SAYS. THEN AN ARROW', 'THE PAINT IS GOLD. THE HAND WAS STEADY']);
+      } else if (id === 'follow') {
+        if (god) {
+          const dx = god.x - c.x;
+          const dy = god.y - c.y;
+          const len = Math.hypot(dx, dy) || 1;
+          this.setMoveTarget(this.person.x + (dx / len) * 180, this.person.y + (dy / len) * 180);
+          this.announce(['YOUR FEET AGREE BEFORE YOU DO']);
+        }
+      } else if (id === 'lean') {
+        this.announce(['YOU LEAN. IT LEANS BACK, SLIGHTLY', 'THE SIGN DOES NOT MIND']);
+      }
+      // walkon: the cooldown covers it.
+    } else if (c.kind === 'shrine') {
+      if (id === 'offer') {
+        if (this.islandBlessed) {
+          this.announce(['THE BOWL IS FULL OF YOUR LAST COIN', 'THE CALM IS ALREADY YOURS']);
+        } else if (this.coins >= 1) {
+          this.coins -= 1;
+          this.islandBlessed = true;
+          this.emit('blessing');
+          this.triggerGlitch(0.5);
+          this.announce(['THE COIN SETTLES LIKE IT ALWAYS LIVED THERE', "THE ISLANDER'S CALM: +2 MAX FOCUS, ALWAYS"]);
+        } else {
+          this.announce(['YOU HAVE NOTHING TO GIVE', 'THE SHRINE FINDS THIS EXTREMELY RELATABLE']);
+        }
+      } else if (id === 'shade') {
+        this.heal(1);
+        this.announce(['YOU SWAM AN OCEAN FOR THIS SHADE (+1 HP)', 'WORTH IT']);
+      } else if (id === 'stones') {
+        this.announce(['SOMEBODY STACKED THESE ONE AT A TIME', 'THAT IS THE WHOLE TEACHING']);
+      }
+      // swim: back into the warm water.
+    } else if (c.kind === 'ghost') {
+      if (id === 'what') {
+        this.announce(['IT OPENS ITS MOUTH. STATIC POURS OUT', 'SOMEWHERE IN THE NOISE: A DINNER BELL, A TRAIN, A NAME']);
+      } else if (id === 'coin') {
+        if (this.coins >= 1) {
+          this.coins -= 1;
+          this.emit('coin');
+          if (!this.encounterDone.has(`${c.key}:paid`)) {
+            this.encounterDone.add(`${c.key}:paid`);
+            this.gainXp(2);
+          }
+          this.announce(['THE COIN FALLS THROUGH IT AND LANDS TAILS', 'FOR ONE FRAME IT IS WHOLE, AND YOUNG, AND WAVING']);
+        } else {
+          this.announce(['YOUR POCKETS ARE AS EMPTY AS IT IS', 'IT NODS. SOLIDARITY']);
+        }
+      } else if (id === 'sit') {
+        this.announce(['YOU STAND TOGETHER IN THE RUINED QUIET', 'IT GLITCHES LESS, BESIDE YOU']);
+      } else if (id === 'back') {
+        this.announce(['YOU BACK AWAY. IT DOES NOT FOLLOW', 'NOTHING HERE FOLLOWS. THAT IS THE PROBLEM']);
+      }
+    } else if (c.kind === 'townsign') {
+      if (id === 'read') {
+        this.announce(['WELCOME, IT SAYS. THE TOWN NAME IS WEATHER NOW', 'POP. 0 AND RISING']);
+      } else if (id === 'straighten') {
+        this.triggerGlitch(0.3);
+        this.announce(['YOU STRAIGHTEN IT. THE TOWN TILTS TO MATCH']);
+      } else if (id === 'listen') {
+        this.emit('sign');
+        this.announce(['CREAK. CREAK.', 'IT IS THE ONLY ONE STILL DOING ITS JOB']);
+      }
+    } else if (c.kind === 'pirts') {
+      if (id === 'buy') this.openPirtsBuy(c.key, c.x, c.y);
+      else if (id === 'sell') this.openPirtsSell(c.key, c.x, c.y);
+      else if (id === 'talk') {
+        const LINES = [
+          ['PIRTS IS SPIRIT SPELLED SIDEWAYS. MOSTLY', 'HE LAUGHS AT HIS OWN JOKE. IT ECHOES TWICE'],
+          ['BUSINESS IS DEAD, HE SAYS, AND WAITS', 'YOU GIVE HIM THE COURTESY LAUGH. HE BANKS IT'],
+          ['ASK ABOUT MY LOYALTY PROGRAM, HE SAYS', 'THE LOYALTY PROGRAM IS THAT HE REMEMBERS YOU FOREVER'],
+        ];
+        this.pirtsJoke = ((this.pirtsJoke ?? -1) + 1) % LINES.length;
+        this.announce(LINES[this.pirtsJoke]);
+        this.openPirtsMenu(c.key, c.x, c.y);
+      } else if (id === 'town') {
+        this.announce([
+          'GOOD PEOPLE. BAD LUCK. THE USUAL RECIPE',
+          'ONE NIGHT THE LIGHTS HELD THEIR BREATH AND NEVER LET IT OUT',
+          'THE DETECTIVE ON THE EDGE OF TOWN IS STILL BREATHING. VISIT HIM',
+        ]);
+        this.openPirtsMenu(c.key, c.x, c.y);
+      }
+      // leave: the cooldown covers it; Pirts waves with the wrong hand.
+    } else if (c.kind === 'pirts-buy') {
+      const buy = (item, price, lines) => {
+        if (this.coins < price) {
+          this.announce(['NOT ENOUGH COIN', 'PIRTS PATS YOUR SHOULDER. HIS HAND PASSES THROUGH. SORRY, HE SAYS']);
+        } else {
+          this.coins -= price;
+          this.emit('buy');
+          if (item === 'draught') this.heal(3);
+          else this[item === 'axe' ? 'hasAxe' : item === 'rope' ? 'hasRope' : 'hasManual'] = true;
+          this.announce(lines);
+        }
+        this.openPirtsBuy(c.key, c.x, c.y);
+      };
+      if (id === 'draught') buy('draught', PRICES.draught, ['IT TASTES LIKE STARLIGHT AND COUGH SYRUP (+3 HP)']);
+      else if (id === 'axe') buy('axe', PRICES.axe, ['A GOOD AXE. IT REMEMBERS TREES', 'PIRTS THROWS IN THE STORY OF ITS PREVIOUS OWNER, FREE']);
+      else if (id === 'rope') buy('rope', PRICES.rope, ['ROPE. THE HONEST TOOL', 'FIFTY USES, PIRTS SAYS. FIFTY-ONE IF YOU ARE SAD']);
+      else if (id === 'manual') buy('manual', PRICES.manual, ['HOW TO BUILD A BOAT, GHOST-PRESS EDITION', 'CHAPTER ONE: WANT TO BE ELSEWHERE. YOU HAVE READ CHAPTER ONE']);
+      else if (id === 'haggle') {
+        this.announce(['YOU HAGGLE. PIRTS HAGGLES BACK. THE PRICE GOES UP ONE COIN', 'THEN HE WINKS AND PUTS IT BACK. THEATER, HE SAYS']);
+        this.openPirtsBuy(c.key, c.x, c.y);
+      } else if (id === 'good') {
+        this.announce(['THE DRAUGHT, HE SAYS INSTANTLY. HOUSE RECIPE', 'HE IS DEAD. YOU ELECT NOT TO DO THE MATH']);
+        this.openPirtsBuy(c.key, c.x, c.y);
+      } else if (id === 'back') this.openPirtsMenu(c.key, c.x, c.y);
+    } else if (c.kind === 'pirts-sell') {
+      const sold = (lines) => {
+        this.emit('sell');
+        this.announce(lines);
+        this.openPirtsSell(c.key, c.x, c.y);
+      };
+      if (id === 'meat' && this.boneMeat) {
+        this.boneMeat = false;
+        this.coins += SELLS.meat;
+        sold(['HE SNIFFS IT PROFESSIONALLY. VINTAGE, HE SAYS', `+${SELLS.meat} COINS`]);
+      } else if (id === 'bone' && this.hasBone) {
+        this.hasBone = false;
+        this.boneMeat = false;
+        this.coins += SELLS.bone;
+        sold(['PARTING WITH THE CLUB. BRAVE', `+${SELLS.bone} COINS`]);
+      } else if (id === 'wood' && this.wood > 0) {
+        this.wood -= 1;
+        this.coins += SELLS.wood;
+        sold([`ONE PLANK, ${this.wood} LEFT`, `+${SELLS.wood} COIN`]);
+      } else if (id === 'story') {
+        if (!this.encounterDone.has('pirts:story')) {
+          this.encounterDone.add('pirts:story');
+          this.coins += 1;
+          sold(['YOU TELL HIM ABOUT THE TELEVISION. ABOUT THE CRICKET', 'WORTH EVERY PENNY, HE SAYS. HERE IS ONE', '+1 COIN']);
+        } else {
+          sold(['HE HAS HEARD THIS ONE. HE LETS YOU FINISH ANYWAY']);
+        }
+      } else if (id === 'what') {
+        sold(['MEAT, BONES, PLANKS, RUMORS', 'SOULS ARE OFF THE MENU. REGULATIONS, HE SAYS, POINTING UP']);
+      } else if (id === 'pockets') {
+        sold([
+          `LINT, ${this.coins} COIN${this.coins === 1 ? '' : 'S'}, ${this.wood} PLANK${this.wood === 1 ? '' : 'S'}`,
+          'PIRTS APPRAISES THE LINT. SENTIMENTAL VALUE ONLY',
+        ]);
+      } else if (id === 'back') this.openPirtsMenu(c.key, c.x, c.y);
     } else if (c.kind === 'tv') {
       if (id === 'inside') {
         this.enterHeaven(); // (from heaven, the set shows the night — and leads there)
       } else if (id === 'channel') {
         this.emit('tv');
         this.announce(['EVERY CHANNEL IS THE SAME WARM LIGHT', 'ONE OF THEM HUMS A LITTLE HIGHER']);
+      } else if (id === 'down') {
+        this.emit('tv');
+        this.triggerGlitch(0.3);
+        this.announce(['THE KNOB TURNS. THE HUM DOES NOT', 'IT WAS NEVER COMING FROM THE SET']);
       }
       // 'away': the cooldown covers your retreat.
     } else if (c.kind === 'cathedral') {
@@ -1333,6 +2026,10 @@ export class Game {
           'YOU ADD WHAT YOU CAN TO THE PILE OF GOD',
           'THEY MELT IT IN. THE SPIRE CLIMBS ONE COURSE HIGHER',
         ]);
+      } else if (id === 'confess') {
+        this.emit('blessing');
+        this.hearts.push({ x: c.x, y: c.y - 24, t: HEART_TTL });
+        this.announce(['YOU OPEN YOUR MOUTH. THE RAGAS FILL IT FOR YOU', 'ABSOLVED. PROBABLY']);
       }
       // walkaway: the music follows you out anyway.
     } else if (c.kind === 'angel') {
@@ -1357,13 +2054,269 @@ export class Game {
     }
   }
 
-  /** Gnaw the meat off the dumpster bone: +2 HP, the bone remains a club. */
+  /** Gnaw the meat off the dumpster bone: +2 HP (+1 if nibbled), club remains. */
   eatBoneMeat() {
     if (!this.boneMeat) return;
+    const gain = this.meatNibbled ? 1 : 2;
     this.boneMeat = false;
-    this.heal(2);
+    this.meatNibbled = false;
+    this.heal(gain);
     this.emit('eat');
-    this.announce(['YOU GNAW OFF THE MEAT (+2 HP). THE BONE REMAINS']);
+    this.announce([`YOU GNAW OFF THE MEAT (+${gain} HP). THE BONE REMAINS`]);
+  }
+
+  /** A polite bite: the +2 serving splits into two +1 nibbles. */
+  nibbleMeat() {
+    if (!this.boneMeat) return;
+    this.heal(1);
+    this.emit('eat');
+    if (this.meatNibbled) {
+      this.boneMeat = false;
+      this.meatNibbled = false;
+      this.announce(['THE LAST POLITE BITE (+1 HP). THE BONE REMAINS']);
+    } else {
+      this.meatNibbled = true;
+      this.announce(['ONE POLITE BITE (+1 HP). THE REST KEEPS']);
+    }
+  }
+
+  /** The meaty-bone popup (also reopened after a sniff). */
+  boneMenu(key, x, y) {
+    return {
+      kind: 'bone',
+      key,
+      x,
+      y,
+      title: 'A MEATY BONE',
+      options: [
+        { id: 'eat', label: 'GNAW OFF THE MEAT (+2 HP)' },
+        { id: 'sniff', label: 'SNIFF IT FIRST' },
+        { id: 'heft', label: 'FEEL ITS HEFT' },
+        { id: 'save', label: 'SAVE IT FOR LATER' },
+      ],
+    };
+  }
+
+  /** Swing the axe at a tree in reach: STR vs DC 8, better rolls cut more. */
+  chopTree() {
+    if (!this.hasAxe || this.location !== 'world') return;
+    const p = this.person;
+    const trees = this.world.treesInRect(
+      p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2,
+    );
+    if (!trees.length) {
+      this.announce(['NO TREE IN REACH. THE AXE STAYS POLITE']);
+      return;
+    }
+    const r = this.check('str');
+    if (r.total >= DC_CHOP) {
+      const planks = r.total >= 14 ? 3 : r.total >= 11 ? 2 : 1;
+      this.wood += planks;
+      this.emit('chop');
+      this.triggerGlitch(0.3);
+      this.announce([
+        `${this.rollText(r)} - THE AXE REMEMBERS TREES (+${planks} PLANK${planks === 1 ? '' : 'S'})`,
+        `${this.wood} OF THE ${BOAT_WOOD} A BOAT WANTS`,
+      ]);
+    } else {
+      this.emit('bonk');
+      this.announce([`${this.rollText(r)} - THE TREE DECLINES. BARK 1, AXE 0`]);
+    }
+  }
+
+  /** The island the hard way: planks, the rope, the manual, a shoreline. */
+  buildBoat() {
+    if (this.hasBoat || this.wood < BOAT_WOOD || !this.hasRope || !this.hasManual) return;
+    this.wood -= BOAT_WOOD;
+    this.hasRope = false; // fifty-first use
+    this.hasBoat = true;
+    this.emit('sail');
+    this.triggerGlitch(0.6);
+    this.announce([
+      'YOU BUILD THE BOAT. THE MANUAL WAS RIGHT ABOUT WANTING',
+      `${BOAT_WOOD} PLANKS, ONE ROPE, MOST OF YOUR PATIENCE`,
+      'SHE FLOATS. SOMEHOW, SHE FLOATS',
+    ]);
+  }
+
+  /** The detail windows' small flavor verbs — v0.20's four-option floor. */
+  resolveDetailFlavor(id) {
+    switch (id) {
+      // STR
+      case 'knuckles':
+        this.emit('bonk');
+        this.announce(['ONE POP, LOUD AS A DISTANT DOOR', 'THE FOREST DOES NOT MIND']);
+        break;
+      case 'flex':
+        this.announce(['THE NIGHT DECLINES TO NOTICE', 'YOU FEEL MARGINALLY MIGHTIER ANYWAY']);
+        break;
+      case 'shake':
+        this.announce(['FIRM. RELIABLE. THE ONLY HAND YOU CAN COUNT ON']);
+        break;
+      // INT
+      case 'memories':
+        this.announce(['YOU GET TO FOUR AND LOSE THE THREAD', 'ONE OF THEM IS TEETH-SHAPED NOW']);
+        break;
+      case 'math':
+        this.announce([`STR TIMES TEN PLUS CON TIMES TWENTY IS ${this.carryCapacity()}`, 'CORRECT. NOBODY CLAPS']);
+        break;
+      case 'home':
+        this.announce([`HOME IS STILL TO THE ${this.homeCompass()}`, 'THINKING DID NOT MOVE IT']);
+        break;
+      // WIS
+      case 'night':
+        this.announce(['THE NIGHT SAYS WHAT IT ALWAYS SAYS', 'NOTHING. BEAUTIFULLY']);
+        break;
+      case 'moon':
+        this.announce(['THE MOON DEFERS TO YOUR JUDGMENT', 'TYPICAL']);
+        break;
+      case 'sit': {
+        if (this.spells.length && this.focus < this.maxFocus()) {
+          this.focus += 1;
+          this.announce(['NOTHING IMPROVES. IT HELPS ANYWAY (+1 FOCUS)']);
+        } else {
+          this.announce(['NOTHING IMPROVES. IT HELPS ANYWAY']);
+        }
+        break;
+      }
+      // DEX
+      case 'juggle':
+        this.announce(['FLAWLESS. ZERO OBJECTS, ZERO DROPS']);
+        break;
+      case 'dodge':
+        this.announce(['YOU SLIP LEFT. THE NOTHING MISSES', 'GOOD FORM. THE STAT KEEPS WAITING']);
+        break;
+      case 'laces':
+        this.announce(['DOUBLE-KNOTTED. AT LEAST SOMETHING HOLDS']);
+        break;
+      // CON
+      case 'breath':
+        this.announce(['FORTY SECONDS. THE NIGHT HOLDS ITS LONGER']);
+        break;
+      case 'thump':
+        this.emit('bonk');
+        this.announce(['THE HEART KNOCKS BACK: OCCUPIED']);
+        break;
+      case 'weigh':
+        this.announce([`${this.carriedWeight()} LBS OF EVERYTHING YOU OWN`, 'THE NIGHT WEIGHS EXTRA. IT IS NOT COUNTED']);
+        break;
+      // CHA
+      case 'smile':
+        this.announce(['YOU SMILE AT THE DARK', 'THE DARK IS POLITE ABOUT IT']);
+        break;
+      case 'wave':
+        this.announce(['NOTHING WAVES BACK. RUDE, BUT CONSISTENT']);
+        break;
+      case 'dog':
+        if (this.together) {
+          this.hearts.push({ x: this.dog.x, y: this.dog.y - 18, t: HEART_TTL });
+          this.announce(['HE ALREADY KNEW. HE TAKES IT WELL ANYWAY']);
+        } else {
+          this.announce(['YOU SAY IT TO THE NIGHT, FOR PRACTICE', 'THE WORDS KEEP']);
+        }
+        break;
+      // BONE
+      case 'polish-bone':
+        this.announce(['IT GLEAMS LIKE A SMALL MOON WITH A JOB']);
+        break;
+      case 'name-bone':
+        if (!this.boneNamed) {
+          this.boneNamed = true;
+          this.announce(['YOU NAME IT. THE NAME STAYS BETWEEN YOU TWO']);
+        } else {
+          this.announce(['IT HAS A NAME. YOU BOTH KNOW IT']);
+        }
+        break;
+      case 'knock':
+        this.emit('bonk');
+        this.announce(['KNOCK KNOCK. THE TREES KEEP THEIR DOORS SHUT']);
+        break;
+      // MEAT
+      case 'smell':
+        this.emit('eat');
+        this.announce(['STILL GOOD. THE NIGHT PRESERVES WHAT IT LIKES']);
+        break;
+      // BALL
+      case 'squeeze':
+        this.emit('squeak');
+        this.announce(['ONE SQUEAK. SOMEWHERE, EARS ROTATE']);
+        break;
+      case 'bounce':
+        this.announce(['IT COMES BACK TO YOUR HAND', 'LOYALTY, IN RUBBER']);
+        break;
+      // COINS
+      case 'count-coins':
+        this.announce([`STILL ${this.coins}. MATH HOLDS`, 'THE NIGHT ECONOMY IS STABLE']);
+        break;
+      case 'flip':
+        this.emit('coin');
+        this.announce([
+          this.rng() < 0.5 ? 'HEADS. THE FACE IS NOBODY YOU KNOW' : 'TAILS. AN ANIMAL, MID-LEAP, WORN SMOOTH',
+          'YOU CATCH IT. THE NIGHT WAS BETTING ON THE GROUND',
+        ]);
+        break;
+      case 'jingle':
+        this.emit('coin');
+        this.announce(['A SMALL BRIGHT NOISE AGAINST A VERY LARGE DARK']);
+        break;
+      // WOOD
+      case 'stack':
+        this.announce(['YOU STACK THEM NEATLY. THEY LEAN ANYWAY', 'WOOD REMEMBERS BEING TREES. TREES LEAN']);
+        break;
+      case 'sniff-wood':
+        this.announce(['CUT PINE AND COLD SAP', 'IT SMELLS LIKE A PLAN COMING TOGETHER']);
+        break;
+      case 'measure':
+        this.announce(['YOU MEASURE TWICE', 'THE NUMBER HOLDS. CARPENTRY IS MOSTLY FAITH']);
+        break;
+      // AXE
+      case 'hone':
+        this.announce(['SHARP. SOMEBODY LOVED THIS TOOL', 'NOW SOMEBODY ELSE DOES']);
+        break;
+      case 'shoulder':
+        this.announce(['YOU REST IT ON YOUR SHOULDER', 'FOR ONE WHOLE MINUTE YOU ARE A WOODCUT OF A PERSON']);
+        break;
+      case 'haft':
+        this.announce(['INITIALS, CARVED SMALL, WORN SMOOTH', 'THE PREVIOUS OWNER LOVED SOMEBODY TOO']);
+        break;
+      // ROPE
+      case 'coil':
+        this.announce(['YOU COIL IT THE PROPER WAY', 'THE ROPE APPROVES. ROPES LOVE PROTOCOL']);
+        break;
+      case 'knot':
+        this.announce(['A BOWLINE, ALMOST', 'THE RABBIT LEAVES THE HOLE AND FILES A COMPLAINT']);
+        break;
+      case 'tug':
+        this.announce(['IT HOLDS', 'FIFTY USES LEFT. FIFTY-ONE IF YOU ARE SAD']);
+        break;
+      // MANUAL
+      case 'chapter':
+        this.announce(['CHAPTER TWO: FIND WOOD. THE BOOK IS NOT WRONG', `A BOAT WANTS ${BOAT_WOOD} PLANKS AND A ROPE`]);
+        break;
+      case 'pictures':
+        this.announce(['THE PICTURES ARE HAND-DRAWN', 'THE BOAT IN THEM IS SMILING']);
+        break;
+      case 'margins':
+        this.announce(['THE MARGINS SAY: SHE FLOATS. UNDERLINED TWICE', 'THE PEN WAS RUNNING OUT. THE FAITH WAS NOT']);
+        break;
+      // BOAT
+      case 'pat':
+        this.announce(['YOU PAT THE HULL. A GOOD HOLLOW SOUND', 'SHE FLOATS. SOMEHOW, SHE FLOATS']);
+        break;
+      case 'leaks':
+        this.announce(['NO LEAKS', 'THE MANUAL LOOKS SMUG FROM YOUR POCKET']);
+        break;
+      case 'christen':
+        if (!this.boatNamed) {
+          this.boatNamed = true;
+          this.announce(['YOU NAME HER AFTER THE DOG', 'THE DOG, ASKED, APPROVES']);
+        } else {
+          this.announce(['SHE HAS A NAME. IT SUITS HER']);
+        }
+        break;
+      default:
+        break;
+    }
   }
 
   /**
@@ -1387,6 +2340,12 @@ export class Game {
         ...(person && this.together && this.fetch === 'idle'
           ? [{ id: 'ball', label: 'BALL', icon: 'ball' }]
           : []),
+        ...(this.coins > 0 ? [{ id: 'coins', label: 'COINS', icon: 'coin' }] : []),
+        ...(this.wood > 0 ? [{ id: 'wood', label: 'WOOD', icon: 'wood' }] : []),
+        ...(this.hasAxe ? [{ id: 'axe', label: 'AXE', icon: 'axe' }] : []),
+        ...(this.hasRope ? [{ id: 'rope', label: 'ROPE', icon: 'rope' }] : []),
+        ...(this.hasManual ? [{ id: 'manual', label: 'MANUAL', icon: 'manual' }] : []),
+        ...(this.hasBoat ? [{ id: 'boat', label: 'BOAT', icon: 'boat' }] : []),
         { id: 'close', label: 'CLOSE' },
       ],
     });
@@ -1403,16 +2362,41 @@ export class Game {
       `SCORE ${this.stats[a]}  MOD ${fmt(this.mod(a))}`,
       `CHECKS ROLL D20${fmt(this.mod(a))}`,
     ];
+    // The economy's conditional verbs: an axe wants a tree in reach; a boat
+    // wants its bill of materials and a shoreline.
+    const p = this.person;
+    const treeNear =
+      this.location === 'world' &&
+      this.world.treesInRect(p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2)
+        .length > 0;
+    const shoreNear =
+      this.location === 'world' &&
+      (this.swimming ||
+        isWater(this.world.seed, p.x + 30, p.y) ||
+        isWater(this.world.seed, p.x - 30, p.y) ||
+        isWater(this.world.seed, p.x, p.y + 30) ||
+        isWater(this.world.seed, p.x, p.y - 30));
+    const canBuild =
+      !this.hasBoat && this.wood >= BOAT_WOOD && this.hasRope && this.hasManual && shoreNear;
     const DETAILS = {
       str: {
         title: 'STRENGTH',
         body: [...statBody('str'), `FISTS DEAL ${this.fistDamage()} DMG`, `THE BONE DEALS ${this.boneDamage()}`],
-        options: person ? [{ id: 'punch', label: 'PUNCH SOMETHING' }] : [],
+        options: [
+          ...(person ? [{ id: 'punch', label: 'PUNCH SOMETHING' }] : []),
+          { id: 'knuckles', label: 'CRACK YOUR KNUCKLES' },
+          { id: 'flex', label: 'FLEX AT NO ONE' },
+          { id: 'shake', label: 'SHAKE YOUR OWN HAND' },
+        ],
       },
       int: {
         title: 'INTELLIGENCE',
         body: [...statBody('int'), 'SEARCHING DUMPSTERS IS DC 10', 'ZOMBIES FIND IT DELICIOUS'],
-        options: [],
+        options: [
+          { id: 'memories', label: 'COUNT YOUR MEMORIES' },
+          { id: 'math', label: 'DO SOME MATH' },
+          { id: 'home', label: 'THINK ABOUT HOME' },
+        ],
       },
       wis: {
         title: 'WISDOM',
@@ -1421,37 +2405,127 @@ export class Game {
           'THE PIPE ANSWERS TO IT (DC 15)',
           ...(this.drunk > 0 ? ['+2 WHILE THE COLORS LEAN IN'] : []),
         ],
-        options: [],
+        options: [
+          { id: 'night', label: 'LISTEN TO THE NIGHT' },
+          { id: 'moon', label: 'CONSULT THE MOON' },
+          { id: 'sit', label: 'SIT WITH IT A MOMENT' },
+        ],
       },
       dex: {
         title: 'DEXTERITY',
-        body: [...statBody('dex'), 'NOTHING ASKS FOR IT YET', 'IT WAITS'],
-        options: [],
+        body: [...statBody('dex'), `DIRT IN THE EYES IS DC ${DC_DIRT}`, 'IT WAITED. NOW IT WORKS'],
+        options: [
+          { id: 'juggle', label: 'JUGGLE NOTHING' },
+          { id: 'dodge', label: 'DODGE AN IMAGINED BITE' },
+          { id: 'laces', label: 'CHECK YOUR LACES' },
+        ],
       },
       con: {
         title: 'CONSTITUTION',
         body: [...statBody('con'), 'CARRY: STR X 10 + CON X 20', `= ${this.carryCapacity()} LBS`],
-        options: [],
+        options: [
+          { id: 'breath', label: 'HOLD YOUR BREATH' },
+          { id: 'thump', label: 'THUMP YOUR CHEST ONCE' },
+          { id: 'weigh', label: 'WEIGH YOUR LOAD' },
+        ],
       },
       cha: {
         title: 'CHARISMA',
         body: [...statBody('cha'), 'GENIES ANSWER TO CHARM (DC 12)'],
-        options: [],
+        options: [
+          { id: 'smile', label: 'PRACTICE YOUR SMILE' },
+          { id: 'wave', label: 'WAVE AT NOTHING' },
+          { id: 'dog', label: 'COMPLIMENT THE DOG' },
+        ],
       },
       bone: {
-        title: 'THE BONE',
+        title: this.boneNamed ? 'THE BONE (IT HAS A NAME)' : 'THE BONE',
         body: [`A GOOD CLUB: DC 9, ${this.boneDamage()} DMG`, `WEIGHS ${BONE_WEIGHT} LBS`],
-        options: person ? [{ id: 'swing', label: 'SWING THE BONE' }] : [],
+        options: [
+          ...(person ? [{ id: 'swing', label: 'SWING THE BONE' }] : []),
+          { id: 'polish-bone', label: 'POLISH THE BONE' },
+          { id: 'name-bone', label: 'NAME THE BONE' },
+          { id: 'knock', label: 'KNOCK ON WOOD' },
+        ],
       },
       meat: {
         title: 'MEAT ON THE BONE',
-        body: ['GNAW FOR +2 HP. ONE SERVING', `WEIGHS ${MEAT_WEIGHT} LBS`],
-        options: [{ id: 'eat', label: 'GNAW OFF THE MEAT (+2 HP)' }],
+        body: [
+          this.meatNibbled ? 'HALF A SERVING LEFT. STILL GOOD' : 'GNAW FOR +2 HP. ONE SERVING',
+          `WEIGHS ${MEAT_WEIGHT} LBS`,
+        ],
+        options: [
+          { id: 'eat', label: `GNAW IT ALL (+${this.meatNibbled ? 1 : 2} HP)` },
+          { id: 'nibble', label: 'JUST A NIBBLE (+1 HP)' },
+          { id: 'smell', label: 'SMELL IT AGAIN' },
+        ],
       },
       ball: {
         title: 'THE PINK BALL',
         body: ['FETCH MENDS THE HEART (+1 HP)'],
-        options: [{ id: 'throw', label: 'THROW THE BALL' }],
+        options: [
+          { id: 'throw', label: 'THROW THE BALL' },
+          { id: 'squeeze', label: 'GIVE IT A SQUEEZE' },
+          { id: 'bounce', label: 'BOUNCE IT ONCE' },
+        ],
+      },
+      coins: {
+        title: 'COINS',
+        body: [`${this.coins} IN THE POCKET`, 'PIRTS TAKES THEM. SO DO SHRINES AND CANDLES'],
+        options: [
+          { id: 'count-coins', label: 'COUNT THEM AGAIN' },
+          { id: 'flip', label: 'FLIP ONE' },
+          { id: 'jingle', label: 'JINGLE THEM' },
+        ],
+      },
+      wood: {
+        title: 'PLANKS',
+        body: [`${this.wood} OF THE ${BOAT_WOOD} A BOAT WANTS`, `EACH WEIGHS ${WEIGHT.wood} LB`],
+        options: [
+          ...(canBuild ? [{ id: 'build', label: 'BUILD THE BOAT' }] : []),
+          { id: 'stack', label: 'STACK THEM NEATLY' },
+          { id: 'sniff-wood', label: 'SMELL THE CUT' },
+          { id: 'measure', label: 'MEASURE TWICE' },
+        ],
+      },
+      axe: {
+        title: 'THE AXE',
+        body: [`SWINGS AT DC ${DC_AXE}, ${this.fistDamage() + 2} DMG`, `CHOPS TREES. WEIGHS ${WEIGHT.axe} LBS`],
+        options: [
+          ...(person && treeNear ? [{ id: 'chop', label: 'CHOP A TREE' }] : []),
+          ...(person ? [{ id: 'swing-axe', label: 'SWING THE AXE' }] : []),
+          { id: 'hone', label: 'TEST THE EDGE' },
+          { id: 'shoulder', label: 'REST IT ON YOUR SHOULDER' },
+          { id: 'haft', label: 'CHECK THE HAFT' },
+        ],
+      },
+      rope: {
+        title: 'THE ROPE',
+        body: ['FIFTY USES. FIFTY-ONE IF YOU ARE SAD', `A BOAT WANTS IT. WEIGHS ${WEIGHT.rope} LBS`],
+        options: [
+          { id: 'coil', label: 'COIL IT PROPERLY' },
+          { id: 'knot', label: 'PRACTICE A KNOT' },
+          { id: 'tug', label: 'TUG IT, TESTING' },
+        ],
+      },
+      manual: {
+        title: 'HOW TO BUILD A BOAT',
+        body: ['GHOST-PRESS EDITION', `A BOAT: ${BOAT_WOOD} PLANKS, THE ROPE, AND WANTING TO BE ELSEWHERE`],
+        options: [
+          ...(canBuild ? [{ id: 'build', label: 'BUILD THE BOAT' }] : []),
+          { id: 'chapter', label: 'READ CHAPTER TWO' },
+          { id: 'pictures', label: 'SKIP TO THE PICTURES' },
+          { id: 'margins', label: 'READ THE MARGIN NOTES' },
+        ],
+      },
+      boat: {
+        title: this.boatNamed ? 'THE BOAT (SHE HAS A NAME)' : 'THE BOAT',
+        body: ['YOURS. BUILT BY HAND FROM A GHOST-PRESS BOOK', 'SHE SAILS WHEREVER YOU SWIM'],
+        options: [
+          { id: 'pat', label: 'PAT THE HULL' },
+          { id: 'leaks', label: 'CHECK FOR LEAKS' },
+          { id: 'christen', label: 'NAME HER' },
+        ],
       },
     };
     const d = DETAILS[id];
@@ -1483,7 +2557,11 @@ export class Game {
     }
     this.emit('throw'); // the whoosh of hitting nothing
     this.announce([
-      id === 'bone' ? 'YOU SWING AT THE DARK. IT DOES NOT MIND' : 'YOU PUNCH AT THE DARK. IT DOES NOT MIND',
+      id === 'fists'
+        ? 'YOU PUNCH AT THE DARK. IT DOES NOT MIND'
+        : id === 'axe'
+          ? 'YOU AXE THE DARK. THE DARK FORGIVES THE PUN'
+          : 'YOU SWING AT THE DARK. IT DOES NOT MIND',
     ]);
   }
 
@@ -1491,7 +2569,7 @@ export class Game {
 
   /** Focus pool: 3 + WIS modifier, never below 1. */
   maxFocus() {
-    return Math.max(1, FOCUS_BASE + this.mod('wis'));
+    return Math.max(1, FOCUS_BASE + this.mod('wis')) + (this.islandBlessed ? 2 : 0);
   }
 
   /** A vision teaches the next spell in the book (if any are left). */
@@ -1525,6 +2603,8 @@ export class Game {
           id: s.id,
           label: `${s.name} (${s.cost})`,
         })),
+        { id: 'breathe', label: 'JUST BREATHE (0)' },
+        { id: 'hum', label: 'HUM THE WORDS (0)' },
         { id: 'back', label: 'BACK' },
       ],
     });
@@ -1548,17 +2628,23 @@ export class Game {
       if (!target) {
         this.announce(['EMBER BLOOMS AND FINDS NOTHING TO BURN']);
       } else {
-        const key = `z:${target.x},${target.y}`;
-        const left = (this.zombieHp.get(key) ?? ZOMBIE_HP) - 3;
+        const spec = FOES[target.kind];
+        const left = (this.zombieHp.get(target.key) ?? spec.hp) - 3;
         if (left <= 0) {
-          this.encounterDone.add(key);
-          this.zombieHp.delete(key);
+          this.encounterDone.add(target.key);
+          this.zombieHp.delete(target.key);
           this.emit('vanish');
-          this.announce(['EMBER TAKES IT. THE ZOMBIE GOES OUT LIKE A CANDLE']);
-          this.gainXp(XP_ZOMBIE);
+          this.announce([
+            target.kind === 'minotaur'
+              ? 'EMBER TAKES HIM. THE MAZE BURNS DOWN TO ONE BRIGHT DOOR'
+              : target.kind === 'ghost'
+                ? 'EMBER TAKES IT. THE STATIC RESOLVES TO QUIET'
+                : 'EMBER TAKES IT. THE ZOMBIE GOES OUT LIKE A CANDLE',
+          ]);
+          this.gainXp(spec.xp);
         } else {
-          this.zombieHp.set(key, left);
-          this.announce(['EMBER BITES. THE ZOMBIE BURNS AND KEEPS COMING']);
+          this.zombieHp.set(target.key, left);
+          this.announce([`EMBER BITES. ${spec.name} BURNS AND KEEPS COMING`]);
         }
       }
     } else if (id === 'ward') {
@@ -1576,25 +2662,41 @@ export class Game {
 
   // --- Turn-based combat ---------------------------------------------------
 
-  /** Hostiles (living zombies) within a radius of the person. */
+  /** Hostiles within a radius of the person: {kind, key, x, y, d}. */
   hostilesNear(radius) {
     if (this.location !== 'world') return [];
-    if (this.plane === 'heaven') return []; // angels do not bite
     const p = this.person;
-    return this.world
-      .zombiesInRect(p.x - radius, p.y - radius, radius * 2, radius * 2)
-      .filter((z) => !this.encounterDone.has(`z:${z.x},${z.y}`))
-      .filter((z) => Math.hypot(z.x - p.x, z.y - p.y) <= radius);
+    const out = [];
+    const consider = (kind, key, x, y) => {
+      if (this.encounterDone.has(key)) return;
+      const d = Math.hypot(x - p.x, y - p.y);
+      if (d <= radius) out.push({ kind, key, x, y, d });
+    };
+    if (this.plane === 'heaven') {
+      // Angels do not bite. The minotaur is the one red exception: he paces
+      // the maze of his life, and if you cross his pacing, he notices.
+      for (const m of this.world.minotaursInRect(p.x - radius - MINOTAUR_RANGE, p.y - radius - MINOTAUR_RANGE, (radius + MINOTAUR_RANGE) * 2, (radius + MINOTAUR_RANGE) * 2)) {
+        const pos = minotaurPos(m, this.time);
+        consider('minotaur', `mi:${m.x},${m.y}`, pos.x, pos.y);
+      }
+      return out;
+    }
+    for (const z of this.world.zombiesInRect(p.x - radius, p.y - radius, radius * 2, radius * 2)) {
+      consider('zombie', `z:${z.x},${z.y}`, z.x, z.y);
+    }
+    for (const g of this.world.ghostsInRect(p.x - radius - 40, p.y - radius - 40, (radius + 40) * 2, (radius + 40) * 2)) {
+      if (g.temper !== 'hostile') continue;
+      const pos = ghostPos(g, this.time);
+      consider('ghost', `gh:${g.x},${g.y}`, pos.x, pos.y);
+    }
+    return out;
   }
 
-  /** The closest living hostile, or null. */
+  /** The closest living hostile ({kind, key, x, y, d}), or null. */
   nearestFoe() {
-    const p = this.person;
-    const near = this.hostilesNear(BATTLE_LEAVE);
     let best = null;
-    for (const z of near) {
-      const d = Math.hypot(z.x - p.x, z.y - p.y);
-      if (!best || d < best.d) best = { ...z, d };
+    for (const f of this.hostilesNear(BATTLE_LEAVE)) {
+      if (!best || f.d < best.d) best = f;
     }
     return best;
   }
@@ -1621,11 +2723,18 @@ export class Game {
     this.turn = 'you';
     this.round = 1;
     this.moveLeft = BATTLE_MOVE;
-    this.battleFoes = foes.map((z) => `z:${z.x},${z.y}`);
+    this.battleFoes = foes.map((f) => f.key);
     this.clearMoveTarget();
-    this.emit('battle-start');
+    this.emit(foes.some((f) => f.kind === 'minotaur') ? 'bellow' : 'battle-start');
     this.triggerGlitch(0.5);
-    this.announce(['SOMETHING IS CLOSE', 'TURN-BASED: ONE MOVE, ONE ACTION']);
+    const lead = foes[0]?.kind;
+    const line =
+      lead === 'minotaur'
+        ? 'SOMETHING RED IS PACING THIS WAY'
+        : lead === 'ghost'
+          ? 'THE STATIC HAS TEETH'
+          : 'SOMETHING IS CLOSE';
+    this.announce([line, 'TURN-BASED: ONE MOVE, ONE ACTION']);
   }
 
   endBattle(line = 'THE WOODS LET GO. YOU MOVE FREELY AGAIN') {
@@ -1633,26 +2742,40 @@ export class Game {
     this.turn = 'you';
     this.battleFoes = [];
     this.warded = false;
+    this.dazed = false; // thrown dirt does not carry to the next fight
     this.emit('battle-end');
     this.say(line);
   }
 
-  /** The battle action menu — your one action for the turn. */
+  /** The battle action menu — your one action for the turn, per foe. */
   openBattleMenu() {
     const foe = this.nearestFoe();
+    const kind = foe?.kind ?? 'zombie';
     const inReach = foe && foe.d <= ENCOUNTER_RADIUS;
+    const TITLES = {
+      zombie: inReach ? 'A ZOMBIE IS ON YOU' : 'IT SHAMBLES CLOSER',
+      ghost: inReach ? 'THE GHOST GLITCHES THROUGH YOU' : 'IT MOSHES CLOSER',
+      minotaur: inReach ? 'THE MINOTAUR TOWERS OVER YOU' : 'HE PACES CLOSER, HORNS LOW',
+    };
     this.openChoice({
       kind: 'battle',
       key: 'battle',
       x: this.person.x,
       y: this.person.y,
-      title: inReach ? 'A ZOMBIE IS ON YOU' : 'IT SHAMBLES CLOSER',
+      title: TITLES[kind],
       options: [
         // The first round still lets you try the friendly thing.
         ...(this.round <= 1 ? [{ id: 'befriend', label: 'TRY TO BEFRIEND IT' }] : []),
+        // The minotaur can be TALKED past — he is lost, not evil.
+        ...(kind === 'minotaur' ? [{ id: 'maze', label: 'ASK ABOUT THE MAZE' }] : []),
+        ...(kind === 'minotaur' ? [{ id: 'directions', label: 'OFFER DIRECTIONS' }] : []),
         ...(inReach ? [{ id: 'fists', label: 'ATTACK WITH FISTS' }] : []),
         ...(inReach && this.hasBone ? [{ id: 'bone', label: 'SWING THE BONE' }] : []),
+        ...(inReach && this.hasAxe ? [{ id: 'axe', label: 'SWING THE AXE' }] : []),
         ...(this.spells.length ? [{ id: 'cast', label: 'CAST A SPELL' }] : []),
+        { id: 'taunt', label: 'SHOUT SOMETHING BRAVE' },
+        { id: 'dirt', label: 'THROW DIRT IN ITS EYES' },
+        { id: 'study', label: 'STUDY ITS MOVEMENTS' },
         { id: 'wait', label: 'HOLD YOUR GROUND' },
       ],
     });
@@ -1662,33 +2785,362 @@ export class Game {
   endPlayerTurn() {
     if (this.mode !== 'turn') return;
     this.turn = 'foes';
-    const p = this.person;
-    for (const z of this.hostilesNear(ENCOUNTER_RADIUS)) {
+    const dazed = this.dazed;
+    this.dazed = false; // dirt only buys the one round, spent or not
+    for (const foe of this.hostilesNear(ENCOUNTER_RADIUS)) {
+      if (dazed) break; // their answer goes wide
       if (this.warded) {
         this.warded = false;
         this.emit('ward');
         this.say('THE WARD TAKES THE BITE FOR YOU');
         continue;
       }
-      this.emit('zombie');
-      const lethal = this.hp <= ZOMBIE_BITE;
-      this.damage(ZOMBIE_BITE);
+      const spec = FOES[foe.kind];
+      this.emit(foe.kind === 'minotaur' ? 'bellow' : foe.kind === 'ghost' ? 'ghost' : 'zombie');
+      const lethal = this.hp <= spec.dmg;
+      this.damage(spec.dmg);
+      if (foe.kind === 'ghost' && spec.steals && this.coins > 0) {
+        this.coins -= spec.steals;
+        this.say(`IT PASSES THROUGH YOU (-${spec.dmg} HP, -1 COIN)`);
+      } else if (foe.kind === 'minotaur') {
+        this.say(`THE HORNS FIND YOU (-${spec.dmg} HP)`);
+      } else if (!lethal) {
+        this.say(`IT BITES (-${spec.dmg} HP)`);
+      }
       if (lethal) {
         this.stats.int = Math.max(1, this.stats.int - 1);
         this.announce([
-          'IT TASTES A LITTLE OF YOUR BRAIN (-1 INT)',
+          foe.kind === 'minotaur' ? 'THE MAZE GOES DARK A MOMENT (-1 INT)' : 'IT TASTES A LITTLE OF YOUR BRAIN (-1 INT)',
           this.together ? 'THE DOG DRAGS YOU AWAY' : 'YOU WAKE ALONE, AND LIGHTER',
         ]);
-      } else {
-        this.say(`IT BITES (-${ZOMBIE_BITE} HP)`);
       }
       break; // one bite per round; the woods are not that cruel
     }
-    void p;
     this.turn = 'you';
     this.round++;
     this.moveLeft = BATTLE_MOVE;
     this.emit('turn');
+  }
+
+  /** A named interior spot's menu (the detective, the altar, the pegs...). */
+  openSpotMenu(kind, spot, key) {
+    const MENUS = {
+      detective: {
+        title: 'THE DETECTIVE LOOKS UP FROM THE DEVIL FILE',
+        options: [
+          { id: 'case', label: 'ASK ABOUT THE CASE' },
+          { id: 'tip', label: 'OFFER A TIP' },
+          { id: 'work', label: 'ASK FOR WORK' },
+          { id: 'town2', label: 'ASK ABOUT THE TOWN' },
+          { id: 'leave', label: 'LEAVE HIM TO IT' },
+        ],
+      },
+      corkboard: {
+        title: 'THE CORKBOARD. RED STRING EVERYWHERE',
+        options: [
+          { id: 'strings', label: 'FOLLOW THE STRINGS' },
+          { id: 'notes', label: 'READ THE NOTES' },
+          { id: 'pin', label: 'ADD A PIN' },
+          { id: 'step', label: 'STEP BACK' },
+        ],
+      },
+      altar: {
+        title: 'THE ALTAR, WARM AS NOON',
+        options: [
+          { id: 'pray', label: 'PRAY' },
+          { id: 'candle', label: 'LIGHT A CANDLE (1 COIN)' },
+          { id: 'cloth', label: 'READ THE ALTAR CLOTH' },
+          { id: 'step', label: 'STEP BACK' },
+        ],
+      },
+      pile: {
+        title: 'THE PILE OF GOD, INDOORS AT LAST',
+        options: [
+          { id: 'gold', label: 'ADD TO THE PILE OF GOD' },
+          { id: 'count', label: 'COUNT IT' },
+          { id: 'warm', label: 'WARM YOUR HANDS ON THE SHINE' },
+          { id: 'step', label: 'STEP BACK' },
+        ],
+      },
+      singer: {
+        title: 'A SINGER, MID-RAGA, MID-FOREVER',
+        options: [
+          { id: 'listen', label: 'LISTEN' },
+          { id: 'hum', label: 'HUM ALONG' },
+          { id: 'name', label: "ASK THE MELODY'S NAME" },
+          { id: 'step', label: 'LEAVE THEM TO IT' },
+        ],
+      },
+      wallaxe: {
+        title: this.hasAxe ? 'EMPTY PEGS ON THE WALL' : 'AN AXE HANGS ON THE WALL',
+        options: [
+          { id: 'take', label: this.hasAxe ? 'REMEMBER THE AXE' : 'TAKE THE AXE' },
+          { id: 'edge', label: 'TEST THE EDGE' },
+          { id: 'whose', label: 'ASK WHOSE IT WAS' },
+          { id: 'step', label: 'LEAVE IT' },
+        ],
+      },
+      stove: {
+        title: 'A COLD STOVE WITH ONE WARM COAL',
+        options: [
+          { id: 'warm', label: 'WARM YOURSELF' },
+          { id: 'grate', label: 'OPEN THE GRATE' },
+          { id: 'kettle', label: 'TOUCH THE KETTLE' },
+          { id: 'step', label: 'STEP BACK' },
+        ],
+      },
+      telescope: {
+        title: 'A BRASS TELESCOPE AIMED AT NOTHING',
+        options: [
+          { id: 'look', label: 'LOOK THROUGH IT' },
+          { id: 'moon', label: 'AIM IT AT THE MOON' },
+          { id: 'woods', label: 'AIM IT AT THE WOODS' },
+          { id: 'step', label: 'STEP AWAY' },
+        ],
+      },
+      portrait2: {
+        title: 'ANOTHER PORTRAIT. SAME EYES',
+        options: [
+          { id: 'look', label: 'LOOK CLOSER' },
+          { id: 'name', label: 'ASK ITS NAME' },
+          { id: 'frame', label: 'STRAIGHTEN THE FRAME' },
+          { id: 'away', label: 'LOOK AWAY' },
+        ],
+      },
+      bed: {
+        title: 'A BED NOBODY DIED IN. PROBABLY',
+        options: [
+          { id: 'lie', label: 'LIE DOWN A MOMENT' },
+          { id: 'under', label: 'CHECK UNDER IT' },
+          { id: 'covers', label: 'SMOOTH THE COVERS' },
+          { id: 'step', label: 'LEAVE IT MADE' },
+        ],
+      },
+    };
+    const menu = MENUS[spot.id];
+    if (!menu) return;
+    this.openChoice({ kind: `spot:${spot.id}`, key, x: this.person.x, y: this.person.y, title: menu.title, options: menu.options });
+    void kind;
+  }
+
+  /** Resolve an interior spot menu. Returns true when it handled the id. */
+  resolveSpot(c, id) {
+    const spot = c.kind.slice(5);
+    if (spot === 'detective') {
+      if (id === 'case') {
+        this.emit('typewriter');
+        this.announce([
+          'THE DEVIL SKIPPED BAIL, HE SAYS. BIG SURPRISE',
+          'WHERE IN THE DEVIL IS THE DEVIL? THAT IS THE CASE',
+          'EVERY LEAD BURNS. THAT IS USUALLY THE LEAD',
+        ]);
+      } else if (id === 'tip') {
+        if (!this.tippedDetective) {
+          this.tippedDetective = true;
+          this.gainCoins(3);
+          this.announce([
+            'YOU MENTION THE MANSION. THE ATTIC LIGHT. NOBODY HOME',
+            'HE WRITES IT DOWN SLOW, LIKE IT HURTS',
+            'GOOD TIP, HE SAYS. THE DEVIL ALWAYS LIKED A VIEW',
+          ]);
+        } else {
+          this.announce(['HE TAPS THE NOTEBOOK. ALREADY ON THE BOARD']);
+        }
+      } else if (id === 'work') {
+        this.announce([
+          'FIND ME ONE TRUE THING, HE SAYS',
+          'A TOWN FULL OF GHOSTS AND NOT ONE WITNESS',
+          'COME BACK WHEN YOU HAVE SEEN THE DEVIL. YOU WILL KNOW',
+        ]);
+      } else if (id === 'town2') {
+        this.announce([
+          'GOOD PEOPLE. THE BANK TOOK THE BUILDINGS. SOMETHING ELSE TOOK THE REST',
+          'ONLY PIRTS STAYED OPEN. SAYS A LOT ABOUT PIRTS',
+        ]);
+      }
+      return true;
+    }
+    if (spot === 'corkboard') {
+      if (id === 'strings') this.announce(['EVERY STRING LEADS TO A CARD THAT SAYS HIM', 'ONE STRING LEADS TO A MIRROR. YOU DECIDE NOT TO ASK']);
+      else if (id === 'notes') this.announce(['SIGHTING: THE ATTIC. SIGHTING: THE STATIC. SIGHTING: NONE', 'ONE NOTE JUST SAYS: CHECK HEAVEN? IN SHAKY PEN']);
+      else if (id === 'pin') this.announce(['YOU PIN NOTHING TO NOTHING', 'IT HELPS']);
+      return true;
+    }
+    if (spot === 'altar') {
+      if (id === 'pray') {
+        this.focus = this.maxFocus();
+        this.emit('pray');
+        this.announce(['YOU PRAY TO WHATEVER LISTENS. THE GOLD LISTENS', 'YOUR FOCUS RETURNS, ALL OF IT']);
+      } else if (id === 'candle') {
+        if (this.coins >= 1) {
+          this.coins -= 1;
+          this.heal(1);
+          this.emit('blessing');
+          this.announce(['ONE SMALL FLAME JOINS THE CHOIR (+1 HP)']);
+        } else {
+          this.announce(['NO COIN. THE CANDLES BURN FOR YOU ANYWAY, QUIETLY']);
+        }
+      } else if (id === 'cloth') {
+        this.announce(['THE CLOTH IS EMBROIDERED WITH EVERY NAME', 'YOURS IS IN THERE. SPELLED THE WAY YOUR DOG WOULD SPELL IT']);
+      }
+      return true;
+    }
+    if (spot === 'pile') {
+      if (id === 'gold') {
+        this.emit('gold');
+        this.goldGiven++;
+        this.announce(['YOU ADD WHAT YOU CAN TO THE PILE OF GOD', 'THEY MELT IT IN. THE SPIRE CLIMBS ONE COURSE HIGHER']);
+      } else if (id === 'count') {
+        this.announce(['ONE, TWO, MANY, MORE', 'YOU LOSE COUNT AT GOD']);
+      } else if (id === 'warm') {
+        this.announce(['THE SHINE IS WARM AS A HAND ON YOUR BACK']);
+      }
+      return true;
+    }
+    if (spot === 'singer') {
+      if (id === 'listen') {
+        this.focus = this.maxFocus();
+        this.emit('raga');
+        this.announce(['THE MELODY PASSES THROUGH YOU LIKE WEATHER', 'YOUR FOCUS RETURNS, ALL OF IT']);
+      } else if (id === 'hum') {
+        this.emit('raga');
+        this.announce(['YOU HUM. THE SINGER SMILES WITHOUT STOPPING', 'FOR FOUR NOTES, YOU ARE PART OF THE CHORD']);
+      } else if (id === 'name') {
+        this.announce(['IT IS YOUR NAME, SUNG SLOWLY', 'EVERYONE HEARS THEIR OWN']);
+      }
+      return true;
+    }
+    if (spot === 'wallaxe') {
+      if (id === 'take') {
+        if (this.hasAxe) {
+          this.announce(['THE PEGS REMEMBER AN AXE', 'SO DO YOU. IT IS ON YOUR BACK']);
+        } else {
+          this.hasAxe = true;
+          this.emit('chop');
+          this.announce(['YOU TAKE THE AXE. THE PEGS EXHALE', 'SOMEWHERE, A TREE SHIVERS ON PRINCIPLE']);
+        }
+      } else if (id === 'edge') {
+        this.announce(['SHARP. SOMEBODY LOVED THIS TOOL']);
+      } else if (id === 'whose') {
+        this.announce(['THE CABIN SAYS NOTHING', 'THE STOVE COAL GLOWS ONE SHADE WARMER']);
+      }
+      return true;
+    }
+    if (spot === 'stove') {
+      if (id === 'warm') {
+        const wk = `${this.mansionKey}:warmed`;
+        if (!this.encounterDone.has(wk)) {
+          this.encounterDone.add(wk);
+          this.heal(1);
+          this.announce(['THE COAL DOES ITS ONE KIND THING (+1 HP)']);
+        } else {
+          this.announce(['THE COAL IS SPENT FOR TONIGHT', 'IT GLOWS ANYWAY. FOR MORALE']);
+        }
+      } else if (id === 'grate') {
+        this.announce(['ASH, AND A BUTTON, AND HALF A LETTER', 'THE LETTER STOPS AT: I MEANT TO']);
+      } else if (id === 'kettle') {
+        this.announce(['STILL FAINTLY WARM', 'SOMEBODY LEFT MID-TEA. NOBODY LEAVES MID-TEA']);
+      }
+      return true;
+    }
+    if (spot === 'telescope') {
+      if (id === 'look') {
+        this.triggerGlitch(0.4);
+        this.announce(['IT IS AIMED AT AN ISLAND', 'THERE IS NO ISLAND IN THESE WOODS', 'THE ISLAND IS UP']);
+      } else if (id === 'moon') {
+        this.announce(['THE MOON, CLOSE ENOUGH TO TOUCH', 'IT HAS BEEN WATCHING YOU WALK THIS WHOLE TIME. FONDLY']);
+      } else if (id === 'woods') {
+        this.announce(['TREES, TREES, A GLINT OF WATER, TREES', 'AND ONE WINDOW, LIT, VERY FAR AWAY. YOURS?']);
+      }
+      return true;
+    }
+    if (spot === 'portrait2') {
+      if (id === 'look') {
+        this.triggerGlitch(0.4);
+        this.announce(['THE SAME FACE AS DOWNSTAIRS. YOUNGER', 'IT LOOKS SORRY ABOUT SOMETHING THAT HAS NOT HAPPENED YET']);
+      } else if (id === 'name') {
+        this.emit('clock');
+        this.announce(['YOU ASK. THE VARNISH CRACKS A LITTLE MORE', 'NO NAME. THE HOUSE ATE IT FIRST']);
+      } else if (id === 'frame') {
+        this.triggerGlitch(0.3);
+        this.announce(['YOU NUDGE IT LEVEL. IT WAS ALREADY LEVEL', 'NOW SOMETHING ELSE IN THE ROOM IS CROOKED']);
+      }
+      return true;
+    }
+    if (spot === 'bed') {
+      if (id === 'lie') {
+        const bk = `${this.mansionKey}:slept`;
+        if (!this.encounterDone.has(bk)) {
+          this.encounterDone.add(bk);
+          this.heal(2);
+          this.announce(['YOU LIE DOWN FOR EXACTLY ONE MINUTE (+2 HP)', 'THE CEILING HAS A WATER STAIN SHAPED LIKE A DOG']);
+        } else {
+          this.announce(['THE BED HAS GIVEN WHAT IT HAS TO GIVE TONIGHT']);
+        }
+      } else if (id === 'under') {
+        this.announce(['DUST, AND A SINGLE SLIPPER, WAITING', 'YOU LEAVE IT ITS DIGNITY']);
+      } else if (id === 'covers') {
+        this.announce(['YOU SMOOTH THEM. THE ROOM APPROVES', 'SOMEWHERE DOWNSTAIRS, THE CLOCK TICKS TWICE, PLEASED']);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  /** Pirts, the merchant ghost. Spirit spelled sideways. Mostly. */
+  openPirtsMenu(key, x, y) {
+    this.openChoice({
+      kind: 'pirts',
+      key,
+      x,
+      y,
+      title: `PIRTS, MERCHANT (DECEASED) - YOU HOLD ${this.coins} COIN${this.coins === 1 ? '' : 'S'}`,
+      options: [
+        { id: 'buy', label: 'SEE HIS WARES' },
+        { id: 'sell', label: 'SELL SOMETHING' },
+        { id: 'talk', label: 'TALK' },
+        { id: 'town', label: 'ASK ABOUT THE TOWN' },
+        { id: 'leave', label: 'LEAVE' },
+      ],
+    });
+  }
+
+  openPirtsBuy(key, x, y) {
+    this.openChoice({
+      kind: 'pirts-buy',
+      key,
+      x,
+      y,
+      title: `HIS WARES - YOU HOLD ${this.coins}`,
+      options: [
+        { id: 'draught', label: `HEAL DRAUGHT (+3 HP) - ${PRICES.draught}C` },
+        ...(this.hasAxe ? [] : [{ id: 'axe', label: `AXE - ${PRICES.axe}C` }]),
+        ...(this.hasRope ? [] : [{ id: 'rope', label: `ROPE - ${PRICES.rope}C` }]),
+        ...(this.hasManual ? [] : [{ id: 'manual', label: `HOW TO BUILD A BOAT - ${PRICES.manual}C` }]),
+        { id: 'haggle', label: 'HAGGLE' },
+        { id: 'good', label: 'ASK WHAT IS GOOD' },
+        { id: 'back', label: 'BACK' },
+      ],
+    });
+  }
+
+  openPirtsSell(key, x, y) {
+    this.openChoice({
+      kind: 'pirts-sell',
+      key,
+      x,
+      y,
+      title: `HE BUYS - YOU HOLD ${this.coins}`,
+      options: [
+        ...(this.boneMeat ? [{ id: 'meat', label: `THE MEAT - ${SELLS.meat}C` }] : []),
+        ...(this.hasBone ? [{ id: 'bone', label: `THE BONE - ${SELLS.bone}C` }] : []),
+        ...(this.wood > 0 ? [{ id: 'wood', label: `A PLANK - ${SELLS.wood}C (${this.wood} HELD)` }] : []),
+        { id: 'story', label: 'SELL YOUR STORY' },
+        { id: 'what', label: 'ASK WHAT HE BUYS' },
+        { id: 'pockets', label: 'TURN OUT YOUR POCKETS' },
+        { id: 'back', label: 'BACK' },
+      ],
+    });
   }
 
   /** The zombie fight menu (options depend on what you're carrying). */
@@ -1703,25 +3155,47 @@ export class Game {
         { id: 'befriend', label: 'TRY TO BEFRIEND IT' },
         { id: 'fists', label: 'ATTACK WITH FISTS' },
         ...(this.hasBone ? [{ id: 'bone', label: 'SWING THE BONE' }] : []),
+        { id: 'shamble', label: 'SHAMBLE ALONGSIDE IT' },
         { id: 'run', label: 'RUN AWAY' },
       ],
     };
   }
 
   resolveZombie(c, id) {
+    if (id === 'shamble') {
+      // Resolves like RUN, but sadder: two tired things, one night.
+      this.emit('zombie');
+      this.announce(['YOU MATCH ITS SWAY. TWO TIRED THINGS, ONE NIGHT', 'IT FORGETS WHICH OF YOU IS DINNER']);
+      return;
+    }
     if (id === 'run') return; // it is not fast. the cooldown covers your exit.
-    const hp = this.zombieHp.get(c.key) ?? ZOMBIE_HP;
+    const kind = c.foe ?? 'zombie';
+    const spec = FOES[kind];
+    const hp = this.zombieHp.get(c.key) ?? spec.hp;
 
     if (id === 'befriend') {
-      this.announce(['THE ZOMBIE DOES NOT WANT FRIENDS']);
+      this.announce([
+        kind === 'minotaur'
+          ? 'HE DOES NOT HEAR YOU OVER THE MAZE'
+          : kind === 'ghost'
+            ? 'IT GLITCHES THROUGH YOUR OUTSTRETCHED HAND'
+            : 'THE ZOMBIE DOES NOT WANT FRIENDS',
+      ]);
       this.zombieBites(c);
       return;
     }
 
-    const weapon = id === 'bone' && this.hasBone;
+    const weapon = id === 'bone' && this.hasBone ? 'bone' : id === 'axe' && this.hasAxe ? 'axe' : null;
     const r = this.check('str');
-    const dc = weapon ? DC_BONE : DC_FISTS;
-    const dmg = weapon ? this.boneDamage() : this.fistDamage();
+    const dc = weapon === 'bone' ? DC_BONE : weapon === 'axe' ? DC_AXE : DC_FISTS;
+    const dmg =
+      weapon === 'bone' ? this.boneDamage() : weapon === 'axe' ? this.fistDamage() + 2 : this.fistDamage();
+    const DIES = {
+      zombie: 'THE ZOMBIE CRUMBLES. THE FOREST EXHALES',
+      ghost: 'THE SIGNAL DROPS FOR GOOD. IT LOOKS RELIEVED',
+      minotaur: 'THE MINOTAUR KNEELS. THE MAZE, AT LAST, HAS AN EXIT',
+    };
+    const LOOT = { zombie: 1, ghost: 2, minotaur: 5 };
     if (r.total >= dc) {
       if (dmg <= 0) {
         // A STR-3 punch lands and accomplishes nothing. No bite either —
@@ -1732,21 +3206,22 @@ export class Game {
         return;
       }
       const left = hp - dmg;
-      if (weapon) this.emit('bonk');
+      if (weapon) this.emit(weapon === 'bone' ? 'bonk' : 'chop');
       if (left <= 0) {
         this.encounterDone.add(c.key);
         this.zombieHp.delete(c.key);
         this.emit('vanish');
         this.triggerGlitch(0.4);
         this.announce([
-          `${this.rollText(r)} - ${weapon ? 'BONK! THE BONE RINGS TRUE' : 'YOU LAND ONE'}`,
-          'THE ZOMBIE CRUMBLES. THE FOREST EXHALES',
+          `${this.rollText(r)} - ${weapon ? (weapon === 'bone' ? 'BONK! THE BONE RINGS TRUE' : 'THE AXE REMEMBERS ITS FIRST JOB') : 'YOU LAND ONE'}`,
+          DIES[kind],
         ]);
-        this.gainXp(XP_ZOMBIE);
+        this.gainXp(spec.xp);
+        this.gainCoins(LOOT[kind]);
         if (this.mode === 'turn') this.endPlayerTurn();
       } else {
         this.zombieHp.set(c.key, left);
-        this.announce([`${this.rollText(r)} - ${weapon ? 'BONK! IT STAGGERS' : 'YOU LAND ONE. IT STAGGERS'}`]);
+        this.announce([`${this.rollText(r)} - ${weapon ? (weapon === 'bone' ? 'BONK! IT STAGGERS' : 'THE AXE BITES. IT STAGGERS') : 'YOU LAND ONE. IT STAGGERS'}`]);
         if (this.mode === 'turn') this.endPlayerTurn();
         else this.openChoice(this.zombieMenu(c.key, c.x, c.y));
       }
@@ -1767,7 +3242,8 @@ export class Game {
       // off — stamped on the ZOMBIE explicitly, since a sheet-launched attack
       // otherwise leaves the slot on the detail window and the fight would
       // force-reopen over your unconscious body.
-      this.choiceCooldown = { key: c.key, x: c.x, y: c.y };
+      this.choiceCooldown = { key: c.key, x: this.person.x, y: this.person.y };
+      this.cooldownKeys.add(c.key);
       this.stats.int = Math.max(1, this.stats.int - 1);
       this.announce([
         'IT TASTES A LITTLE OF YOUR BRAIN (-1 INT)',

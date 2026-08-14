@@ -4,6 +4,68 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.20.0] - 2026-08-14
+
+### Added
+- **Heaven has geography now.** Beyond the golden grasslands: desert,
+  forest, beach, glacier — and an island region across open water,
+  reachable by swimming (heaven's water is warm and passable, at 0.45x
+  walking speed) or by boat (1.25x — she knows the way). Night water is
+  still a wall. Fixed heaven landmarks: the island holds a shrine (one
+  coin buys the islander's calm — +2 max focus, always), and one region
+  holds God.
+- **God is a cricket.** Hand-painted signs scattered across heaven
+  point the way — to a lake shore in a redwood grove where God exists,
+  chirps, and is occasionally menaced by frogs on lilypads. Meeting God
+  is a one-shot story beat (+3 XP); the audience menu offers the big
+  question, confession, sitting a while (full focus), and shooing the
+  frogs. God did not need the help. God appreciates it anyway.
+- **The red minotaur.** Rarely (one region in ~53), heaven holds a
+  dangerous red minotaur pacing a slow lissajous around his den — he is
+  the maze of this life and he cannot find the way out. 8 HP, hits for
+  3 (a lethal hit costs 1 INT); killing him works (5 XP, 5 coins), but
+  OFFER DIRECTIONS (WIS vs DC 13) ends it kindly: he wanders on,
+  lighter, still lost, less alone.
+- **A deserted ghost town** haunts the night's grass and oak regions:
+  ruined facades, a leaning sign, and ghosts that glitch and datamosh
+  in and out of existence — drifting, sullen, or hostile (hostile ones
+  fight, pass through you for 1 damage, and steal a coin each hit).
+  Pirts, the merchant ghost (spirit spelled sideways, mostly), buys and
+  sells: heal draught 3c, axe 8c, rope 2c, HOW TO BUILD A BOAT 12c;
+  he pays for meat, bones, planks, and (once) your story. He has jokes.
+  He banks the courtesy laugh.
+- **The bail-bonds office** on the town's outskirts: a hard-boiled
+  detective works the case of where in the devil the Devil is. Ask
+  about the case, the town, or work; a good tip pays 3 coins, once.
+  His corkboard's red strings all lead to a card that says HIM.
+- **Walkable interiors, generalized.** The mansion's upstairs is open
+  at last (the lock rusted through): bedroom, another portrait, and a
+  brass telescope aimed at an island that is not in these woods. The
+  cathedral nave (altar, the pile of god, the singers), the cabin's one
+  room (an axe on the wall pegs, a stove with one warm coal), and the
+  office all walk like the mansion does, with named spots that open
+  menus.
+- **An economy.** Coins drop from foes (zombie 1, ghost 2, minotaur 5),
+  dumpster searches (+2), and Pirts; planks come from CHOP (axe + tree
+  in reach, STR vs DC 8 — up to 3 planks on a 14+). BUILD THE BOAT
+  wants 24 planks, the rope, the manual, and a shoreline. Weight got
+  heavier: wood 1 lb, axe 6, rope 2, manual 1. The sheet grid grew
+  coin/wood/axe/rope/manual/boat icons with their own detail windows.
+- **Every situation now offers at least four options.** The audit
+  round: warm your hands at the dumpster (+1 HP, once per fire), stare
+  back at the cat (he stays), polish the lamp (+1 on the next rub) or
+  hold it to your ear, tap out the pipe's ash, ask the portrait its
+  name, turn the television down, wish for nothing (+1 focus), sniff
+  the bone first, shamble alongside the zombie, and JUST BREATHE — the
+  cheapest spell, and still nobody casts it. Battle gained SHOUT
+  SOMETHING BRAVE and THROW DIRT IN ITS EYES (DEX vs DC 10: their
+  answer goes wide for a round) so even out of reach, out of spells,
+  past round one, you hold four choices.
+- **Fourteen new sounds** (coin, buy, sell, chop, splash, sail, chirp,
+  frog, bellow, ghost, sign, typewriter, pray, squeak) mapped from the
+  8bit-sfx rpg catalog, and true-red BLOOD palette ramps in both planes
+  for the minotaur and the corkboard strings.
+
 ## [0.19.0] - 2026-08-14
 
 ### Changed
