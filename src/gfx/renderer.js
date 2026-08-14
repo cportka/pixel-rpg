@@ -363,6 +363,42 @@ export class Renderer {
   }
 
   /** Map a point on the 320x200 screen to world coordinates. */
+  /**
+   * The neon outline for whatever the pointer rests on (soft pulse) or the
+   * person is walking over to talk to (hot pulse). Drawn on the ground
+   * layer so the sprite sits on its own glow.
+   */
+  drawInteractGlow(game, viewX, viewY) {
+    const ctx = this.ctx;
+    const targets = [];
+    if (game.pendingInteract) targets.push({ t: game.pendingInteract, hot: true });
+    if (
+      game.hover &&
+      !game.choice &&
+      game.hover.key !== game.pendingInteract?.key
+    ) {
+      targets.push({ t: game.hover, hot: false });
+    }
+    for (const { t, hot } of targets) {
+      const gx = t.x - viewX;
+      const gy = t.y - viewY;
+      if (gx < -40 || gy < -40 || gx > SCREEN_W + 40 || gy > SCREEN_H + 40) continue;
+      const pulse = 0.5 + 0.5 * Math.sin(game.time * (hot ? 7 : 4.5));
+      const r = (t.r ?? 14) + 2 + pulse * 3;
+      const steps = Math.max(26, Math.round(r * 2.4));
+      ctx.fillStyle = hot ? PALETTE.hotRose : PALETTE.magenta;
+      for (let i = 0; i < steps; i++) {
+        if (!hot && pulse < 0.55 && i % 2 === 1) continue; // the dim phase dithers
+        const a = (i / steps) * Math.PI * 2;
+        ctx.fillRect(Math.round(gx + Math.cos(a) * r), Math.round(gy + Math.sin(a) * r * 0.55), 1, 1);
+      }
+      if (pulse > 0.8) {
+        ctx.fillStyle = PALETTE.orchid; // a crest shimmer above the ring
+        ctx.fillRect(Math.round(gx), Math.round(gy - Math.round(r * 0.55) - 3), 1, 1);
+      }
+    }
+  }
+
   screenToWorld(sx, sy) {
     const viewX = this.lastViewX ?? this.camX - SCREEN_W / 2;
     const viewY = this.lastViewY ?? this.camY - SCREEN_H / 2;
@@ -675,6 +711,9 @@ export class Renderer {
         ctx.fillRect(mx + p.x, my + p.y, 1, 1);
       }
     }
+
+    // v0.21: interactables glow and pulse under the pointer / while walked to.
+    this.drawInteractGlow(game, viewX, viewY);
 
     // The leash runs under the characters but over the ground.
     if (game.leashActive()) this.drawLeash(game, viewX, viewY);
@@ -1279,6 +1318,8 @@ export class Renderer {
       }
     }
 
+    this.drawInteractGlow(game, viewX, viewY); // the portrait / television pulse
+
     if (game.caption) {
       const a = game.activeChar;
       this.drawCaption(
@@ -1530,6 +1571,8 @@ export class Renderer {
     }
     drawables.sort((a, b) => a.y - b.y);
     for (const d of drawables) d.draw();
+
+    this.drawInteractGlow(game, viewX, viewY); // named spots pulse when hovered
 
     if (game.caption) {
       const a = game.activeChar;

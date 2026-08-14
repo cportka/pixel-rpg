@@ -17,30 +17,38 @@
 // whole stride, it does not swap sides every half-cycle. Standing still has
 // its own two-frame sway, so the person is never a statue. The dog keeps its
 // 2-frame trot. All maps are authored facing right, flipped at draw.
+//
+// This pass redrew the DRAWINGS Secret-of-Mana style (the frame architecture
+// above is unchanged): rounder skull and shoulders, a real counter-swinging
+// pair of arms that open wide on contact, tuck on the down beat and brush the
+// torso on the pass, a lead leg that heel-strikes with the toe up, a trailing
+// leg that pushes off its toe, and hair follow-through that lags the body by
+// a beat — streaming flat on contact, still floating UP one row on the down
+// beat while the body has already dropped, settled again by the pass.
 
 /** Mirror a frame's body while keeping rows above hairEnd (head, hair) as-is. */
 const mirrorBody = (map, hairEnd) =>
   map.map((row, y) => (y < hairEnd ? row : [...row].reverse().join('')));
 
-// Standing: contrapposto — weight settled, arms hanging long and a little
-// free of the body, the hair swept back off the brow.
+// Standing: contrapposto — a round anime skull under the swept-back fall of
+// hair, sloped shoulders, both 2px arms hanging a breath away from the torso.
 const PERSON_STAND = [
-  '.....XXXXX....',
-  '...XXXXXXXX...',
+  '....XXXXXX....',
+  '..XXXXXXXXX...',
+  '.XXXXXXXXXX...',
+  '.XXXXXXXXXX...',
   '..XXXXXXXXX...',
   '...XXXXXXXX...',
-  '....XXXXXXX...',
-  '....XXXXXX....',
-  '.....XXXX.....',
+  '...XXXXXXX....',
+  '....XXXXX.....',
   '......XX......',
   '....XXXXXX....',
   '...XXXXXXXX...',
+  '..XX.XXXX.XX..',
+  '..XX.XXXX.XX..',
+  '..XX.XXXX.XX..',
+  '..XX.XXXX.XX..',
   '...X.XXXX.X...',
-  '...X.XXXX.X...',
-  '...X.XXXX.X...',
-  '...X.XXXX.X...',
-  '...X.XXXX.X...',
-  '.....XXXX.....',
   '.....XXXX.....',
   '.....XXXX.....',
   '.....XX.XX....',
@@ -59,24 +67,25 @@ const PERSON_STAND = [
   '....XXX.XXX...',
 ];
 
-// The idle sway: the head drifts a pixel, one arm floats out — a breath.
+// The idle sway: the head drifts a pixel moonward, one arm floats out — a
+// breath, not a step.
 const PERSON_SWAY = [
-  '......XXXXX...',
-  '....XXXXXXXX..',
+  '.....XXXXXX...',
+  '...XXXXXXXXX..',
+  '..XXXXXXXXXX..',
+  '..XXXXXXXXXX..',
   '...XXXXXXXXX..',
   '....XXXXXXXX..',
-  '.....XXXXXXX..',
-  '.....XXXXXX...',
-  '......XXXX....',
+  '....XXXXXXX...',
+  '.....XXXXX....',
   '......XX......',
   '....XXXXXX....',
   '...XXXXXXXX...',
-  '...X.XXXX.X...',
-  '...X.XXXX.X...',
+  '..XX.XXXX.XX..',
+  '..XX.XXXX.XX..',
+  '..XX.XXXX..XX.',
+  '..XX.XXXX..XX.',
   '...X.XXXX..X..',
-  '...X.XXXX..X..',
-  '...X.XXXX..X..',
-  '.....XXXX.....',
   '.....XXXX.....',
   '.....XXXX.....',
   '.....XX.XX....',
@@ -95,103 +104,107 @@ const PERSON_SWAY = [
   '....XXX.XXX...',
 ];
 
-// Contact: the wide beat — both feet planted far apart, arms counter-swung
-// long, the hair streaming back, the whole figure sunk one row.
+// Contact: the wide beat, sunk one row. The lead leg is straight out front,
+// heel striking with the toe kicked up; the trailing leg is at full push-off,
+// only its toe still on the ground. The arms counter-swing OPEN — one flung
+// forward, one back — and the hair streams flat behind the tilted head.
 const PERSON_CONTACT_A = [
   '..............',
   '.....XXXXX....',
   '..XXXXXXXXX...',
   '.XXXXXXXXXX...',
-  '....XXXXXXX...',
+  '.XXXXXXXXXXX..',
+  '...XXXXXXXXX..',
+  '....XXXXXXXX..',
   '.....XXXXXX...',
-  '.....XXXXX....',
-  '......XXX.....',
+  '......XXXX....',
   '.......XX.....',
   '.....XXXXXX...',
   '....XXXXXXXX..',
-  '...X..XXXX.X..',
-  '..X...XXXX..X.',
-  '..X...XXXX..X.',
-  '...X..XXXX..X.',
+  '...XX.XXXX.XX.',
+  '..XX..XXXX..XX',
+  '..XX..XXXX..XX',
+  '...X..XXXX...X',
   '......XXXX....',
-  '......XXXX....',
-  '......XXXX....',
-  '.....XXX.XX...',
-  '....XXX..XXX..',
-  '....XX....XX..',
-  '...XXX....XXX.',
-  '...XX......XX.',
-  '..XXX......XXX',
-  '..XX........XX',
-  '.XXX........XX',
-  '.XX.........XX',
-  '.XX.........XX',
-  'XXX.........XX',
-  'XX..........XX',
-  'XX..........XX',
-  'XXX........XXX',
-];
-
-// Down: the deep beat of the bounce — the body drops two more rows and the
-// legs recoil under it. This frame is what makes the walk springy.
-const PERSON_DOWN_A = [
-  '..............',
-  '..............',
-  '..............',
   '.....XXXXX....',
-  '...XXXXXXXX...',
-  '..XXXXXXXXX...',
-  '...XXXXXXXX...',
-  '....XXXXXXX...',
-  '.....XXXXX....',
-  '......XXX.....',
-  '.......XX.....',
-  '.....XXXXXX...',
-  '....XXXXXXXX..',
-  '....X.XXXX.X..',
-  '....X.XXXX.X..',
-  '....X.XXXX.X..',
-  '......XXXX....',
-  '......XXXX....',
-  '......XXXX....',
   '.....XXX.XX...',
-  '.....XX..XX...',
-  '....XXX..XXX..',
-  '....XX....XX..',
+  '....XXX..XX...',
   '....XX....XX..',
   '...XXX....XX..',
   '...XX.....XXX.',
-  '...XX......XX.',
-  '...XX......XX.',
-  '...XX......XX.',
-  '...XX......XX.',
-  '..XXX......XX.',
   '..XXX.....XXX.',
+  '..XX.......XX.',
+  '..XX.......XXX',
+  '.XXX.......XXX',
+  '.XX........XX.',
+  '.XX........XX.',
+  '.XX........XXX',
+  'XXX........XXX',
+  'XX.........XXX',
 ];
 
-// Pass: the tall beat — planted leg straight under the hips, the trailing
-// foot flicked up behind, the figure at full stretch.
-const PERSON_PASS_A = [
+// Down: the deep beat of the bounce — the body has dropped two more rows and
+// the legs recoil under it, both knees bent, arms tucked in mid-swing. The
+// hair LAGS the drop: its tip still floats one row above the crown while the
+// rest of the figure is already compressed. This frame is the spring.
+const PERSON_DOWN_A = [
+  '..............',
+  '..............',
+  '..XX..........',
+  '.XXXXXXXXX....',
+  '.XXXXXXXXXX...',
+  '..XXXXXXXXXX..',
+  '...XXXXXXXXX..',
+  '....XXXXXXXX..',
+  '....XXXXXXX...',
+  '.....XXXXXX...',
+  '......XXXX....',
+  '.......XX.....',
+  '.....XXXXXX...',
+  '....XXXXXXXX..',
+  '....X.XXXX.X..',
+  '....X.XXXX.X..',
+  '....X.XXXX.X..',
+  '....X.XXXX.X..',
   '.....XXXXX....',
-  '...XXXXXXXX...',
+  '....XXX.XXX...',
+  '....XX...XXX..',
+  '...XXX...XXX..',
+  '...XX.....XX..',
+  '...XX.....XX..',
+  '...XX.....XX..',
+  '..XXX.....XX..',
+  '..XX......XX..',
+  '..XX......XX..',
+  '..XX......XX..',
+  '..XX......XX..',
+  '..XX......XXX.',
+  '.XXX......XXXX',
+];
+
+// Pass: the tall beat — hair settled, planted leg straight under the hips
+// with its foot flat and long, the trailing leg folded behind with the foot
+// flicked up at calf height, the arms brushing past the torso mid-swing.
+const PERSON_PASS_A = [
+  '....XXXXXX....',
+  '..XXXXXXXXX...',
+  '.XXXXXXXXXX...',
+  '.XXXXXXXXXX...',
   '..XXXXXXXXX...',
   '...XXXXXXXX...',
-  '....XXXXXXX...',
-  '....XXXXXX....',
-  '.....XXXX.....',
+  '...XXXXXXX....',
+  '....XXXXX.....',
   '......XX......',
   '....XXXXXX....',
   '...XXXXXXXX...',
-  '...X.XXXX.X...',
-  '...X.XXXX.X...',
-  '...X.XXXX.X...',
-  '...X.XXXX.X...',
-  '.....XXXX.....',
-  '.....XXXX.....',
-  '.....XXXX.....',
-  '.....XXXX.....',
+  '...XX.XXXX.X..',
+  '...XX.XXXX.XX.',
+  '....X.XXXX.XX.',
+  '....X.XXXX.X..',
+  '......XXXX....',
+  '.....XXXXX....',
+  '.....XX.XX....',
   '....XXX.XX....',
-  '....XX..XX....',
   '...XXX..XX....',
   '...XX...XX....',
   '..XXX...XX....',
@@ -203,12 +216,13 @@ const PERSON_PASS_A = [
   '........XX....',
   '........XX....',
   '........XX....',
-  '.......XXXX...',
+  '........XXX...',
+  '.......XXXXX..',
 ];
 
 // Where each frame's un-mirrored zone ends (hair + head + neck rows): the
 // body below mirrors for the B half-cycle, the hair above does not.
-const HAIR_END = { contact: 9, down: 11, pass: 8 };
+const HAIR_END = { contact: 10, down: 12, pass: 9 };
 
 export const PERSON_FRAMES = {
   stand: PERSON_STAND,
@@ -221,57 +235,63 @@ export const PERSON_FRAMES = {
   passB: mirrorBody(PERSON_PASS_A, HAIR_END.pass),
 };
 
+// The dog got the same polish pass: a tighter silhouette (2-3px legs with
+// daylight between the pairs, a belly tuck at the rear, a raised muzzle),
+// and the trot now carries an ear-and-tail flick — tail whipped high with
+// the ear blown back on the stretched A beat, tail level and ear pricked
+// forward on the gathered B beat.
 export const DOG_FRAMES = {
-  // Standing: tail up at the left, head and pricked ear raised at the right.
+  // Standing: tail curled up at the left, head and pricked ear at the right.
   stand: [
     '..............XX...',
-    '.............XXXX..',
-    'X............XXXXX.',
-    'XX..........XXXXXXX',
-    '.XX.........XXXXXXX',
-    '..XXXXXXXXXXXXXXXXX',
+    '.X...........XXX...',
+    '.XX..........XXXX..',
+    '..XX.........XXXXX.',
+    '..XX........XXXXXXX',
+    '...XXXXXXXXXXXXXXXX',
     '..XXXXXXXXXXXXXXXX.',
-    '..XXXXXXXXXXXXXXXX.',
-    '..XXXXXXXXXXXXXXX..',
     '..XXXXXXXXXXXXXX...',
-    '..XXX.....XXXX.....',
-    '..XXX.....XXXX.....',
-    '..XXX.....XXXX.....',
-    '..XXX.....XXXX.....',
+    '..XXXXXXXXXXXXXX...',
+    '...XXXXXXXXXXXXX...',
+    '...XXX....XXX......',
+    '...XXX....XXX......',
+    '...XX......XX......',
+    '...XX......XX......',
   ],
-  // Trot A: legs split fore and aft.
+  // Trot A: legs split fore and aft, body stretched long, tail flicked high,
+  // ear blown back.
   walkA: [
-    '..............XX...',
-    '.............XXXX..',
-    'X............XXXXX.',
-    'XX..........XXXXXXX',
-    '.XX.........XXXXXXX',
-    '..XXXXXXXXXXXXXXXXX',
+    '.X...........XX....',
+    '.XX..........XXX...',
+    '..XX.........XXXX..',
+    '..XX.........XXXXX.',
+    '..XX........XXXXXXX',
+    '...XXXXXXXXXXXXXXXX',
     '..XXXXXXXXXXXXXXXX.',
-    '..XXXXXXXXXXXXXXXX.',
+    '..XXXXXXXXXXXXXX...',
+    '..XXXXXXXXXXXXXX...',
     '..XXXXXXXXXXXXXXX..',
-    '.XXXXXXXXXXXXXXX...',
-    '.XXX........XXXX...',
-    'XXX..........XXXX..',
-    'XX............XXXX.',
+    '..XXX.......XXXX...',
+    '.XXX.........XXXX..',
+    '.XX...........XXX..',
     'XX.............XXX.',
   ],
-  // Trot B: legs gathered under the body.
+  // Trot B: legs gathered under the body, tail level, ear pricked forward.
   walkB: [
-    '..............XX...',
-    '.............XXXX..',
-    'X............XXXXX.',
-    'XX..........XXXXXXX',
-    '.XX.........XXXXXXX',
-    '..XXXXXXXXXXXXXXXXX',
+    '...............XX..',
+    '..............XXX..',
+    '.X...........XXXX..',
+    '.XXX.........XXXXX.',
+    '..XX........XXXXXXX',
+    '...XXXXXXXXXXXXXXXX',
     '..XXXXXXXXXXXXXXXX.',
-    '..XXXXXXXXXXXXXXXX.',
-    '..XXXXXXXXXXXXXXX..',
     '..XXXXXXXXXXXXXX...',
-    '...XXX...XXXX......',
-    '...XXX...XXXX......',
-    '....XX...XXX.......',
-    '....XX...XXX.......',
+    '..XXXXXXXXXXXXXX...',
+    '...XXXXXXXXXXXXX...',
+    '....XXX...XXXX.....',
+    '....XXX...XXX......',
+    '.....XX...XXX......',
+    '.....XX...XX.......',
   ],
 };
 

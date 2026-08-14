@@ -68,8 +68,8 @@ test('everyone begins the universe at 2 across the board, level 1, no XP', () =>
   assert.equal(g.xp, 0);
   assert.equal(g.statPoints, 0);
   assert.equal(g.mod('str'), -4, 'a 2 is a -4');
-  assert.equal(g.fistDamage(), 0, 'feeble fists');
-  assert.equal(g.boneDamage(), 1, 'the club always does something');
+  assert.equal(g.fistDamage(), 1, 'v0.21: even feeble fists land one');
+  assert.equal(g.boneDamage(), 2, 'the club adds one on top');
   assert.equal(g.carryCapacity(), START_STAT * 10 + START_STAT * 20, '60 lbs to start');
 });
 
@@ -505,7 +505,7 @@ test('INT can never be eaten below 1', () => {
 
 test('fist damage is floor(STR / 4); the bone adds one', () => {
   const g = flatGame();
-  for (const [str, fists] of [[3, 0], [10, 2], [12, 3], [16, 4], [18, 4]]) {
+  for (const [str, fists] of [[3, 1], [10, 2], [12, 3], [16, 4], [18, 4]]) {
     g.stats.str = str;
     assert.equal(g.fistDamage(), fists, `STR ${str}`);
     assert.equal(g.boneDamage(), fists + 1, `STR ${str} + club`);
@@ -523,15 +523,15 @@ test('a mighty punch drops the zombie in one (STR 16 = 4 damage)', () => {
   assert.equal(g.choice, null);
 });
 
-test('a feeble hit bounces off harmlessly — but the zombie still gets its turn', () => {
+test('the weakest fists still land one — and the zombie still answers', () => {
   const g = zombieGame();
   const key = g.zombieKey;
-  g.stats.str = 3; // -4 to hit, 0 damage
+  g.stats.str = 3; // -4 to hit, min 1 damage (v0.21)
   g.hp = 9;
-  g.rng = () => 0.99; // roll 20, -4 = 16: still a hit
+  g.rng = () => 0.99; // roll 20, -4 = 16: a hit
   g.resolveChoice('fists');
-  assert.equal(g.caption.text, 'D20: 20-4 - YOUR FISTS BOUNCE OFF HARMLESSLY');
-  assert.equal(g.zombieHp.get(key) ?? ZOMBIE_HP, ZOMBIE_HP, 'unhurt');
+  assert.equal(g.caption.text, 'D20: 20-4 - YOU LAND ONE. IT STAGGERS');
+  assert.equal(g.zombieHp.get(key), ZOMBIE_HP - 1, 'never zero damage now');
   assert.equal(g.hp, 9 - ZOMBIE_BITE, 'turn-based means it always answers');
   assert.equal(g.mode, 'turn', 'the standoff continues');
 });

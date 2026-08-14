@@ -37,8 +37,13 @@ function encounterGame(kind, x = 40, y = 0) {
 }
 
 function walkUntilChoice(g, seconds = 6) {
+  // v0.21: menus open on interaction, not proximity — walk toward the
+  // feature and keep offering to talk (the action key's path).
   const steps = Math.ceil(seconds / STEP);
-  for (let i = 0; i < steps && !g.choice; i++) g.update(STEP, { right: true });
+  for (let i = 0; i < steps && !g.choice; i++) {
+    g.update(STEP, { right: true });
+    if (!g.choice) g.interactNearest();
+  }
   return g.choice;
 }
 
@@ -165,7 +170,7 @@ test('walking up to a burning dumpster opens the choice menu and freezes the wal
   assert.ok(choice, 'menu opened');
   assert.equal(choice.kind, 'dumpster');
   assert.equal(choice.title, 'A DUMPSTER BURNS IN THE DARK');
-  assert.equal(choice.options.length, 4);
+  assert.equal(choice.options.length, 5); // v0.21 adds POCKET THE FIRE
   const px = g.person.x;
   g.update(STEP, { right: true });
   assert.equal(g.person.x, px, 'movement frozen while the menu is open');

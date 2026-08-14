@@ -136,8 +136,8 @@ nearby 5×5 of regions as you last saw them — each landmark as its own
 pictogram, a bending river, planks across it, a gabled cabin with one lit
 window, a taller mansion with two and an open door, a cave mouth with a
 glint — sharp for a minute or two, dithering away over minutes until only
-the barest outline remains. Zelda-overworld style, but sparser. The full
-remembered map is the map pause screen, same glyphs, with a legend.
+the barest outline remains. The full remembered map is the map pause
+screen, same glyphs, with a legend.
 Everything makes a soft 8-bit sound, synthesized on demand by
 [`8bit-sfx`](https://www.npmjs.com/package/8bit-sfx) 1.0.0: footsteps pace
 with the stride, captions blip like retro dialog, dice rattle, the genie

@@ -61,7 +61,7 @@ const enc = params.get('enc');
 if (enc === 'dumpster' || enc === 'cat' || enc === 'lamp' || enc === 'pipe' || enc === 'zombie') {
   const field = { dumpster: 'dumpsters', cat: 'cats', lamp: 'lamps', pipe: 'pipes', zombie: 'zombies' }[enc];
   game.world.chunkAt(0, 0)[field].push({ x: 22, y: 4, phase: 0 });
-  game.checkEncounters();
+  game.interactNearest(); // v0.21: encounters open by interaction, not ambush
 }
 
 
@@ -169,9 +169,29 @@ canvas.addEventListener('pointerdown', (e) => {
   } else {
     lastSelfTap = 0;
   }
+  // v0.21: a tap on an interactable talks to it (walking over if needed);
+  // anywhere else is plain tap-to-move.
+  if (game.interactAt(w.x, w.y)) return;
   game.setMoveTarget(w.x, w.y);
 });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Hovering an interactable makes it glow (mouse only — touch has no hover).
+canvas.addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'mouse') return;
+  if (renderer.lastLocation !== game.location) {
+    game.hover = null;
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const sx = ((e.clientX - rect.left) / rect.width) * SCREEN_W;
+  const sy = ((e.clientY - rect.top) / rect.height) * SCREEN_H;
+  const w = renderer.screenToWorld(sx, sy);
+  game.hover = game.choice ? null : game.interactableAt(w.x, w.y);
+});
+canvas.addEventListener('pointerleave', () => {
+  game.hover = null;
+});
 
 function inputState() {
   return {

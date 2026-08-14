@@ -16,8 +16,8 @@ import {
 } from './terrain.js';
 import { SCREEN_W, SCREEN_H } from './screen.js';
 import {
-  SPAWN as MANSION_SPAWN, mansionCollides, onDoor, nearStairs, nearPortrait, nearClock,
-  nearTelevision,
+  SPAWN as MANSION_SPAWN, mansionCollides, onDoor, nearStairs, nearClock,
+  FURNISH as MANSION_FURNISH_LIST,
 } from './mansion.js';
 import {
   INTERIORS, interiorCollides, interiorOnDoor, interiorOnStairs,
@@ -56,7 +56,7 @@ export const PRICES = {
 };
 export const SELLS = { meat: 2, bone: 4, wood: 1 };
 export const BOAT_WOOD = 24; // planks a boat wants
-export const WEIGHT = { wood: 1, axe: 6, rope: 2, manual: 1 }; // lbs
+export const WEIGHT = { wood: 1, axe: 6, rope: 2, manual: 1, lamp: 3, pipe: 1 }; // lbs
 export const SWIM_SPEED = 0.45; // of walking speed; heaven's water is warm
 export const SAIL_SPEED = 1.25; // the boat knows the way
 export const AMBIENT_PERIOD = 26; // seconds between ambient lines when together
@@ -71,7 +71,7 @@ export const DC_SMOTHER = 15; // putting out a fire bare-handed: STR, hard
 export const DC_GENIE = 12; // charming a genie out of an old lamp: CHA
 export const DC_VISION = 15; // the pipe (WIS): this good or better, the woods speak
 export const DC_COUGH = 7; // the pipe: this bad or worse, you pay for it
-export const DC_FISTS = 12; // punching a zombie: STR
+export const DC_FISTS = 10; // punching a zombie: STR (v0.21: hard, not hopeless)
 export const DC_BONE = 9; // swinging the bone: STR, but it's a club
 export const ZOMBIE_HP = 4;
 export const ZOMBIE_BITE = 2;
@@ -122,8 +122,16 @@ export const BATTLE_MOVE = 60; // px of movement per turn
 // rules). Regions near the person refresh; the rest fade over minutes.
 export const MEM_FRESH = 90; // s a memory stays sharp (landmarks and all)
 export const MEM_FADED = 300; // s until only the barest outline remains
-const ENCOUNTER_RADIUS = 39; // px at which an encounter opens its menu
-const ENCOUNTER_REARM = 66; // walk this far away before it can re-open
+const ENCOUNTER_RADIUS = 39; // px of battle reach (bites, swings)
+const ENCOUNTER_REARM = 66; // walk this far before a self-opening menu re-arms
+export const INTERACT_REACH = 48; // px within which a click opens its menu at once
+
+// v0.21: zombies lock on. In free mode they shamble toward warm brains in
+// range; in battle they close the gap on their turn.
+export const ZOMBIE_LOCK = 150; // px at which a zombie notices you
+export const ZOMBIE_SPEED = 36; // px/s of hungry shamble (you walk 69)
+export const ZOMBIE_STEP = 26; // px it closes per battle round
+export const ZOMBIE_LEASH = 140; // px from its post a zombie will wander
 
 const DOG_SPAWN_MIN = 360; // px from the person the lost dog waits
 const DOG_SPAWN_MAX = 480; // (outside the 416x360 opening view, whimper range)
@@ -157,6 +165,7 @@ const LAMP_OPTIONS = [
   { id: 'rub', label: 'RUB THE LAMP' },
   { id: 'polish', label: 'POLISH IT ON YOUR SLEEVE' },
   { id: 'ear', label: 'HOLD IT TO YOUR EAR' },
+  { id: 'take', label: 'TAKE THE LAMP' },
   { id: 'walkaway', label: 'LEAVE IT BE' },
 ];
 
@@ -215,6 +224,8 @@ export class Game {
     this.fetchTime = 0; // how long the current fetch has been running
     this.nav = { stuck: 0, detour: 0, side: 1 }; // dog AI steering state
     this.moveTarget = null; // { x, y } — tap/click-to-move destination
+    this.pendingInteract = null; // clicked interactable being walked to
+    this.hover = null; // interactable under the pointer (renderer glow)
     this.tapNav = { stuck: 0, detour: 0, side: 1 }; // steering state for tap-move
     this.tapStall = 0; // time without progress toward the tap target
     this.tapLastDist = Infinity;
@@ -244,6 +255,7 @@ export class Game {
     this.cooldownKeys = new Set();
     this.encounterDone = new Set(); // encounter keys that resolved for good
     this.dumpstersOut = new Set(); // dumpsters whose fire was smothered
+    this.foeOffsets = new Map(); // foe key -> {dx,dy} of chase drift from its post
     this.encounterCheck = 0;
 
     // What the person remembers of the world: region key → landmarks +
@@ -266,6 +278,9 @@ export class Game {
     this.hasRope = false;
     this.hasManual = false;
     this.hasBoat = false;
+    this.hasLamp = false; // the genie lamp, pocketed (v0.21)
+    this.hasPipe = false; // the half-burnt pipe, pocketed (v0.21)
+    this.pipeSpent = false; // the carried pipe's one bowl, smoked
     this.swimming = false; // recomputed each step; true while feet are wet
     this.godMet = false; // you only meet God for the first time once
     this.islandBlessed = false; // the shrine's calm: +2 max focus, always
@@ -485,6 +500,7 @@ export class Game {
       memory: this.memory,
       encounterDone: this.encounterDone,
       zombieHp: this.zombieHp,
+      foeOffsets: this.foeOffsets,
       choiceCooldown: this.choiceCooldown,
       cooldownKeys: this.cooldownKeys,
       px: this.person.x,
@@ -506,6 +522,7 @@ export class Game {
     this.memory = snap.memory;
     this.encounterDone = snap.encounterDone;
     this.zombieHp = snap.zombieHp;
+    this.foeOffsets = snap.foeOffsets ?? new Map();
     this.choiceCooldown = snap.choiceCooldown;
     this.cooldownKeys = snap.cooldownKeys ?? new Set();
     this.person.x = snap.px;
@@ -549,6 +566,7 @@ export class Game {
       memory: new Map(),
       encounterDone: new Set(),
       zombieHp: new Map(),
+      foeOffsets: new Map(),
       choiceCooldown: null,
       cooldownKeys: new Set(),
       px,
@@ -642,16 +660,7 @@ export class Game {
         for (const k of this.cooldownKeys) if (k.startsWith(prefix)) this.cooldownKeys.delete(k);
       }
     }
-    // Named spots open their menus when the person wanders close.
-    if (!this.choice) {
-      for (const spot of INTERIORS[kind].spots) {
-        const key = `${this.mansionKey}:${spot.id}`;
-        if (this.choiceCooldown?.key === key || this.cooldownKeys.has(key)) continue;
-        if (Math.hypot(spot.x - p.x, spot.y - p.y) > spot.r) continue;
-        this.openSpotMenu(kind, spot, key);
-        return;
-      }
-    }
+    // Named spots wait to be CLICKED (v0.21) — nothing opens on proximity.
     void dt;
   }
 
@@ -683,50 +692,7 @@ export class Game {
         for (const k of this.cooldownKeys) if (k.startsWith(prefix)) this.cooldownKeys.delete(k);
       }
     }
-    const pk = `${this.mansionKey}:port`;
-    if (!this.choice && !this.encounterDone.has(pk) && nearPortrait(p.x, p.y)) {
-      // The menu owns the screen: retire any routine caption still up.
-      if (!this.captionSticky) {
-        this.caption = null;
-        this.captionQueue.length = 0;
-      }
-      this.openChoice({
-        kind: 'portrait',
-        key: pk,
-        x: p.x,
-        y: p.y,
-        title: 'AN OLD PORTRAIT',
-        options: [
-          { id: 'look', label: 'LOOK CLOSER' },
-          { id: 'name', label: 'ASK ITS NAME' },
-          { id: 'frame', label: 'STRAIGHTEN THE FRAME' },
-          { id: 'away', label: 'LOOK AWAY' },
-        ],
-      });
-      return;
-    }
-    const tk = `${this.mansionKey}:tv`;
-    if (!this.choice && this.choiceCooldown?.key !== tk && nearTelevision(p.x, p.y)) {
-      if (!this.captionSticky) {
-        this.caption = null;
-        this.captionQueue.length = 0;
-      }
-      this.emit('tv');
-      this.openChoice({
-        kind: 'tv',
-        key: tk,
-        x: p.x,
-        y: p.y,
-        title: this.plane === 'heaven' ? 'THE TELEVISION SHOWS THE NIGHT BELOW' : 'AN OLD TELEVISION, WARM WITH ROSE LIGHT',
-        options: [
-          { id: 'inside', label: 'STEP INSIDE' },
-          { id: 'channel', label: 'CHANGE THE CHANNEL' },
-          { id: 'down', label: 'TURN IT DOWN' },
-          { id: 'away', label: 'STEP AWAY' },
-        ],
-      });
-      return;
-    }
+    // The portrait and the television wait to be CLICKED now (v0.21).
     this.clockTick += dt;
     if (this.clockTick >= 2) {
       this.clockTick = 0;
@@ -795,9 +761,9 @@ export class Game {
     return `D20: ${c.roll}${m}`;
   }
 
-  /** Fist damage scales with raw strength: floor(STR / 4). */
+  /** Fist damage scales with raw strength: floor(STR / 4), never zero. */
   fistDamage() {
-    return Math.floor(this.stats.str / 4);
+    return Math.max(1, Math.floor(this.stats.str / 4));
   }
 
   /** The bone is a club: fist damage +1 (so it always does something). */
@@ -818,7 +784,9 @@ export class Game {
       this.wood * WEIGHT.wood +
       (this.hasAxe ? WEIGHT.axe : 0) +
       (this.hasRope ? WEIGHT.rope : 0) +
-      (this.hasManual ? WEIGHT.manual : 0)
+      (this.hasManual ? WEIGHT.manual : 0) +
+      (this.hasLamp ? WEIGHT.lamp : 0) +
+      (this.hasPipe ? WEIGHT.pipe : 0)
       // The boat is not carried. The boat carries YOU.
     );
   }
@@ -1035,7 +1003,7 @@ export class Game {
     this._prevSwap = !!input.swap;
     if (input.action && !this._prevAction && this.active === 'person') {
       if (this.mode === 'turn') this.openBattleMenu();
-      else this.throwBall();
+      else if (!this.interactNearest()) this.throwBall();
     }
     this._prevAction = !!input.action;
     if (input.sheet && !this._prevSheet) this.openSheet();
@@ -1076,6 +1044,7 @@ export class Game {
     if (dirXLock) this.clearMoveTarget();
     if (dirX !== 0 || dirY !== 0) {
       this.clearMoveTarget();
+      this.pendingInteract = null; // steering by hand cancels the walk-to-talk
       moveCharacter(this.activeChar, dirX, dirY, dt, this.phys());
     } else if (this.moveTarget) {
       this.updateTapMove(dt);
@@ -1166,6 +1135,23 @@ export class Game {
           }
         }
       }
+    }
+
+    // A clicked interactable being walked to: open its menu on arrival, or
+    // give up if the walk was abandoned.
+    if (this.pendingInteract && !this.choice && this.active === 'person') {
+      const t = this.pendingInteract;
+      if (Math.hypot(t.x - this.person.x, t.y - this.person.y) <= INTERACT_REACH) {
+        this.pendingInteract = null;
+        this.openMenuFor(t);
+      } else if (!this.moveTarget) {
+        this.pendingInteract = null;
+      }
+    }
+
+    // v0.21: zombies lock on and shamble your way while the world is free.
+    if (this.location === 'world' && this.plane !== 'heaven' && this.mode === 'free') {
+      this.chaseZombies(dt);
     }
 
     // The world's gear: hostiles nearby drop it into turn-based.
@@ -1280,58 +1266,143 @@ export class Game {
     this.triggerGlitch(0.25);
   }
 
-  /** Open encounter menus for whatever the person walks up to. */
-  checkEncounters() {
-    if (this.choice) return; // never clobber an open menu (e.g. a level-up)
-    if (this.location !== 'world') return; // the mansion has its own manners
-    if (this.active !== 'person') return; // the dog is unbothered by all of it
-    if (this.mode === 'turn') return; // the battle owns the screen — no shopping mid-fight
-    const p = this.person;
-    // Re-arm recently closed menus only once you've actually walked away.
-    if (this.choiceCooldown) {
-      const cd = this.choiceCooldown;
-      if (Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) {
-        this.choiceCooldown = null;
-        this.cooldownKeys.clear();
+  /**
+   * Everything the person could CLICK right now (v0.21): the world's
+   * friendly encounters — and, under a roof, the named spots plus the
+   * mansion's portrait and television. Hostiles are never on the list (the
+   * battle system owns them), and resolved one-shots don't reappear.
+   * Each entry: { kind, key, x, y, r, data }.
+   */
+  interactables() {
+    const out = [];
+    const push = (kind, key, x, y, r = 16, data = null) => {
+      if (this.encounterDone.has(key)) return;
+      out.push({ kind, key, x, y, r, data });
+    };
+    if (this.location !== 'world') {
+      const kind = this.location;
+      if (kind === 'mansion') {
+        const port = MANSION_FURNISH_LIST.find((f) => f.kind === 'portrait');
+        const tv = MANSION_FURNISH_LIST.find((f) => f.kind === 'television');
+        if (port) push('portrait', `${this.mansionKey}:port`, port.x, port.y + 14, 20);
+        if (tv) push('tv', `${this.mansionKey}:tv`, tv.x, tv.y + 12, 22);
+      } else {
+        for (const spot of INTERIORS[kind].spots) {
+          push(`spot:${spot.id}`, `${this.mansionKey}:${spot.id}`, spot.x, spot.y, Math.max(14, spot.r * 0.5), spot);
+        }
       }
+      return out;
     }
-    const blocked = (key) =>
-      this.encounterDone.has(key) || this.choiceCooldown?.key === key || this.cooldownKeys.has(key);
-    const near = (method) =>
-      this.world[method](p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2);
+    const p = this.person;
+    const R = 420; // generous: anything on screen is hoverable
+    const near = (method) => this.world[method](p.x - R, p.y - R, R * 2, R * 2);
+    for (const f of near('dumpstersInRect')) {
+      push(this.plane === 'heaven' ? 'cathedral' : 'dumpster', `d:${f.x},${f.y}`, f.x, f.y, 20);
+    }
+    for (const f of near('catsInRect')) push('cat', `c:${f.x},${f.y}`, f.x, f.y, 14);
+    for (const f of near('lampsInRect')) push('lamp', `l:${f.x},${f.y}`, f.x, f.y, 12);
+    for (const f of near('pipesInRect')) push('pipe', `p:${f.x},${f.y}`, f.x, f.y, 12);
+    if (this.plane === 'heaven') {
+      const god = godSpot(this.world.seed);
+      if (god) push('god', 'god', god.x, god.y, 18);
+      for (const f of near('signsInRect')) push('sign', `sn:${f.x},${f.y}`, f.x, f.y, 14);
+      for (const f of near('shrinesInRect')) push('shrine', `sh:${f.x},${f.y}`, f.x, f.y, 16);
+      for (const f of near('zombiesInRect')) push('angel', `z:${f.x},${f.y}`, f.x, f.y, 16);
+    } else {
+      for (const f of near('pirtsInRect')) push('pirts', `pi:${f.x},${f.y}`, f.x, f.y, 16);
+      for (const f of near('ghostsInRect')) {
+        if (f.temper === 'hostile') continue; // the battle system owns those
+        const pos = ghostPos(f, this.time);
+        push('ghost', `gh:${f.x},${f.y}`, pos.x, pos.y, 14, { temper: f.temper });
+      }
+      for (const f of near('townsignsInRect')) push('townsign', `ts:${f.x},${f.y}`, f.x, f.y, 14);
+    }
+    return out;
+  }
 
-    const KINDS = [
-      // In heaven the dumpster spots hold cathedrals instead: same rng draws,
-      // very different landlord.
-      this.plane === 'heaven'
-        ? {
-            method: 'dumpstersInRect',
-            prefix: 'd',
-            kind: 'cathedral',
-            title: 'A CATHEDRAL OF MELTED GOLD',
-            options: [
-              { id: 'listen', label: 'LISTEN TO THE RAGAS' },
-              { id: 'gold', label: 'ADD TO THE PILE OF GOD' },
-              { id: 'confess', label: 'CONFESS NOTHING IN PARTICULAR' },
-              { id: 'walkaway', label: 'STEP BACK INTO THE LIGHT' },
-            ],
-          }
-        : {
-            method: 'dumpstersInRect',
-            prefix: 'd',
-            kind: 'dumpster',
-            title: 'A DUMPSTER BURNS IN THE DARK',
-            options: [
-              { id: 'search', label: 'SEARCH THE DUMPSTER' },
-              { id: 'putout', label: 'PUT OUT THE FIRE (HOW?)' },
-              { id: 'warm', label: 'WARM YOUR HANDS' },
-              { id: 'walkaway', label: 'WALK AWAY' },
-            ],
-          },
-      {
-        method: 'catsInRect',
-        prefix: 'c',
-        kind: 'cat',
+  /** The interactable under a point (world or interior coords), or null. */
+  interactableAt(wx, wy) {
+    let best = null;
+    for (const it of this.interactables()) {
+      const d = Math.hypot(it.x - wx, it.y - wy);
+      if (d <= it.r + 8 && (!best || d < best.d)) best = { ...it, d };
+    }
+    return best;
+  }
+
+  /**
+   * A tap claimed by an interactable: in reach the menu opens right away —
+   * clicking again re-interacts immediately, no cooldown — and out of reach
+   * the person walks over and opens it on arrival. Returns true when the
+   * tap was spent here (main.js falls through to plain tap-to-move).
+   */
+  interactAt(wx, wy) {
+    if (this.choice) return false;
+    if (this.active !== 'person') return false;
+    const it = this.interactableAt(wx, wy);
+    if (!it) {
+      this.pendingInteract = null;
+      return false;
+    }
+    if (Math.hypot(it.x - this.person.x, it.y - this.person.y) <= INTERACT_REACH) {
+      this.pendingInteract = null;
+      this.openMenuFor(it);
+    } else {
+      this.pendingInteract = { kind: it.kind, key: it.key, x: it.x, y: it.y, data: it.data };
+      this.setMoveTarget(it.x, it.y + 10);
+    }
+    return true;
+  }
+
+  /** The action key, out of battle: talk to whatever is in front of you. */
+  interactNearest() {
+    if (this.choice || this.active !== 'person') return false;
+    let best = null;
+    for (const it of this.interactables()) {
+      const d = Math.hypot(it.x - this.person.x, it.y - this.person.y);
+      if (d <= INTERACT_REACH && (!best || d < best.d)) best = { ...it, d };
+    }
+    if (!best) return false;
+    this.openMenuFor(best);
+    return true;
+  }
+
+  /** Open the right menu for a clicked interactable. */
+  openMenuFor(it) {
+    const { kind, key, x, y } = it;
+    if (kind.startsWith('spot:')) {
+      this.openSpotMenu(this.location, it.data ?? { id: kind.slice(5) }, key);
+      return;
+    }
+    if (kind === 'pirts') {
+      this.emit('ghost');
+      this.openPirtsMenu(key, x, y);
+      return;
+    }
+    if (kind === 'god') return this.openGodMenu();
+    if (kind === 'portrait') return this.openPortraitMenu(key);
+    if (kind === 'tv') return this.openTvMenu(key);
+    const SPECS = {
+      cathedral: {
+        title: 'A CATHEDRAL OF MELTED GOLD',
+        options: [
+          { id: 'listen', label: 'LISTEN TO THE RAGAS' },
+          { id: 'gold', label: 'ADD TO THE PILE OF GOD' },
+          { id: 'confess', label: 'CONFESS NOTHING IN PARTICULAR' },
+          { id: 'walkaway', label: 'STEP BACK INTO THE LIGHT' },
+        ],
+      },
+      dumpster: {
+        title: 'A DUMPSTER BURNS IN THE DARK',
+        options: [
+          { id: 'search', label: 'SEARCH THE DUMPSTER' },
+          { id: 'putout', label: 'PUT OUT THE FIRE (HOW?)' },
+          { id: 'warm', label: 'WARM YOUR HANDS' },
+          { id: 'take', label: 'POCKET THE FIRE' },
+          { id: 'walkaway', label: 'WALK AWAY' },
+        ],
+      },
+      cat: {
         title: 'A PSYCHEDELIC CAT REGARDS YOU',
         options: [
           { id: 'talk', label: 'TALK TO HIM' },
@@ -1340,180 +1411,177 @@ export class Game {
           { id: 'stare', label: 'STARE BACK' },
         ],
       },
-      {
-        method: 'lampsInRect',
-        prefix: 'l',
-        kind: 'lamp',
-        title: LAMP_TITLE,
-        options: LAMP_OPTIONS,
-      },
-      {
-        method: 'pipesInRect',
-        prefix: 'p',
-        kind: 'pipe',
+      lamp: { title: LAMP_TITLE, options: LAMP_OPTIONS },
+      pipe: {
         title: 'A PIPE OF HALF-BURNT GREEN LEAF',
         options: [
           { id: 'smoke', label: 'SMOKE THE PIPE' },
           { id: 'sniff', label: 'SNIFF IT' },
           { id: 'tap', label: 'TAP OUT THE ASH' },
+          { id: 'take', label: 'POCKET THE PIPE' },
           { id: 'walkaway', label: 'LEAVE IT BE' },
         ],
       },
-    ];
+      sign: {
+        emit: 'sign',
+        title: 'A SIGN, HAND-PAINTED, PATIENT',
+        options: [
+          { id: 'read', label: 'READ IT' },
+          { id: 'follow', label: 'FOLLOW WHERE IT POINTS' },
+          { id: 'lean', label: 'LEAN ON IT' },
+          { id: 'take', label: 'TRY TO TAKE IT' },
+          { id: 'walkon', label: 'WALK ON' },
+        ],
+      },
+      shrine: {
+        title: 'THE ISLAND SHRINE. YOU MADE IT',
+        options: [
+          { id: 'offer', label: 'LEAVE AN OFFERING (1 COIN)' },
+          { id: 'shade', label: 'SIT IN ITS SHADE' },
+          { id: 'stones', label: 'READ THE STACKED STONES' },
+          { id: 'take', label: 'POCKET A STONE' },
+          { id: 'swim', label: 'SWIM ON' },
+        ],
+      },
+      ghost: {
+        emit: 'ghost',
+        title:
+          it.data?.temper === 'sullen'
+            ? 'A GHOST, BUFFERING ITS GRIEF'
+            : 'A GHOST DRIFTS THROUGH ITS OLD ROUTINE',
+        options: [
+          { id: 'what', label: 'ASK WHAT HAPPENED HERE' },
+          { id: 'coin', label: 'OFFER A COIN' },
+          { id: 'sit', label: 'KEEP IT COMPANY' },
+          { id: 'back', label: 'BACK AWAY SLOWLY' },
+        ],
+      },
+      townsign: {
+        title: 'A LEANING SIGN',
+        options: [
+          { id: 'read', label: 'READ IT' },
+          { id: 'straighten', label: 'STRAIGHTEN IT' },
+          { id: 'listen', label: 'LISTEN TO IT CREAK' },
+          { id: 'take', label: 'TRY TO TAKE IT' },
+          { id: 'along', label: 'MOVE ALONG' },
+        ],
+      },
+      angel: {
+        emit: 'blessing',
+        title: 'AN ANGEL CONSIDERS YOU',
+        options: [
+          { id: 'befriend', label: 'TRY TO BEFRIEND IT' },
+          { id: 'bask', label: 'BASK IN ITS LIGHT' },
+          { id: 'ask', label: 'ASK THE WAY HOME' },
+          { id: 'walkaway', label: 'LEAVE IT BE' },
+        ],
+      },
+    };
+    const spec = SPECS[kind];
+    if (!spec) return;
+    if (spec.emit) this.emit(spec.emit);
+    this.openChoice({ kind, key, x, y, title: spec.title, options: spec.options });
+  }
 
-    for (const spec of KINDS) {
-      for (const f of near(spec.method)) {
-        const key = `${spec.prefix}:${f.x},${f.y}`;
-        if (blocked(key)) continue;
-        this.openChoice({ kind: spec.kind, key, x: f.x, y: f.y, title: spec.title, options: spec.options });
-        return;
+  /** The mansion portrait's menu (clicked; it only needs to be seen once). */
+  openPortraitMenu(key) {
+    if (!this.captionSticky) {
+      this.caption = null;
+      this.captionQueue.length = 0;
+    }
+    this.openChoice({
+      kind: 'portrait',
+      key,
+      x: this.person.x,
+      y: this.person.y,
+      title: 'AN OLD PORTRAIT',
+      options: [
+        { id: 'look', label: 'LOOK CLOSER' },
+        { id: 'name', label: 'ASK ITS NAME' },
+        { id: 'frame', label: 'STRAIGHTEN THE FRAME' },
+        { id: 'away', label: 'LOOK AWAY' },
+      ],
+    });
+  }
+
+  /** The television's menu (clicked): the way up, and the way back down. */
+  openTvMenu(key) {
+    if (!this.captionSticky) {
+      this.caption = null;
+      this.captionQueue.length = 0;
+    }
+    this.emit('tv');
+    this.openChoice({
+      kind: 'tv',
+      key,
+      x: this.person.x,
+      y: this.person.y,
+      title:
+        this.plane === 'heaven' ? 'THE TELEVISION SHOWS THE NIGHT BELOW' : 'AN OLD TELEVISION, WARM WITH ROSE LIGHT',
+      options: [
+        { id: 'inside', label: 'STEP INSIDE' },
+        { id: 'channel', label: 'CHANGE THE CHANNEL' },
+        { id: 'down', label: 'TURN IT DOWN' },
+        { id: 'away', label: 'STEP AWAY' },
+      ],
+    });
+  }
+
+  /** God's audience — the one menu that still opens itself. God initiates. */
+  openGodMenu() {
+    const god = godSpot(this.world.seed);
+    if (!god) return;
+    if (!this.godMet) {
+      this.godMet = true;
+      this.emit('chirp');
+      this.announce([
+        'THE SIGNS ALL POINTED HERE',
+        'GOD IS A CRICKET. GOD HAS ALWAYS BEEN A CRICKET',
+      ]);
+      this.gainXp(3);
+    }
+    this.openChoice({
+      kind: 'god',
+      key: 'god',
+      x: god.x,
+      y: god.y,
+      title: 'GOD, EXISTING AS A CRICKET',
+      options: [
+        { id: 'question', label: 'ASK THE BIG QUESTION' },
+        { id: 'confess', label: 'CONFESS' },
+        { id: 'sit', label: 'SIT WITH GOD A WHILE' },
+        { id: 'shoo', label: 'SHOO THE FROGS' },
+        { id: 'leave', label: 'LEAVE QUIETLY' },
+      ],
+    });
+  }
+
+  /**
+   * v0.21: the world no longer ambushes the player with menus — encounters
+   * open when CLICKED (interactAt / interactNearest / the action key). The
+   * only interruptions left are the ones something else starts: hostiles
+   * pull the world turn-based (checkBattle), and God — who has been
+   * expecting you — opens the audience when you arrive.
+   */
+  checkEncounters() {
+    if (this.choice) return;
+    if (this.location !== 'world') return;
+    if (this.active !== 'person') return;
+    if (this.mode === 'turn') return;
+    const p = this.person;
+    // The re-arm walk-away only gates the self-opening menus now; clicks
+    // never consult it.
+    if (this.choiceCooldown) {
+      const cd = this.choiceCooldown;
+      if (Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) {
+        this.choiceCooldown = null;
+        this.cooldownKeys.clear();
       }
     }
-
-    // God (v0.20): a cricket on the east shore of a lake, ringed by
-    // redwoods, occasionally menaced by frogs, entirely unbothered.
-    if (this.plane === 'heaven') {
-      const god = godSpot(this.world.seed);
-      if (god && !blocked('god') && Math.hypot(god.x - p.x, god.y - p.y) <= 48) {
-        if (!this.godMet) {
-          this.godMet = true;
-          this.emit('chirp');
-          this.announce([
-            'THE SIGNS ALL POINTED HERE',
-            'GOD IS A CRICKET. GOD HAS ALWAYS BEEN A CRICKET',
-          ]);
-          this.gainXp(3);
-        }
-        this.openChoice({
-          kind: 'god',
-          key: 'god',
-          x: god.x,
-          y: god.y,
-          title: 'GOD, EXISTING AS A CRICKET',
-          options: [
-            { id: 'question', label: 'ASK THE BIG QUESTION' },
-            { id: 'confess', label: 'CONFESS' },
-            { id: 'sit', label: 'SIT WITH GOD A WHILE' },
-            { id: 'shoo', label: 'SHOO THE FROGS' },
-            { id: 'leave', label: 'LEAVE QUIETLY' },
-          ],
-        });
-        return;
-      }
-      for (const sn of near('signsInRect')) {
-        const key = `sn:${sn.x},${sn.y}`;
-        if (blocked(key)) continue;
-        this.emit('sign');
-        this.openChoice({
-          kind: 'sign',
-          key,
-          x: sn.x,
-          y: sn.y,
-          title: 'A SIGN, HAND-PAINTED, PATIENT',
-          options: [
-            { id: 'read', label: 'READ IT' },
-            { id: 'follow', label: 'FOLLOW WHERE IT POINTS' },
-            { id: 'lean', label: 'LEAN ON IT' },
-            { id: 'walkon', label: 'WALK ON' },
-          ],
-        });
-        return;
-      }
-      for (const sh of near('shrinesInRect')) {
-        const key = `sh:${sh.x},${sh.y}`;
-        if (blocked(key)) continue;
-        this.openChoice({
-          kind: 'shrine',
-          key,
-          x: sh.x,
-          y: sh.y,
-          title: 'THE ISLAND SHRINE. YOU MADE IT',
-          options: [
-            { id: 'offer', label: 'LEAVE AN OFFERING (1 COIN)' },
-            { id: 'shade', label: 'SIT IN ITS SHADE' },
-            { id: 'stones', label: 'READ THE STACKED STONES' },
-            { id: 'swim', label: 'SWIM ON' },
-          ],
-        });
-        return;
-      }
-    } else {
-      // Night (v0.20): the ghost town's people, such as they are.
-      for (const pt of near('pirtsInRect')) {
-        const key = `pi:${pt.x},${pt.y}`;
-        if (this.choiceCooldown?.key === key || this.cooldownKeys.has(key)) continue; // Pirts never one-shots
-        this.emit('ghost');
-        this.openPirtsMenu(key, pt.x, pt.y);
-        return;
-      }
-      for (const gh of near('ghostsInRect')) {
-        if (gh.temper === 'hostile') continue; // the battle system owns those
-        const key = `gh:${gh.x},${gh.y}`;
-        if (blocked(key)) continue;
-        this.emit('ghost');
-        this.openChoice({
-          kind: 'ghost',
-          key,
-          x: gh.x,
-          y: gh.y,
-          title: gh.temper === 'sullen' ? 'A GHOST, BUFFERING ITS GRIEF' : 'A GHOST DRIFTS THROUGH ITS OLD ROUTINE',
-          options: [
-            { id: 'what', label: 'ASK WHAT HAPPENED HERE' },
-            { id: 'coin', label: 'OFFER A COIN' },
-            { id: 'sit', label: 'KEEP IT COMPANY' },
-            { id: 'back', label: 'BACK AWAY SLOWLY' },
-          ],
-        });
-        return;
-      }
-      for (const ts of near('townsignsInRect')) {
-        const key = `ts:${ts.x},${ts.y}`;
-        if (blocked(key)) continue;
-        this.openChoice({
-          kind: 'townsign',
-          key,
-          x: ts.x,
-          y: ts.y,
-          title: 'A LEANING SIGN',
-          options: [
-            { id: 'read', label: 'READ IT' },
-            { id: 'straighten', label: 'STRAIGHTEN IT' },
-            { id: 'listen', label: 'LISTEN TO IT CREAK' },
-            { id: 'along', label: 'MOVE ALONG' },
-          ],
-        });
-        return;
-      }
-    }
-
-    // Zombies get their own path: options depend on the bone, and they groan.
-    // (While turn-based, the round structure owns them — the guard at the
-    // top already returned.) In heaven the same spots hold angels, and the
-    // angels hold no grudges.
-    for (const z of near('zombiesInRect')) {
-      const key = `z:${z.x},${z.y}`;
-      if (blocked(key)) continue;
-      if (this.plane === 'heaven') {
-        this.emit('blessing');
-        this.openChoice({
-          kind: 'angel',
-          key,
-          x: z.x,
-          y: z.y,
-          title: 'AN ANGEL CONSIDERS YOU',
-          options: [
-            { id: 'befriend', label: 'TRY TO BEFRIEND IT' },
-            { id: 'bask', label: 'BASK IN ITS LIGHT' },
-            { id: 'ask', label: 'ASK THE WAY HOME' },
-            { id: 'walkaway', label: 'LEAVE IT BE' },
-          ],
-        });
-        return;
-      }
-      this.emit('zombie');
-      this.openChoice(this.zombieMenu(key, z.x, z.y));
-      return;
-    }
+    if (this.plane !== 'heaven') return;
+    const god = godSpot(this.world.seed);
+    if (!god || this.cooldownKeys.has('god') || this.choiceCooldown?.key === 'god') return;
+    if (Math.hypot(god.x - p.x, god.y - p.y) <= 48) this.openGodMenu();
   }
 
   /** Resolve the open menu (docs/RULES.md has the numbers). */
@@ -1564,6 +1632,8 @@ export class Game {
         } else {
           this.announce(['THE FIRE HAS BEEN KIND ONCE ALREADY', 'IT HAS A REPUTATION TO KEEP']);
         }
+      } else if (id === 'take') {
+        this.announce(['YOU CANNOT POCKET A FIRE', 'YOU CAN ONLY RESPECT IT']);
       } else if (id === 'putout') {
         const r = this.check('str');
         if (r.total >= DC_SMOTHER) {
@@ -1598,7 +1668,11 @@ export class Game {
       else if (id === 'chop') this.chopTree();
       else if (id === 'build') this.buildBoat();
       else if (id === 'throw') this.throwBall();
-      else this.resolveDetailFlavor(id);
+      else if (id === 'rub-lamp') this.rubLamp('lamp:carried', this.person.x, this.person.y);
+      else if (id === 'smoke-pipe') {
+        this.pipeSpent = true;
+        this.smokeThePipe();
+      } else this.resolveDetailFlavor(id);
     } else if (c.kind === 'levelup') {
       if (ABILITIES.includes(id) && this.statPoints > 0) {
         this.stats[id]++;
@@ -1641,36 +1715,7 @@ export class Game {
       }
     } else if (c.kind === 'lamp') {
       if (id === 'rub') {
-        const r = this.check('cha');
-        if (this.polishedLamps.has(c.key)) {
-          // A polished lamp answers a shade easier — once.
-          this.polishedLamps.delete(c.key);
-          r.mod += 1;
-          r.total += 1;
-        }
-        const roll = r.total;
-        if (roll >= DC_GENIE) {
-          this.emit('genie');
-          this.triggerGlitch(0.5);
-          this.announce([`${this.rollText(r)} - A GENIE BILLOWS OUT IN VIOLET SMOKE`]);
-          // Chain straight into the wish menu (same key: resolving any wish
-          // finishes the lamp).
-          this.openChoice({
-            kind: 'genie',
-            key: c.key,
-            x: c.x,
-            y: c.y,
-            title: 'THE GENIE OFFERS ONE WISH',
-            options: [
-              { id: 'health', label: 'WISH FOR HEALTH' },
-              { id: 'home', label: 'WISH FOR HOME' },
-              { id: 'wishes', label: 'WISH FOR MORE WISHES' },
-              { id: 'nothing', label: 'WISH FOR NOTHING' },
-            ],
-          });
-        } else {
-          this.announce([`${this.rollText(r)} - ONLY DUST AND A FAINT COUGH INSIDE`]);
-        }
+        this.rubLamp(c.key, c.x, c.y);
       } else if (id === 'polish') {
         this.polishedLamps.add(c.key);
         this.triggerGlitch(0.3);
@@ -1679,6 +1724,13 @@ export class Game {
       } else if (id === 'ear') {
         this.emit('whimper');
         this.announce(['INSIDE: SNORING. FAINT, ANCIENT, CONTENT', 'YOU SET IT DOWN GENTLY. LET SOMETHING SLEEP']);
+      } else if (id === 'take') {
+        // v0.21: it goes in the pocket. The polish rides along.
+        this.encounterDone.add(c.key);
+        if (this.polishedLamps.delete(c.key)) this.polishedLamps.add('lamp:carried');
+        this.hasLamp = true;
+        this.emit('pickup');
+        this.announce(['YOU TAKE THE LAMP. IT IS HEAVIER THAN A SECRET', 'SOMETHING INSIDE TURNS OVER IN ITS SLEEP']);
       }
       // walkaway: the lamp keeps glinting.
     } else if (c.kind === 'genie') {
@@ -1706,35 +1758,17 @@ export class Game {
     } else if (c.kind === 'pipe') {
       if (id === 'smoke') {
         this.encounterDone.add(c.key); // the leaf only had one bowl in it
-        const r = this.check('wis');
-        if (r.total >= DC_VISION) {
-          // The leaf is not a drug, it is a teacher. The vision hands you a
-          // spell — and the colors stay leaned in for ten minutes.
-          this.drunk = DRUNK_TIME;
-          this.emit('vision');
-          this.emit('drunk');
-          this.triggerGlitch(1.2); // the long one
-          this.announce([
-            `${this.rollText(r)} - THE STARS LEAN CLOSER`,
-            'A VISION: THE INFLATABLES DANCE AT THE CENTER OF ALL THINGS',
-            'THE COLORS LEAN CLOSER TOO (DRUNK 10:00)',
-          ]);
-          this.learnSpell();
-        } else if (r.total <= DC_COUGH) {
-          // No damage: the smoke is never the thing that hurts you. It just
-          // doesn't take, and the woods stay quiet.
-          this.announce([
-            `${this.rollText(r)} - THE SMOKE GOES NOWHERE`,
-            'NO VISION. THE PIPE IS SPENT',
-          ]);
-        } else {
-          this.announce([`${this.rollText(r)} - NOTHING. PROBABLY OAK LEAF`, 'THE PIPE IS SPENT']);
-        }
+        this.smokeThePipe();
       } else if (id === 'sniff') {
         this.announce(['IT SMELLS LIKE REGRET AND LAWN CLIPPINGS']);
       } else if (id === 'tap') {
         this.triggerGlitch(0.25);
         this.announce(['THE ASH MAKES ONE SMALL GRAY GHOST AND JOINS THE NIGHT']);
+      } else if (id === 'take') {
+        this.encounterDone.add(c.key);
+        this.hasPipe = true;
+        this.emit('pickup');
+        this.announce(['YOU POCKET THE PIPE, STILL FAINTLY WARM', 'THE WOODS PRETEND NOT TO NOTICE']);
       }
       // walkaway: it keeps smoldering.
     } else if (c.kind === 'battle') {
@@ -1862,8 +1896,10 @@ export class Game {
         }
       } else if (id === 'lean') {
         this.announce(['YOU LEAN. IT LEANS BACK, SLIGHTLY', 'THE SIGN DOES NOT MIND']);
+      } else if (id === 'take') {
+        this.announce(['YOU PULL. HEAVEN HOLDS ON', 'A DIRECTION IS A GIFT, NOT A THING']);
       }
-      // walkon: the cooldown covers it.
+      // walkon: nothing.
     } else if (c.kind === 'shrine') {
       if (id === 'offer') {
         if (this.islandBlessed) {
@@ -1882,6 +1918,8 @@ export class Game {
         this.announce(['YOU SWAM AN OCEAN FOR THIS SHADE (+1 HP)', 'WORTH IT']);
       } else if (id === 'stones') {
         this.announce(['SOMEBODY STACKED THESE ONE AT A TIME', 'THAT IS THE WHOLE TEACHING']);
+      } else if (id === 'take') {
+        this.announce(['YOU LIFT A STONE. THE STACK LEANS, DISAPPOINTED', 'YOU PUT IT BACK. SOME THINGS ARE A PLACE']);
       }
       // swim: back into the warm water.
     } else if (c.kind === 'ghost') {
@@ -1913,6 +1951,8 @@ export class Game {
       } else if (id === 'listen') {
         this.emit('sign');
         this.announce(['CREAK. CREAK.', 'IT IS THE ONLY ONE STILL DOING ITS JOB']);
+      } else if (id === 'take') {
+        this.announce(['IT IS NAILED DOWN WITH GHOST NAILS', 'THE TOWN KEEPS ITS NAME, SUCH AS IT IS']);
       }
     } else if (c.kind === 'pirts') {
       if (id === 'buy') this.openPirtsBuy(c.key, c.x, c.y);
@@ -2051,6 +2091,67 @@ export class Game {
         ]);
       }
       // walkaway: it was going to let you anyway.
+    }
+  }
+
+  /** Rub a lamp — in the litter or from the pocket: CHA vs the genie. */
+  rubLamp(key, x, y) {
+    const r = this.check('cha');
+    if (this.polishedLamps.has(key)) {
+      // A polished lamp answers a shade easier — once.
+      this.polishedLamps.delete(key);
+      r.mod += 1;
+      r.total += 1;
+    }
+    if (r.total >= DC_GENIE) {
+      this.emit('genie');
+      this.triggerGlitch(0.5);
+      this.announce([`${this.rollText(r)} - A GENIE BILLOWS OUT IN VIOLET SMOKE`]);
+      // Chain straight into the wish menu (same key: resolving any wish
+      // finishes the lamp).
+      this.openChoice({
+        kind: 'genie',
+        key,
+        x,
+        y,
+        title: 'THE GENIE OFFERS ONE WISH',
+        options: [
+          { id: 'health', label: 'WISH FOR HEALTH' },
+          { id: 'home', label: 'WISH FOR HOME' },
+          { id: 'wishes', label: 'WISH FOR MORE WISHES' },
+          { id: 'nothing', label: 'WISH FOR NOTHING' },
+        ],
+      });
+    } else {
+      this.announce([`${this.rollText(r)} - ONLY DUST AND A FAINT COUGH INSIDE`]);
+    }
+  }
+
+  /** One bowl of the half-burnt leaf: WIS vs a vision. */
+  smokeThePipe() {
+    const r = this.check('wis');
+    if (r.total >= DC_VISION) {
+      // The leaf is not a drug, it is a teacher. The vision hands you a
+      // spell — and the colors stay leaned in for ten minutes.
+      this.drunk = DRUNK_TIME;
+      this.emit('vision');
+      this.emit('drunk');
+      this.triggerGlitch(1.2); // the long one
+      this.announce([
+        `${this.rollText(r)} - THE STARS LEAN CLOSER`,
+        'A VISION: THE INFLATABLES DANCE AT THE CENTER OF ALL THINGS',
+        'THE COLORS LEAN CLOSER TOO (DRUNK 10:00)',
+      ]);
+      this.learnSpell();
+    } else if (r.total <= DC_COUGH) {
+      // No damage: the smoke is never the thing that hurts you. It just
+      // doesn't take, and the woods stay quiet.
+      this.announce([
+        `${this.rollText(r)} - THE SMOKE GOES NOWHERE`,
+        'NO VISION. THE PIPE IS SPENT',
+      ]);
+    } else {
+      this.announce([`${this.rollText(r)} - NOTHING. PROBABLY OAK LEAF`, 'THE PIPE IS SPENT']);
     }
   }
 
@@ -2299,6 +2400,33 @@ export class Game {
       case 'margins':
         this.announce(['THE MARGINS SAY: SHE FLOATS. UNDERLINED TWICE', 'THE PEN WAS RUNNING OUT. THE FAITH WAS NOT']);
         break;
+      // LAMP (carried)
+      case 'polish-lamp':
+        this.polishedLamps.add('lamp:carried');
+        this.triggerGlitch(0.3);
+        this.announce(['THE BRASS COMES UP LIKE A SMALL DROWNED SUN', 'SOMETHING INSIDE SHIFTS ITS WEIGHT']);
+        break;
+      case 'ear-lamp':
+        this.emit('whimper');
+        this.announce(['INSIDE: SNORING. FAINT, ANCIENT, CONTENT']);
+        break;
+      case 'heft-lamp':
+        this.announce([`${WEIGHT.lamp} LBS OF BRASS AND SOMEBODY'S PATIENCE`]);
+        break;
+      case 'shine-lamp':
+        this.announce(['YOUR REFLECTION, STRETCHED THIN AND GOLD', 'IT WAVES FIRST. YOU LET IT HAVE THAT']);
+        break;
+      // PIPE (carried)
+      case 'sniff-pipe':
+        this.announce(['IT SMELLS LIKE REGRET AND LAWN CLIPPINGS']);
+        break;
+      case 'tap-pipe':
+        this.triggerGlitch(0.25);
+        this.announce(['THE ASH MAKES ONE SMALL GRAY GHOST AND JOINS THE NIGHT']);
+        break;
+      case 'twirl-pipe':
+        this.announce(['A CLEAN TWIRL. SOMEWHERE, A CASE CLOSES']);
+        break;
       // BOAT
       case 'pat':
         this.announce(['YOU PAT THE HULL. A GOOD HOLLOW SOUND', 'SHE FLOATS. SOMEHOW, SHE FLOATS']);
@@ -2346,6 +2474,8 @@ export class Game {
         ...(this.hasRope ? [{ id: 'rope', label: 'ROPE', icon: 'rope' }] : []),
         ...(this.hasManual ? [{ id: 'manual', label: 'MANUAL', icon: 'manual' }] : []),
         ...(this.hasBoat ? [{ id: 'boat', label: 'BOAT', icon: 'boat' }] : []),
+        ...(this.hasLamp ? [{ id: 'lamp', label: 'LAMP', icon: 'lamp' }] : []),
+        ...(this.hasPipe ? [{ id: 'pipe', label: 'PIPE', icon: 'pipe' }] : []),
         { id: 'close', label: 'CLOSE' },
       ],
     });
@@ -2527,6 +2657,39 @@ export class Game {
           { id: 'christen', label: 'NAME HER' },
         ],
       },
+      lamp: {
+        title: this.encounterDone.has('lamp:carried') ? 'THE LAMP, QUIET NOW' : 'THE LAMP',
+        body: [
+          this.encounterDone.has('lamp:carried')
+            ? 'THE WISH IS SPENT. THE BRASS REMEMBERS'
+            : 'SOMETHING IN THERE SLEEPS LIGHTLY',
+          `WEIGHS ${WEIGHT.lamp} LBS`,
+        ],
+        options: [
+          ...(this.encounterDone.has('lamp:carried')
+            ? []
+            : [
+                { id: 'rub-lamp', label: 'RUB THE LAMP' },
+                { id: 'polish-lamp', label: 'POLISH IT' },
+              ]),
+          { id: 'ear-lamp', label: 'HOLD IT TO YOUR EAR' },
+          { id: 'heft-lamp', label: 'FEEL ITS HEFT' },
+          { id: 'shine-lamp', label: 'ADMIRE YOUR REFLECTION' },
+        ],
+      },
+      pipe: {
+        title: this.pipeSpent ? 'THE PIPE, SPENT' : 'THE PIPE',
+        body: [
+          this.pipeSpent ? 'ONE BOWL. IT WAS A GOOD BOWL' : 'ONE BOWL LEFT OF THE GREEN LEAF',
+          `WEIGHS ${WEIGHT.pipe} LB`,
+        ],
+        options: [
+          ...(this.pipeSpent ? [] : [{ id: 'smoke-pipe', label: 'SMOKE THE PIPE' }]),
+          { id: 'sniff-pipe', label: 'SNIFF IT' },
+          { id: 'tap-pipe', label: 'TAP OUT THE ASH' },
+          { id: 'twirl-pipe', label: 'TWIRL IT, DETECTIVE-STYLE' },
+        ],
+      },
     };
     const d = DETAILS[id];
     if (!d) return;
@@ -2662,6 +2825,37 @@ export class Game {
 
   // --- Turn-based combat ---------------------------------------------------
 
+  /** Where a chasing zombie stands now: its post plus its hungry drift. */
+  zombiePos(z) {
+    const o = this.foeOffsets.get(`z:${z.x},${z.y}`);
+    return { x: z.x + (o?.dx ?? 0), y: z.y + (o?.dy ?? 0) };
+  }
+
+  /** Free-mode pursuit: zombies in lock range drift toward the person. */
+  chaseZombies(dt) {
+    const p = this.person;
+    const R = ZOMBIE_LOCK + ZOMBIE_LEASH;
+    for (const z of this.world.zombiesInRect(p.x - R, p.y - R, R * 2, R * 2)) {
+      const key = `z:${z.x},${z.y}`;
+      if (this.encounterDone.has(key)) continue;
+      const pos = this.zombiePos(z);
+      const dx = p.x - pos.x;
+      const dy = p.y - pos.y;
+      const d = Math.hypot(dx, dy);
+      if (d > ZOMBIE_LOCK || d < 14) continue; // unnoticed, or already breathing on you
+      const o = this.foeOffsets.get(key) ?? { dx: 0, dy: 0 };
+      const step = ZOMBIE_SPEED * dt;
+      o.dx += (dx / d) * step;
+      o.dy += (dy / d) * step;
+      const len = Math.hypot(o.dx, o.dy);
+      if (len > ZOMBIE_LEASH) {
+        o.dx *= ZOMBIE_LEASH / len;
+        o.dy *= ZOMBIE_LEASH / len;
+      }
+      this.foeOffsets.set(key, o);
+    }
+  }
+
   /** Hostiles within a radius of the person: {kind, key, x, y, d}. */
   hostilesNear(radius) {
     if (this.location !== 'world') return [];
@@ -2681,8 +2875,9 @@ export class Game {
       }
       return out;
     }
-    for (const z of this.world.zombiesInRect(p.x - radius, p.y - radius, radius * 2, radius * 2)) {
-      consider('zombie', `z:${z.x},${z.y}`, z.x, z.y);
+    for (const z of this.world.zombiesInRect(p.x - radius - ZOMBIE_LEASH, p.y - radius - ZOMBIE_LEASH, (radius + ZOMBIE_LEASH) * 2, (radius + ZOMBIE_LEASH) * 2)) {
+      const pos = this.zombiePos(z);
+      consider('zombie', `z:${z.x},${z.y}`, pos.x, pos.y);
     }
     for (const g of this.world.ghostsInRect(p.x - radius - 40, p.y - radius - 40, (radius + 40) * 2, (radius + 40) * 2)) {
       if (g.temper !== 'hostile') continue;
@@ -2785,6 +2980,21 @@ export class Game {
   endPlayerTurn() {
     if (this.mode !== 'turn') return;
     this.turn = 'foes';
+    // The hungry close the distance on their turn (v0.21).
+    if (this.plane !== 'heaven') {
+      for (const foe of this.hostilesNear(BATTLE_LEAVE)) {
+        if (foe.kind !== 'zombie' || foe.d <= ENCOUNTER_RADIUS || foe.d < 1) continue;
+        const o = this.foeOffsets.get(foe.key) ?? { dx: 0, dy: 0 };
+        o.dx += ((this.person.x - foe.x) / foe.d) * ZOMBIE_STEP;
+        o.dy += ((this.person.y - foe.y) / foe.d) * ZOMBIE_STEP;
+        const len = Math.hypot(o.dx, o.dy);
+        if (len > ZOMBIE_LEASH) {
+          o.dx *= ZOMBIE_LEASH / len;
+          o.dy *= ZOMBIE_LEASH / len;
+        }
+        this.foeOffsets.set(foe.key, o);
+      }
+    }
     const dazed = this.dazed;
     this.dazed = false; // dirt only buys the one round, spent or not
     for (const foe of this.hostilesNear(ENCOUNTER_RADIUS)) {

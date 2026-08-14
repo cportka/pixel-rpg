@@ -169,14 +169,16 @@ test('the portrait opens its menu once, and only once', () => {
   g.person.x = p.x;
   g.person.y = 56;
   g.update(STEP, {});
-  assert.ok(g.choice, 'the portrait noticed you');
+  g.interactNearest(); // v0.21: you notice the portrait, not the reverse
+  assert.ok(g.choice, 'the portrait answers');
   assert.equal(g.choice.kind, 'portrait');
   assert.equal(g.choice.title, 'AN OLD PORTRAIT');
   g.resolveChoice('look');
   assert.equal(g.caption.text, 'IT IS NO ONE YOU KNOW');
   assert.ok(g.captionQueue.includes('IT KNOWS YOU, THOUGH'));
   runSeconds(g, 1);
-  assert.equal(g.choice, null, 'seen once is seen forever');
+  assert.equal(g.interactNearest(), false, 'seen once is seen forever');
+  assert.equal(g.choice, null);
 });
 
 test('the lock rusted through: the stairs climb to the second floor and back', () => {

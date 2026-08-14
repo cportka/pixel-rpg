@@ -138,5 +138,7 @@ repo's configured identity, treats signatures as informational) and refreshes a 
   `**Version:**` line must agree (enforced by `tests/run-tests.sh` + CI).
 - **Style reference:** graphics follow the owner's screen-recording reference (structure,
   sprites, ~15 fps cadence, marching dotted leash) re-themed **neo-noir smokey darks and
-  purples** — violet-black void, smoke/plum dithered trees, moonlit figures. Palette lives
+  purples** — violet-black void, smoke/plum dithered trees, moonlit figures — combined with
+  **Secret of Mana** as the 16-bit inspiration (lush rounded sprites, layered canopies,
+  buildings that tower over the person). Do NOT use Zelda as a reference. Palette lives
   in `src/gfx/palette.js`; keep new art within it. Story: `docs/STORY.md`.

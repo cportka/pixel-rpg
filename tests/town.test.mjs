@@ -209,6 +209,7 @@ test('a non-hostile ghost opens a 4-option menu; OFFER A COIN pays 2 XP once', (
     x: g.person.x + 20, y: g.person.y, phase: 0, variant: 0, temper: 'sullen',
   });
   runSeconds(g, 1);
+  g.interactNearest(); // v0.21: the ghost waits to be spoken to
   assert.equal(g.choice?.kind, 'ghost');
   assert.equal(g.choice.title, 'A GHOST, BUFFERING ITS GRIEF');
   assert.equal(g.choice.options.length, 4);
@@ -222,6 +223,7 @@ test('a non-hostile ghost opens a 4-option menu; OFFER A COIN pays 2 XP once', (
   runSeconds(g, 0.4);
   g.person.x -= 100;
   runSeconds(g, 0.4);
+  g.interactNearest();
   assert.equal(g.choice?.kind, 'ghost', 'the ghost is not one-shot');
   g.resolveChoice('coin');
   assert.equal(g.coins, 0, 'it still takes the coin');
@@ -238,6 +240,7 @@ test('the detective pays 3 coins for a good tip, exactly once', () => {
   g.person.x = 192;
   g.person.y = 140;
   runSeconds(g, 0.5);
+  g.interactNearest(); // v0.21: spots open when clicked
   assert.equal(g.choice?.kind, 'spot:detective');
   assert.ok(g.choice.options.length >= 4);
   g.coins = 0;

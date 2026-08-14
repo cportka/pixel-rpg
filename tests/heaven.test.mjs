@@ -43,6 +43,7 @@ function tvGame() {
 function heavenGame() {
   const g = tvGame();
   runSeconds(g, 0.1);
+  g.interactNearest(); // v0.21: the set answers when asked
   assert.equal(g.choice?.kind, 'tv');
   g.resolveChoice('inside');
   assert.equal(g.plane, 'heaven');
@@ -85,6 +86,7 @@ test('the parlor holds a television, and its menu offers the way up', () => {
   const steps = Math.ceil(1 / STEP);
   for (let i = 0; i < steps && !g.choice; i++) {
     g.update(STEP, {});
+    if (!g.choice) g.interactNearest(); // v0.21: click, not ambush
     g.heard.push(...g.events);
     g.events.length = 0;
   }
@@ -97,23 +99,23 @@ test('the parlor holds a television, and its menu offers the way up', () => {
 test('every channel is the same warm light', () => {
   const g = tvGame();
   runSeconds(g, 0.1);
+  g.interactNearest();
   g.resolveChoice('channel');
   assert.equal(g.caption.text, 'EVERY CHANNEL IS THE SAME WARM LIGHT');
   assert.equal(g.plane, 'night', 'changing channels is not stepping inside');
 });
 
-test('stepping away holds the menu until you actually walk off', () => {
+test('a closed set stays closed — and answers at once when asked again', () => {
   const g = tvGame();
   runSeconds(g, 0.1);
+  g.interactNearest();
+  assert.equal(g.choice?.kind, 'tv');
   g.resolveChoice('away');
   assert.equal(g.choice, null);
   runSeconds(g, 0.5);
-  assert.equal(g.choice, null, 'the cooldown holds while you stand there');
-  g.person.y += 80; // walk away and come back
-  runSeconds(g, 0.2);
-  g.person.y -= 80;
-  runSeconds(g, 0.2);
-  assert.equal(g.choice?.kind, 'tv', 'the set re-arms — heaven is patient');
+  assert.equal(g.choice, null, 'v0.21: nothing reopens on its own');
+  g.interactNearest();
+  assert.equal(g.choice?.kind, 'tv', 'clicking again answers immediately');
 });
 
 // --- The ascent -------------------------------------------------------------
@@ -124,6 +126,7 @@ test('stepping inside swaps the whole plane: world, memory, encounters, dog', ()
   const nightMemory = g.memory;
   const nightDone = g.encounterDone;
   runSeconds(g, 0.1);
+  g.interactNearest();
   g.events.length = 0;
   g.resolveChoice('inside');
   assert.equal(g.plane, 'heaven');
@@ -148,6 +151,7 @@ test('stats, spells, and inventory ride along — they are the soul', () => {
   g.hp = 7;
   g.xp = 3;
   runSeconds(g, 0.1);
+  g.interactNearest();
   g.resolveChoice('inside');
   assert.equal(g.hasBone, true);
   assert.deepEqual(g.spells, ['ember']);
@@ -209,6 +213,7 @@ test('the zombie spot holds an angel, and befriending finally works', () => {
   const steps = Math.ceil(2 / STEP);
   for (let i = 0; i < steps && !g.choice; i++) {
     g.update(STEP, {});
+    if (!g.choice) g.interactNearest();
     g.heard.push(...g.events);
     g.events.length = 0;
   }
@@ -226,6 +231,7 @@ test('basking pools light in your chest', () => {
   const g = heavenGame();
   g.world.chunkAt(0, 0).zombies.push({ x: g.person.x + 30, y: g.person.y, phase: 0 });
   runSeconds(g, 1);
+  g.interactNearest();
   assert.equal(g.choice?.kind, 'angel');
   g.hp = 5;
   g.resolveChoice('bask');
@@ -239,6 +245,7 @@ test('the dumpster spot holds a cathedral; ragas restore focus; gold grows the s
   const g = heavenGame();
   g.world.chunkAt(0, 0).dumpsters.push({ x: g.person.x + 30, y: g.person.y });
   runSeconds(g, 1);
+  g.interactNearest();
   assert.equal(g.choice?.kind, 'cathedral');
   assert.equal(g.choice.title, 'A CATHEDRAL OF MELTED GOLD');
   g.spells.push('ember');
@@ -252,6 +259,7 @@ test('the dumpster spot holds a cathedral; ragas restore focus; gold grows the s
   runSeconds(g, 0.3);
   g.person.x -= 150;
   runSeconds(g, 0.5);
+  g.interactNearest();
   assert.equal(g.choice?.kind, 'cathedral', 'cathedrals are never one-shot');
   const before = g.goldGiven;
   g.resolveChoice('gold');
@@ -280,6 +288,7 @@ test('reaching Cerberus carries you back — night resumes exactly where it paus
   runSeconds(g, 0.2);
   g.person.y -= 80;
   runSeconds(g, 0.2);
+  g.interactNearest();
   assert.equal(g.choice?.kind, 'tv');
   g.resolveChoice('inside');
   assert.equal(g.world, heavenWorld, 'heaven remembers you');
@@ -294,6 +303,7 @@ test('in heaven, the television shows the night below — and leads there', () =
   g.person.x = tv.x;
   g.person.y = tv.y + 40;
   runSeconds(g, 0.2);
+  g.interactNearest();
   assert.equal(g.choice?.kind, 'tv');
   assert.equal(g.choice.title, 'THE TELEVISION SHOWS THE NIGHT BELOW');
   g.resolveChoice('inside');
