@@ -7,7 +7,7 @@ things dancing where the woods grow deep. Somewhere out there
 waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
 eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.18.0
+**Version:** 0.19.0
 
 ## Play
 
@@ -47,11 +47,13 @@ drop zombies for 1 each), d20 + modifier checks, STR-scaled damage, carry
 weight (STR×10 + CON×20 lbs), an icon-based inventory whose icons open
 little explanation windows, a meaty bone that doubles as a club, ten-minute
 pipe inebriation, spells and focus, turn-based fights, and
-collapse-and-rescue — lives in `docs/RULES.md`. The viewport is 624×540
-world pixels, upscaled to fit whatever window it finds itself in — an
-integer multiple when that fills the screen (uniform crisp pixels), a
-fractional fit when flooring would waste it (phones, maximized windows).
-Portrait and landscape both just work; nothing rotates or locks.
+collapse-and-rescue — lives in `docs/RULES.md`. The viewport is dynamic:
+the canvas fills the window edge to edge at any aspect — a wide monitor
+sees more forest sideways, a portrait phone sees more of it ahead, and
+nothing letterboxes, rotates, or locks. The upscale keeps a game pixel
+near 1.5 CSS pixels, snapping to integers for crisp uniform pixels, with
+a zoom-in floor so menus never crush and a zoom-out cap so 4K monitors
+don't quadruple the draw cost.
 
 **The world has two gears.** Wander freely until something hostile gets
 within 120px: the screen locks into a rose-gold frame with corner
@@ -115,8 +117,9 @@ rules).
 
 ## Architecture
 
-No runtime dependencies, no build step — plain ES modules and a 624x540
-canvas integer-upscaled 2x with `image-rendering: pixelated`.
+No runtime dependencies, no build step — plain ES modules and a canvas
+sized to the window (624x540 is the reference view; see `viewFor` in
+`src/core/screen.js`), upscaled with `image-rendering: pixelated`.
 
 - `src/core/` — pure simulation, no DOM (fully covered by `node --test`):
   - `rng.js` — seeded PRNG + coordinate hashing; one world seed derives everything.

@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.19.0] - 2026-08-14
+
+### Changed
+- **The viewport is dynamic — no fixed aspect ratio.** The canvas now
+  fills the browser window edge to edge at any size or shape: what
+  changes with the window is how much WORLD you see, not how much black
+  surrounds the game. A maximized 1440p desktop sees a 1280x720 stretch
+  of forest, a portrait phone sees a tall 390x844 corridor of it ahead,
+  an ultrawide sees a whole panorama. `viewFor()` picks the upscale and
+  the logical size together: a game pixel stays near 1.5 CSS pixels
+  (snapping to integer device scales for uniform pixels), with a zoom-in
+  floor so small windows never crush the menus and a zoom-out cap so 4K
+  monitors stop gaining world once the draw cost would quadruple.
+  `SCREEN_W/H` became live bindings (624x540 remains the reference and
+  test default) and everything that assumed one screen shape adapts:
+  captions wrap to the live width, the HUD hugs the real corners, the
+  lost dog's spawn ring scales so "ALL ALONE IN THE WOODS" stays true on
+  frame one of any window, and the mansion camera follows the person
+  (clamped to the walls) when the interior is wider than a phone's view.
+
 ## [0.18.0] - 2026-08-13
 
 ### Changed

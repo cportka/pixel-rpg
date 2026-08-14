@@ -235,9 +235,14 @@ export class Game {
    * on frame one (the 170px spawn ring otherwise pokes into screen corners).
    */
   placeLostDog() {
+    // The spawn ring scales with the live view (v0.19): a big monitor sees
+    // further, so the dog waits further out — "ALL ALONE IN THE WOODS" must
+    // stay true on frame one at any window size.
+    const ringMin = Math.max(DOG_SPAWN_MIN, SCREEN_W / 2 + 30, SCREEN_H / 2 + 40);
+    const ringMax = ringMin + (DOG_SPAWN_MAX - DOG_SPAWN_MIN);
     for (let attempt = 0; attempt < 40; attempt++) {
       const angle = this.rng() * Math.PI * 2;
-      const dist = DOG_SPAWN_MIN + this.rng() * (DOG_SPAWN_MAX - DOG_SPAWN_MIN);
+      const dist = ringMin + this.rng() * (ringMax - ringMin);
       const x = Math.cos(angle) * dist;
       const y = Math.sin(angle) * dist;
       // Visible at start? (Opening camera sits at (0, -6); pad for the sprite.)
@@ -245,7 +250,7 @@ export class Game {
       const b = feetBox({ feetW: DOG.feetW, feetH: DOG.feetH, x, y }, x, y);
       if (!this.world.collides(b.x, b.y, b.w, b.h)) return [x, y];
     }
-    return [DOG_SPAWN_MAX, 0]; // forests are sparse; this is effectively unreachable
+    return [ringMax, 0]; // forests are sparse; this is effectively unreachable
   }
 
   get activeChar() {

@@ -45,7 +45,10 @@ import { textPixels, measureText, wrapText, GLYPH_H, LINE_GAP } from './font.js'
 
 export const RENDER_FPS = 15; // presentation cadence, matched to the reference
 
-export const CAPTION_MAX_W = SCREEN_W - 40; // wrap captions to the screen, minus margins
+/** Caption wrap width — live, since the screen resizes (v0.19). */
+export function captionMaxW() {
+  return SCREEN_W - 40;
+}
 const BUTTON_PAD = 3; // px of padding inside a touch button
 
 /**
@@ -459,7 +462,7 @@ export class Renderer {
 
   /** Wrapped caption anchored above a character, clamped to the screen. */
   drawCaption(text, anchorScreenX, anchorScreenY, color = PALETTE.moonlight) {
-    const lines = wrapText(text, CAPTION_MAX_W);
+    const lines = wrapText(text, captionMaxW());
     const lineH = GLYPH_H + LINE_GAP;
     let top = Math.round(anchorScreenY) - 39 - lines.length * lineH;
     top = Math.max(4, Math.min(top, SCREEN_H - lines.length * lineH - 4));
@@ -848,8 +851,15 @@ export class Renderer {
    */
   renderMansionScene(game) {
     const ctx = this.ctx;
-    const viewX = -Math.round((SCREEN_W - INTERIOR_W) / 2);
-    const viewY = -Math.round((SCREEN_H - INTERIOR_H) / 2);
+    // Centered while the interior fits on screen; when the view is narrower
+    // (portrait phones), the camera follows the person along that axis,
+    // clamped to the interior's edges.
+    const follow = (screen, interior, focus) =>
+      screen >= interior
+        ? -Math.round((screen - interior) / 2)
+        : Math.round(Math.min(Math.max(focus - screen / 2, 0), interior - screen));
+    const viewX = follow(SCREEN_W, INTERIOR_W, game.person.x);
+    const viewY = follow(SCREEN_H, INTERIOR_H, game.person.y);
     this.lastViewX = viewX;
     this.lastViewY = viewY;
     this.lastLocation = 'mansion';
