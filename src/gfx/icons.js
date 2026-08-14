@@ -241,6 +241,81 @@ export const ICONS = {
     ],
     colors: { u: PALETTE.purple, W: PALETTE.moonlight, s: PALETTE.smoke },
   },
+  // SWORD — Cortie's honest steel (v0.21).
+  sword: {
+    sprite: [
+      '.......W.',
+      '......WW.',
+      '.....WW..',
+      '....WW...',
+      '.b.WW....',
+      '..bW.....',
+      '..cb.....',
+      '.c..b....',
+      '.........',
+    ],
+    colors: { W: PALETTE.moonlight, b: PALETTE.brass, c: PALETTE.clay },
+  },
+  // WAND — the crooked little lightning rod.
+  wand: {
+    sprite: [
+      '.......m.',
+      '......mv.',
+      '.....cv..',
+      '.....c...',
+      '....c....',
+      '...c.....',
+      '..c......',
+      '.c.......',
+      '.........',
+    ],
+    colors: { c: PALETTE.clay, v: PALETTE.violet, m: PALETTE.magenta },
+  },
+  // SCROLL — rolled thunder, tied in violet.
+  scroll: {
+    sprite: [
+      '.........',
+      '.WWWWWW..',
+      'W......W.',
+      '.WWWWWWW.',
+      '..W...W..',
+      '..WvvvW..',
+      '..W...W..',
+      '..WWWWW..',
+      '.........',
+    ],
+    colors: { W: PALETTE.moonlight, v: PALETTE.violet },
+  },
+  // LAMP — something in there sleeps lightly.
+  lamp: {
+    sprite: [
+      '....g....',
+      '.........',
+      '..bbbb...',
+      '.bbbbbba.',
+      'bbbbbbba.',
+      '.bbbbba..',
+      '..bbba...',
+      '.b....a..',
+      '.........',
+    ],
+    colors: { b: PALETTE.brass, g: PALETTE.gold, a: PALETTE.amber },
+  },
+  // PIPE — one bowl of the green leaf.
+  pipe: {
+    sprite: [
+      '.....s...',
+      '....s....',
+      '.....s...',
+      '.........',
+      'gg.......',
+      'ggcccccc.',
+      '.ggc...c.',
+      '..cc..cc.',
+      '.........',
+    ],
+    colors: { c: PALETTE.clay, g: PALETTE.leaf, s: PALETTE.smoke },
+  },
   // BOAT — she floats. somehow, she floats.
   boat: {
     sprite: [

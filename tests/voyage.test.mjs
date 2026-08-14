@@ -43,6 +43,7 @@ function tvGame() {
 function heavenGame() {
   const g = tvGame();
   runSeconds(g, 0.1);
+  g.interactNearest(); // v0.21: the set answers when asked
   assert.equal(g.choice?.kind, 'tv');
   g.resolveChoice('inside');
   assert.equal(g.plane, 'heaven');
@@ -336,28 +337,30 @@ test('buildBoat wants 24 planks + rope + manual; it spends the planks and the ro
 
 // --- The shrine --------------------------------------------------------------
 
-test("the shrine's offering costs 1 coin, grants +2 max focus, and never doubles", () => {
+test("the shrine's offering costs 1 coin, grants one extra slot, and never doubles", () => {
   const g = heavenGame();
   g.world.chunkAt(0, 0).shrines.push({ x: g.person.x + 20, y: g.person.y });
   runSeconds(g, 1);
+  g.interactNearest(); // v0.21: the shrine waits to be approached ON PURPOSE
   assert.equal(g.choice?.kind, 'shrine');
   assert.equal(g.choice.title, 'THE ISLAND SHRINE. YOU MADE IT');
-  const base = g.maxFocus();
+  const base = g.maxSlots(1);
   g.coins = 1;
   g.resolveChoice('offer');
   assert.equal(g.islandBlessed, true);
   assert.equal(g.coins, 0, 'the coin settles like it always lived there');
-  assert.equal(g.maxFocus(), base + 2, "the islander's calm");
+  assert.equal(g.maxSlots(1), base + 1, "the islander's calm");
   // Walk off and return: the shrine re-arms, but the calm is already yours.
   g.person.x += 150;
   runSeconds(g, 0.4);
   g.person.x -= 150;
   runSeconds(g, 0.6);
+  g.interactNearest();
   assert.equal(g.choice?.kind, 'shrine');
   g.coins = 5;
   g.resolveChoice('offer');
   assert.equal(g.coins, 5, 'the bowl is full of your last coin');
-  assert.equal(g.maxFocus(), base + 2, 'no double blessing');
+  assert.equal(g.maxSlots(1), base + 1, 'no double blessing');
 });
 
 // --- God ---------------------------------------------------------------------

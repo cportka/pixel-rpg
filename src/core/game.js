@@ -16,8 +16,8 @@ import {
 } from './terrain.js';
 import { SCREEN_W, SCREEN_H } from './screen.js';
 import {
-  SPAWN as MANSION_SPAWN, mansionCollides, onDoor, nearStairs, nearPortrait, nearClock,
-  nearTelevision,
+  SPAWN as MANSION_SPAWN, mansionCollides, onDoor, nearStairs, nearClock,
+  FURNISH as MANSION_FURNISH_LIST,
 } from './mansion.js';
 import {
   INTERIORS, interiorCollides, interiorOnDoor, interiorOnStairs,
@@ -53,10 +53,12 @@ export const PRICES = {
   axe: 8,
   rope: 2,
   manual: 12, // HOW TO BUILD A BOAT, ghost-press edition
+  sword: 15, // Cortie's honest steel
+  wand: 20, // Cortie's crooked little lightning rod
 };
 export const SELLS = { meat: 2, bone: 4, wood: 1 };
 export const BOAT_WOOD = 24; // planks a boat wants
-export const WEIGHT = { wood: 1, axe: 6, rope: 2, manual: 1 }; // lbs
+export const WEIGHT = { wood: 1, axe: 6, rope: 2, manual: 1, lamp: 3, pipe: 1 }; // lbs
 export const SWIM_SPEED = 0.45; // of walking speed; heaven's water is warm
 export const SAIL_SPEED = 1.25; // the boat knows the way
 export const AMBIENT_PERIOD = 26; // seconds between ambient lines when together
@@ -71,7 +73,7 @@ export const DC_SMOTHER = 15; // putting out a fire bare-handed: STR, hard
 export const DC_GENIE = 12; // charming a genie out of an old lamp: CHA
 export const DC_VISION = 15; // the pipe (WIS): this good or better, the woods speak
 export const DC_COUGH = 7; // the pipe: this bad or worse, you pay for it
-export const DC_FISTS = 12; // punching a zombie: STR
+export const DC_FISTS = 10; // punching a zombie: STR (v0.21: hard, not hopeless)
 export const DC_BONE = 9; // swinging the bone: STR, but it's a club
 export const ZOMBIE_HP = 4;
 export const ZOMBIE_BITE = 2;
@@ -86,31 +88,26 @@ export const LEVEL_POINTS = 2; // +1s to hand out per level, together or apart
 export const XP_DOG = 4; // finding the friendly lost dog
 export const XP_ZOMBIE = 1; // per zombie put back down
 
-// Magic (v0.16). The half-burnt leaf never hurt anyone — it teaches. Each
-// vision hands over the next spell in the book; casting spends focus, which
-// comes back slowly under the open sky.
+// Magic (v0.21): spells come in LEVELS now, and casting spends SLOTS that
+// only a REST gives back — a bed, a warm stove, the ragas, sitting with God.
+// Your mind sets the slots: INT shapes level 1, WIS level 2, CHA level 3.
+// The leaf still teaches the book in order; scrolls (Queebee's shelf) can be
+// cast once for free, or inscribed forever with paper or the book.
 export const SPELLS = [
-  {
-    id: 'ember',
-    name: 'EMBER',
-    cost: 1,
-    blurb: 'A ROSE-GOLD FLAME. 3 DAMAGE',
-  },
-  {
-    id: 'ward',
-    name: 'WARD',
-    cost: 1,
-    blurb: 'THE NEXT BITE FINDS NOTHING',
-  },
-  {
-    id: 'moonlight',
-    name: 'MOONLIGHT',
-    cost: 2,
-    blurb: 'DRINK THE MOON. +3 HP',
-  },
+  { id: 'ember', name: 'EMBER', level: 1, blurb: 'A ROSE-GOLD FLAME. 3 DAMAGE' },
+  { id: 'ward', name: 'WARD', level: 1, blurb: 'THE NEXT BITE FINDS NOTHING' },
+  { id: 'moonlight', name: 'MOONLIGHT', level: 2, blurb: 'DRINK THE MOON. +3 HP' },
+  // Scroll-taught (v0.21): Queebee stocks these.
+  { id: 'bolt', name: 'BOLT', level: 1, blurb: 'A VIOLET DART. 2 + INT DAMAGE', scroll: true },
+  { id: 'mend', name: 'MEND', level: 1, blurb: 'SMALL STITCHES OF LIGHT. +2 HP', scroll: true },
+  { id: 'shield', name: 'SHIELD', level: 2, blurb: 'A WARD THAT TAKES TWO BITES', scroll: true },
+  { id: 'starfall', name: 'STARFALL', level: 3, blurb: 'THE SKY LEANS IN. 4 TO ALL IN REACH', scroll: true },
 ];
-export const FOCUS_BASE = 3; // focus = 3 + WIS modifier
-export const FOCUS_REGEN = 20; // seconds per point of focus recovered
+export const SLOT_LEVELS = [1, 2, 3];
+export const SCROLL_PRICES = { bolt: 4, mend: 4, shield: 7, starfall: 12 };
+export const PAPER_PRICE = 1;
+export const BOOK_PRICE = 8;
+export const DC_WAND = 10; // INT: the wand answers to an educated flick
 
 // Turn-based combat (v0.16). Hostiles close by pull the world out of free
 // movement: you get a step budget and one action per turn, then they answer.
@@ -122,8 +119,16 @@ export const BATTLE_MOVE = 60; // px of movement per turn
 // rules). Regions near the person refresh; the rest fade over minutes.
 export const MEM_FRESH = 90; // s a memory stays sharp (landmarks and all)
 export const MEM_FADED = 300; // s until only the barest outline remains
-const ENCOUNTER_RADIUS = 39; // px at which an encounter opens its menu
-const ENCOUNTER_REARM = 66; // walk this far away before it can re-open
+const ENCOUNTER_RADIUS = 39; // px of battle reach (bites, swings)
+const ENCOUNTER_REARM = 66; // walk this far before a self-opening menu re-arms
+export const INTERACT_REACH = 48; // px within which a click opens its menu at once
+
+// v0.21: zombies lock on. In free mode they shamble toward warm brains in
+// range; in battle they close the gap on their turn.
+export const ZOMBIE_LOCK = 150; // px at which a zombie notices you
+export const ZOMBIE_SPEED = 36; // px/s of hungry shamble (you walk 69)
+export const ZOMBIE_STEP = 26; // px it closes per battle round
+export const ZOMBIE_LEASH = 140; // px from its post a zombie will wander
 
 const DOG_SPAWN_MIN = 360; // px from the person the lost dog waits
 const DOG_SPAWN_MAX = 480; // (outside the 416x360 opening view, whimper range)
@@ -157,6 +162,7 @@ const LAMP_OPTIONS = [
   { id: 'rub', label: 'RUB THE LAMP' },
   { id: 'polish', label: 'POLISH IT ON YOUR SLEEVE' },
   { id: 'ear', label: 'HOLD IT TO YOUR EAR' },
+  { id: 'take', label: 'TAKE THE LAMP' },
   { id: 'walkaway', label: 'LEAVE IT BE' },
 ];
 
@@ -215,6 +221,8 @@ export class Game {
     this.fetchTime = 0; // how long the current fetch has been running
     this.nav = { stuck: 0, detour: 0, side: 1 }; // dog AI steering state
     this.moveTarget = null; // { x, y } — tap/click-to-move destination
+    this.pendingInteract = null; // clicked interactable being walked to
+    this.hover = null; // interactable under the pointer (renderer glow)
     this.tapNav = { stuck: 0, detour: 0, side: 1 }; // steering state for tap-move
     this.tapStall = 0; // time without progress toward the tap target
     this.tapLastDist = Infinity;
@@ -244,6 +252,7 @@ export class Game {
     this.cooldownKeys = new Set();
     this.encounterDone = new Set(); // encounter keys that resolved for good
     this.dumpstersOut = new Set(); // dumpsters whose fire was smothered
+    this.foeOffsets = new Map(); // foe key -> {dx,dy} of chase drift from its post
     this.encounterCheck = 0;
 
     // What the person remembers of the world: region key → landmarks +
@@ -266,6 +275,9 @@ export class Game {
     this.hasRope = false;
     this.hasManual = false;
     this.hasBoat = false;
+    this.hasLamp = false; // the genie lamp, pocketed (v0.21)
+    this.hasPipe = false; // the half-burnt pipe, pocketed (v0.21)
+    this.pipeSpent = false; // the carried pipe's one bowl, smoked
     this.swimming = false; // recomputed each step; true while feet are wet
     this.godMet = false; // you only meet God for the first time once
     this.islandBlessed = false; // the shrine's calm: +2 max focus, always
@@ -276,11 +288,18 @@ export class Game {
     this.boneNamed = false; // the bone's name stays between you two
     this.boatNamed = false; // so does hers
 
-    // Magic and battle (v0.16).
+    // Magic and battle (v0.21: leveled slots, restored by resting).
     this.spells = []; // spell ids learned, in the order the leaf taught them
-    this.focus = this.maxFocus();
-    this.focusTimer = 0;
+    this.slots = { 1: 0, 2: 0, 3: 0 };
+    for (const lv of SLOT_LEVELS) this.slots[lv] = this.maxSlots(lv);
+    this.breathed = false; // JUST BREATHE recovers one L1 slot, once per rest
+    this.scrolls = {}; // spell id -> count of scrolls held
+    this.paper = 0; // blank pages for inscribing
+    this.hasBook = false; // the blank book: inscribe without spending paper
+    this.hasSword = false; // Cortie's steel
+    this.hasWand = false; // Cortie's lightning rod
     this.warded = false; // WARD eats the next bite
+    this.shielded = false; // SHIELD eats the one after too
     this.mode = 'free'; // 'free' | 'turn' — the world's two gears
     this.turn = 'you'; // whose move, while turn-based
     this.moveLeft = 0; // px of movement left in your turn
@@ -485,6 +504,7 @@ export class Game {
       memory: this.memory,
       encounterDone: this.encounterDone,
       zombieHp: this.zombieHp,
+      foeOffsets: this.foeOffsets,
       choiceCooldown: this.choiceCooldown,
       cooldownKeys: this.cooldownKeys,
       px: this.person.x,
@@ -506,6 +526,7 @@ export class Game {
     this.memory = snap.memory;
     this.encounterDone = snap.encounterDone;
     this.zombieHp = snap.zombieHp;
+    this.foeOffsets = snap.foeOffsets ?? new Map();
     this.choiceCooldown = snap.choiceCooldown;
     this.cooldownKeys = snap.cooldownKeys ?? new Set();
     this.person.x = snap.px;
@@ -549,6 +570,7 @@ export class Game {
       memory: new Map(),
       encounterDone: new Set(),
       zombieHp: new Map(),
+      foeOffsets: new Map(),
       choiceCooldown: null,
       cooldownKeys: new Set(),
       px,
@@ -642,16 +664,7 @@ export class Game {
         for (const k of this.cooldownKeys) if (k.startsWith(prefix)) this.cooldownKeys.delete(k);
       }
     }
-    // Named spots open their menus when the person wanders close.
-    if (!this.choice) {
-      for (const spot of INTERIORS[kind].spots) {
-        const key = `${this.mansionKey}:${spot.id}`;
-        if (this.choiceCooldown?.key === key || this.cooldownKeys.has(key)) continue;
-        if (Math.hypot(spot.x - p.x, spot.y - p.y) > spot.r) continue;
-        this.openSpotMenu(kind, spot, key);
-        return;
-      }
-    }
+    // Named spots wait to be CLICKED (v0.21) — nothing opens on proximity.
     void dt;
   }
 
@@ -683,50 +696,7 @@ export class Game {
         for (const k of this.cooldownKeys) if (k.startsWith(prefix)) this.cooldownKeys.delete(k);
       }
     }
-    const pk = `${this.mansionKey}:port`;
-    if (!this.choice && !this.encounterDone.has(pk) && nearPortrait(p.x, p.y)) {
-      // The menu owns the screen: retire any routine caption still up.
-      if (!this.captionSticky) {
-        this.caption = null;
-        this.captionQueue.length = 0;
-      }
-      this.openChoice({
-        kind: 'portrait',
-        key: pk,
-        x: p.x,
-        y: p.y,
-        title: 'AN OLD PORTRAIT',
-        options: [
-          { id: 'look', label: 'LOOK CLOSER' },
-          { id: 'name', label: 'ASK ITS NAME' },
-          { id: 'frame', label: 'STRAIGHTEN THE FRAME' },
-          { id: 'away', label: 'LOOK AWAY' },
-        ],
-      });
-      return;
-    }
-    const tk = `${this.mansionKey}:tv`;
-    if (!this.choice && this.choiceCooldown?.key !== tk && nearTelevision(p.x, p.y)) {
-      if (!this.captionSticky) {
-        this.caption = null;
-        this.captionQueue.length = 0;
-      }
-      this.emit('tv');
-      this.openChoice({
-        kind: 'tv',
-        key: tk,
-        x: p.x,
-        y: p.y,
-        title: this.plane === 'heaven' ? 'THE TELEVISION SHOWS THE NIGHT BELOW' : 'AN OLD TELEVISION, WARM WITH ROSE LIGHT',
-        options: [
-          { id: 'inside', label: 'STEP INSIDE' },
-          { id: 'channel', label: 'CHANGE THE CHANNEL' },
-          { id: 'down', label: 'TURN IT DOWN' },
-          { id: 'away', label: 'STEP AWAY' },
-        ],
-      });
-      return;
-    }
+    // The portrait and the television wait to be CLICKED now (v0.21).
     this.clockTick += dt;
     if (this.clockTick >= 2) {
       this.clockTick = 0;
@@ -795,9 +765,9 @@ export class Game {
     return `D20: ${c.roll}${m}`;
   }
 
-  /** Fist damage scales with raw strength: floor(STR / 4). */
+  /** Fist damage scales with raw strength: floor(STR / 4), never zero. */
   fistDamage() {
-    return Math.floor(this.stats.str / 4);
+    return Math.max(1, Math.floor(this.stats.str / 4));
   }
 
   /** The bone is a club: fist damage +1 (so it always does something). */
@@ -818,7 +788,9 @@ export class Game {
       this.wood * WEIGHT.wood +
       (this.hasAxe ? WEIGHT.axe : 0) +
       (this.hasRope ? WEIGHT.rope : 0) +
-      (this.hasManual ? WEIGHT.manual : 0)
+      (this.hasManual ? WEIGHT.manual : 0) +
+      (this.hasLamp ? WEIGHT.lamp : 0) +
+      (this.hasPipe ? WEIGHT.pipe : 0)
       // The boat is not carried. The boat carries YOU.
     );
   }
@@ -944,19 +916,11 @@ export class Game {
       this.drunk = Math.max(0, this.drunk - dt);
       if (this.drunk === 0) {
         this.say('THE WORLD SETTLES BACK DOWN');
-        // Inebriation lends WIS, and WIS is the focus pool — sobering up
-        // takes the borrowed points back rather than leaving you over full.
-        this.focus = Math.min(this.focus, this.maxFocus());
+        // Sobering up clamps any slots the borrowed WIS was holding open.
+        for (const lv of SLOT_LEVELS) this.slots[lv] = Math.min(this.slots[lv], this.maxSlots(lv));
       }
     }
-    // Focus seeps back under the open sky, a point at a time.
-    if (this.spells.length && this.focus < this.maxFocus()) {
-      this.focusTimer += dt;
-      if (this.focusTimer >= FOCUS_REGEN) {
-        this.focusTimer = 0;
-        this.focus++;
-      }
-    }
+    // v0.21: slots do NOT seep back — only rest returns them.
   }
 
   /** True while a world-pausing screen (inventory, detail, map, level) is up. */
@@ -1035,7 +999,7 @@ export class Game {
     this._prevSwap = !!input.swap;
     if (input.action && !this._prevAction && this.active === 'person') {
       if (this.mode === 'turn') this.openBattleMenu();
-      else this.throwBall();
+      else if (!this.interactNearest()) this.throwBall();
     }
     this._prevAction = !!input.action;
     if (input.sheet && !this._prevSheet) this.openSheet();
@@ -1076,6 +1040,7 @@ export class Game {
     if (dirXLock) this.clearMoveTarget();
     if (dirX !== 0 || dirY !== 0) {
       this.clearMoveTarget();
+      this.pendingInteract = null; // steering by hand cancels the walk-to-talk
       moveCharacter(this.activeChar, dirX, dirY, dt, this.phys());
     } else if (this.moveTarget) {
       this.updateTapMove(dt);
@@ -1133,8 +1098,8 @@ export class Game {
           return;
         }
       }
-      for (const c of this.world.cabinsInRect(p.x - 40, p.y - 40, 80, 80)) {
-        if (Math.abs(p.x - c.x) < 6 && p.y > c.y - 5 && p.y < c.y + 5) {
+      for (const c of this.world.cabinsInRect(p.x - 80, p.y - 80, 160, 160)) {
+        if (Math.abs(p.x - c.x) < 8 && p.y > c.y - 5 && p.y < c.y + 5) {
           this.enterInterior('cabin', `cb:${c.x},${c.y}`, { px: c.x, py: c.y + 12, dx: c.x - 15, dy: c.y + 16 });
           if (!this.encounterDone.has(`${this.mansionKey}:in`)) {
             this.encounterDone.add(`${this.mansionKey}:in`);
@@ -1143,12 +1108,32 @@ export class Game {
           return;
         }
       }
-      for (const o of this.world.officesInRect(p.x - 50, p.y - 50, 100, 100)) {
-        if (Math.abs(p.x - o.x) < 5 && p.y > o.y - 5 && p.y < o.y + 5) {
-          this.enterInterior('office', `of:${o.x},${o.y}`, { px: o.x, py: o.y + 12, dx: o.x - 15, dy: o.y + 16 });
+      for (const o of this.world.officesInRect(p.x - 80, p.y - 80, 160, 160)) {
+        if (Math.abs(p.x - (o.x + 32)) < 8 && p.y > o.y - 5 && p.y < o.y + 5) {
+          this.enterInterior('office', `of:${o.x},${o.y}`, { px: o.x + 32, py: o.y + 12, dx: o.x + 17, dy: o.y + 16 });
           if (!this.encounterDone.has(`${this.mansionKey}:in`)) {
             this.encounterDone.add(`${this.mansionKey}:in`);
             this.announce(['GORSKI - BAIL BONDS, SAYS THE GLASS', 'THE LIGHT INSIDE IS THE COLOR OF COLD COFFEE']);
+          }
+          return;
+        }
+      }
+      for (const sh of this.world.cortiesInRect(p.x - 80, p.y - 80, 160, 160)) {
+        if (Math.abs(p.x - (sh.x + 31)) < 8 && p.y > sh.y - 5 && p.y < sh.y + 5) {
+          this.enterInterior('cortie', `co:${sh.x},${sh.y}`, { px: sh.x + 31, py: sh.y + 12, dx: sh.x + 16, dy: sh.y + 16 });
+          if (!this.encounterDone.has(`${this.mansionKey}:in`)) {
+            this.encounterDone.add(`${this.mansionKey}:in`);
+            this.announce(['STEEL, SAYS THE SIGN. THE HINGES AGREE LOUDLY', 'CORTIE DOES NOT LOOK UP. THE WHETSTONE DOES']);
+          }
+          return;
+        }
+      }
+      for (const sh of this.world.queebeesInRect(p.x - 80, p.y - 80, 160, 160)) {
+        if (Math.abs(p.x - (sh.x - 31)) < 8 && p.y > sh.y - 5 && p.y < sh.y + 5) {
+          this.enterInterior('queebee', `qb:${sh.x},${sh.y}`, { px: sh.x - 31, py: sh.y + 12, dx: sh.x - 46, dy: sh.y + 16 });
+          if (!this.encounterDone.has(`${this.mansionKey}:in`)) {
+            this.encounterDone.add(`${this.mansionKey}:in`);
+            this.announce(['THE BELL OVER THE DOOR IS A SMALL SILVER GHOST', 'QUEEBEE LOOKS UP OVER HER SPECTACLES. ONE EYEBROW FILES YOU']);
           }
           return;
         }
@@ -1166,6 +1151,24 @@ export class Game {
           }
         }
       }
+    }
+
+    // A clicked interactable being walked to: open its menu on arrival, or
+    // give up if the walk was abandoned.
+    if (this.pendingInteract && this.mode === 'turn') this.pendingInteract = null;
+    if (this.pendingInteract && !this.choice && this.active === 'person') {
+      const t = this.pendingInteract;
+      if (Math.hypot(t.x - this.person.x, t.y - this.person.y) <= INTERACT_REACH) {
+        this.pendingInteract = null;
+        this.openMenuFor(t);
+      } else if (!this.moveTarget) {
+        this.pendingInteract = null;
+      }
+    }
+
+    // v0.21: zombies lock on and shamble your way while the world is free.
+    if (this.location === 'world' && this.plane !== 'heaven' && this.mode === 'free') {
+      this.chaseZombies(dt);
     }
 
     // The world's gear: hostiles nearby drop it into turn-based.
@@ -1280,58 +1283,149 @@ export class Game {
     this.triggerGlitch(0.25);
   }
 
-  /** Open encounter menus for whatever the person walks up to. */
-  checkEncounters() {
-    if (this.choice) return; // never clobber an open menu (e.g. a level-up)
-    if (this.location !== 'world') return; // the mansion has its own manners
-    if (this.active !== 'person') return; // the dog is unbothered by all of it
-    if (this.mode === 'turn') return; // the battle owns the screen — no shopping mid-fight
-    const p = this.person;
-    // Re-arm recently closed menus only once you've actually walked away.
-    if (this.choiceCooldown) {
-      const cd = this.choiceCooldown;
-      if (Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) {
-        this.choiceCooldown = null;
-        this.cooldownKeys.clear();
+  /**
+   * Everything the person could CLICK right now (v0.21): the world's
+   * friendly encounters — and, under a roof, the named spots plus the
+   * mansion's portrait and television. Hostiles are never on the list (the
+   * battle system owns them), and resolved one-shots don't reappear.
+   * Each entry: { kind, key, x, y, r, data }.
+   */
+  interactables() {
+    const out = [];
+    const push = (kind, key, x, y, r = 16, data = null) => {
+      if (this.encounterDone.has(key)) return;
+      out.push({ kind, key, x, y, r, data });
+    };
+    if (this.location !== 'world') {
+      const kind = this.location;
+      if (kind === 'mansion') {
+        const port = MANSION_FURNISH_LIST.find((f) => f.kind === 'portrait');
+        const tv = MANSION_FURNISH_LIST.find((f) => f.kind === 'television');
+        if (port) push('portrait', `${this.mansionKey}:port`, port.x, port.y + 14, 20);
+        if (tv) push('tv', `${this.mansionKey}:tv`, tv.x, tv.y + 12, 22);
+      } else {
+        for (const spot of INTERIORS[kind].spots) {
+          push(`spot:${spot.id}`, `${this.mansionKey}:${spot.id}`, spot.x, spot.y, Math.max(14, spot.r * 0.5), spot);
+        }
       }
+      return out;
     }
-    const blocked = (key) =>
-      this.encounterDone.has(key) || this.choiceCooldown?.key === key || this.cooldownKeys.has(key);
-    const near = (method) =>
-      this.world[method](p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2);
+    const p = this.person;
+    const R = 420; // generous: anything on screen is hoverable
+    const near = (method) => this.world[method](p.x - R, p.y - R, R * 2, R * 2);
+    for (const f of near('dumpstersInRect')) {
+      push(this.plane === 'heaven' ? 'cathedral' : 'dumpster', `d:${f.x},${f.y}`, f.x, f.y, 20);
+    }
+    for (const f of near('catsInRect')) push('cat', `c:${f.x},${f.y}`, f.x, f.y, 14);
+    for (const f of near('lampsInRect')) push('lamp', `l:${f.x},${f.y}`, f.x, f.y, 12);
+    for (const f of near('pipesInRect')) push('pipe', `p:${f.x},${f.y}`, f.x, f.y, 12);
+    if (this.plane === 'heaven') {
+      const god = godSpot(this.world.seed);
+      if (god) push('god', 'god', god.x, god.y, 18);
+      for (const f of near('signsInRect')) push('sign', `sn:${f.x},${f.y}`, f.x, f.y, 14);
+      for (const f of near('shrinesInRect')) push('shrine', `sh:${f.x},${f.y}`, f.x, f.y, 16);
+      for (const f of near('zombiesInRect')) push('angel', `z:${f.x},${f.y}`, f.x, f.y, 16);
+    } else {
+      for (const f of near('pirtsInRect')) push('pirts', `pi:${f.x},${f.y}`, f.x, f.y, 16);
+      for (const f of near('ghostsInRect')) {
+        if (f.temper === 'hostile') continue; // the battle system owns those
+        const pos = ghostPos(f, this.time);
+        push('ghost', `gh:${f.x},${f.y}`, pos.x, pos.y, 14, { temper: f.temper });
+      }
+      for (const f of near('townsignsInRect')) push('townsign', `ts:${f.x},${f.y}`, f.x, f.y, 14);
+      for (const f of near('wizardsInRect')) {
+        push('wizard', `wz:${f.x},${f.y}`, f.x, f.y, 16, { variant: f.variant });
+      }
+      for (const f of near('qtownsignsInRect')) push('qtownsign', `qs:${f.x},${f.y}`, f.x, f.y, 14);
+    }
+    return out;
+  }
 
-    const KINDS = [
-      // In heaven the dumpster spots hold cathedrals instead: same rng draws,
-      // very different landlord.
-      this.plane === 'heaven'
-        ? {
-            method: 'dumpstersInRect',
-            prefix: 'd',
-            kind: 'cathedral',
-            title: 'A CATHEDRAL OF MELTED GOLD',
-            options: [
-              { id: 'listen', label: 'LISTEN TO THE RAGAS' },
-              { id: 'gold', label: 'ADD TO THE PILE OF GOD' },
-              { id: 'confess', label: 'CONFESS NOTHING IN PARTICULAR' },
-              { id: 'walkaway', label: 'STEP BACK INTO THE LIGHT' },
-            ],
-          }
-        : {
-            method: 'dumpstersInRect',
-            prefix: 'd',
-            kind: 'dumpster',
-            title: 'A DUMPSTER BURNS IN THE DARK',
-            options: [
-              { id: 'search', label: 'SEARCH THE DUMPSTER' },
-              { id: 'putout', label: 'PUT OUT THE FIRE (HOW?)' },
-              { id: 'warm', label: 'WARM YOUR HANDS' },
-              { id: 'walkaway', label: 'WALK AWAY' },
-            ],
-          },
-      {
-        method: 'catsInRect',
-        prefix: 'c',
-        kind: 'cat',
+  /** The interactable under a point (world or interior coords), or null. */
+  interactableAt(wx, wy) {
+    let best = null;
+    for (const it of this.interactables()) {
+      const d = Math.hypot(it.x - wx, it.y - wy);
+      if (d <= it.r + 8 && (!best || d < best.d)) best = { ...it, d };
+    }
+    return best;
+  }
+
+  /**
+   * A tap claimed by an interactable: in reach the menu opens right away —
+   * clicking again re-interacts immediately, no cooldown — and out of reach
+   * the person walks over and opens it on arrival. Returns true when the
+   * tap was spent here (main.js falls through to plain tap-to-move).
+   */
+  interactAt(wx, wy) {
+    if (this.choice) return false;
+    if (this.active !== 'person') return false;
+    if (this.mode === 'turn') return false; // the battle owns the screen
+    const it = this.interactableAt(wx, wy);
+    if (!it) {
+      this.pendingInteract = null;
+      return false;
+    }
+    if (Math.hypot(it.x - this.person.x, it.y - this.person.y) <= INTERACT_REACH) {
+      this.pendingInteract = null;
+      this.openMenuFor(it);
+    } else {
+      this.pendingInteract = { kind: it.kind, key: it.key, x: it.x, y: it.y, r: it.r, data: it.data };
+      this.setMoveTarget(it.x, it.y + 10);
+    }
+    return true;
+  }
+
+  /** The action key, out of battle: talk to whatever is in front of you. */
+  interactNearest() {
+    if (this.choice || this.active !== 'person') return false;
+    if (this.mode === 'turn') return false; // no shopping mid-fight
+    let best = null;
+    for (const it of this.interactables()) {
+      const d = Math.hypot(it.x - this.person.x, it.y - this.person.y);
+      if (d <= INTERACT_REACH && (!best || d < best.d)) best = { ...it, d };
+    }
+    if (!best) return false;
+    this.openMenuFor(best);
+    return true;
+  }
+
+  /** Open the right menu for a clicked interactable. */
+  openMenuFor(it) {
+    const { kind, key, x, y } = it;
+    if (kind.startsWith('spot:')) {
+      this.openSpotMenu(this.location, it.data ?? { id: kind.slice(5) }, key);
+      return;
+    }
+    if (kind === 'pirts') {
+      this.emit('ghost');
+      this.openPirtsMenu(key, x, y);
+      return;
+    }
+    if (kind === 'god') return this.openGodMenu();
+    if (kind === 'portrait') return this.openPortraitMenu(key);
+    if (kind === 'tv') return this.openTvMenu(key);
+    const SPECS = {
+      cathedral: {
+        title: 'A CATHEDRAL OF MELTED GOLD',
+        options: [
+          { id: 'listen', label: 'LISTEN TO THE RAGAS' },
+          { id: 'gold', label: 'ADD TO THE PILE OF GOD' },
+          { id: 'confess', label: 'CONFESS NOTHING IN PARTICULAR' },
+          { id: 'walkaway', label: 'STEP BACK INTO THE LIGHT' },
+        ],
+      },
+      dumpster: {
+        title: 'A DUMPSTER BURNS IN THE DARK',
+        options: [
+          { id: 'search', label: 'SEARCH THE DUMPSTER' },
+          { id: 'putout', label: 'PUT OUT THE FIRE (HOW?)' },
+          { id: 'warm', label: 'WARM YOUR HANDS' },
+          { id: 'take', label: 'POCKET THE FIRE' },
+          { id: 'walkaway', label: 'WALK AWAY' },
+        ],
+      },
+      cat: {
         title: 'A PSYCHEDELIC CAT REGARDS YOU',
         options: [
           { id: 'talk', label: 'TALK TO HIM' },
@@ -1340,180 +1434,198 @@ export class Game {
           { id: 'stare', label: 'STARE BACK' },
         ],
       },
-      {
-        method: 'lampsInRect',
-        prefix: 'l',
-        kind: 'lamp',
-        title: LAMP_TITLE,
-        options: LAMP_OPTIONS,
-      },
-      {
-        method: 'pipesInRect',
-        prefix: 'p',
-        kind: 'pipe',
+      lamp: { title: LAMP_TITLE, options: LAMP_OPTIONS },
+      pipe: {
         title: 'A PIPE OF HALF-BURNT GREEN LEAF',
         options: [
           { id: 'smoke', label: 'SMOKE THE PIPE' },
           { id: 'sniff', label: 'SNIFF IT' },
           { id: 'tap', label: 'TAP OUT THE ASH' },
+          { id: 'take', label: 'POCKET THE PIPE' },
           { id: 'walkaway', label: 'LEAVE IT BE' },
         ],
       },
-    ];
+      sign: {
+        emit: 'sign',
+        title: 'A SIGN, HAND-PAINTED, PATIENT',
+        options: [
+          { id: 'read', label: 'READ IT' },
+          { id: 'follow', label: 'FOLLOW WHERE IT POINTS' },
+          { id: 'lean', label: 'LEAN ON IT' },
+          { id: 'take', label: 'TRY TO TAKE IT' },
+          { id: 'walkon', label: 'WALK ON' },
+        ],
+      },
+      shrine: {
+        title: 'THE ISLAND SHRINE. YOU MADE IT',
+        options: [
+          { id: 'offer', label: 'LEAVE AN OFFERING (1 COIN)' },
+          { id: 'shade', label: 'SIT IN ITS SHADE' },
+          { id: 'stones', label: 'READ THE STACKED STONES' },
+          { id: 'take', label: 'POCKET A STONE' },
+          { id: 'swim', label: 'SWIM ON' },
+        ],
+      },
+      ghost: {
+        emit: 'ghost',
+        title:
+          it.data?.temper === 'sullen'
+            ? 'A GHOST, BUFFERING ITS GRIEF'
+            : 'A GHOST DRIFTS THROUGH ITS OLD ROUTINE',
+        options: [
+          { id: 'what', label: 'ASK WHAT HAPPENED HERE' },
+          { id: 'coin', label: 'OFFER A COIN' },
+          { id: 'sit', label: 'KEEP IT COMPANY' },
+          { id: 'back', label: 'BACK AWAY SLOWLY' },
+        ],
+      },
+      townsign: {
+        title: 'A LEANING SIGN',
+        options: [
+          { id: 'read', label: 'READ IT' },
+          { id: 'straighten', label: 'STRAIGHTEN IT' },
+          { id: 'listen', label: 'LISTEN TO IT CREAK' },
+          { id: 'take', label: 'TRY TO TAKE IT' },
+          { id: 'along', label: 'MOVE ALONG' },
+        ],
+      },
+      wizard: {
+        title: ['A WIZARD, GRUMPILY', 'A WIZARD, MID-GRUMBLE', 'A WIZARD, SQUINTING AT YOU'][
+          (it.data?.variant ?? 0) % 3
+        ],
+        options: [
+          { id: 'talk', label: 'SAY HELLO' },
+          { id: 'ask', label: 'ASK ABOUT THE TOWN' },
+          { id: 'hat', label: 'COMPLIMENT THE HAT' },
+          { id: 'spells', label: 'ASK ABOUT SPELLS' },
+          { id: 'leave', label: 'LEAVE HIM TO IT' },
+        ],
+      },
+      qtownsign: {
+        title: 'QUEUE TOWN, SAYS THE BOARD',
+        options: [
+          { id: 'read', label: 'READ IT' },
+          { id: 'glyph', label: 'TOUCH THE GLOWING GLYPH' },
+          { id: 'wait', label: 'STAND IN LINE, EXPERIMENTALLY' },
+          { id: 'along', label: 'MOVE ALONG' },
+        ],
+      },
+      angel: {
+        emit: 'blessing',
+        title: 'AN ANGEL CONSIDERS YOU',
+        options: [
+          { id: 'befriend', label: 'TRY TO BEFRIEND IT' },
+          { id: 'bask', label: 'BASK IN ITS LIGHT' },
+          { id: 'ask', label: 'ASK THE WAY HOME' },
+          { id: 'walkaway', label: 'LEAVE IT BE' },
+        ],
+      },
+    };
+    const spec = SPECS[kind];
+    if (!spec) return;
+    if (spec.emit) this.emit(spec.emit);
+    this.openChoice({ kind, key, x, y, title: spec.title, options: spec.options });
+  }
 
-    for (const spec of KINDS) {
-      for (const f of near(spec.method)) {
-        const key = `${spec.prefix}:${f.x},${f.y}`;
-        if (blocked(key)) continue;
-        this.openChoice({ kind: spec.kind, key, x: f.x, y: f.y, title: spec.title, options: spec.options });
-        return;
+  /** The mansion portrait's menu (clicked; it only needs to be seen once). */
+  openPortraitMenu(key) {
+    if (!this.captionSticky) {
+      this.caption = null;
+      this.captionQueue.length = 0;
+    }
+    this.openChoice({
+      kind: 'portrait',
+      key,
+      x: this.person.x,
+      y: this.person.y,
+      title: 'AN OLD PORTRAIT',
+      options: [
+        { id: 'look', label: 'LOOK CLOSER' },
+        { id: 'name', label: 'ASK ITS NAME' },
+        { id: 'frame', label: 'STRAIGHTEN THE FRAME' },
+        { id: 'away', label: 'LOOK AWAY' },
+      ],
+    });
+  }
+
+  /** The television's menu (clicked): the way up, and the way back down. */
+  openTvMenu(key) {
+    if (!this.captionSticky) {
+      this.caption = null;
+      this.captionQueue.length = 0;
+    }
+    this.emit('tv');
+    this.openChoice({
+      kind: 'tv',
+      key,
+      x: this.person.x,
+      y: this.person.y,
+      title:
+        this.plane === 'heaven' ? 'THE TELEVISION SHOWS THE NIGHT BELOW' : 'AN OLD TELEVISION, WARM WITH ROSE LIGHT',
+      options: [
+        { id: 'inside', label: 'STEP INSIDE' },
+        { id: 'channel', label: 'CHANGE THE CHANNEL' },
+        { id: 'down', label: 'TURN IT DOWN' },
+        { id: 'away', label: 'STEP AWAY' },
+      ],
+    });
+  }
+
+  /** God's audience — the one menu that still opens itself. God initiates. */
+  openGodMenu() {
+    const god = godSpot(this.world.seed);
+    if (!god) return;
+    if (!this.godMet) {
+      this.godMet = true;
+      this.emit('chirp');
+      this.announce([
+        'THE SIGNS ALL POINTED HERE',
+        'GOD IS A CRICKET. GOD HAS ALWAYS BEEN A CRICKET',
+      ]);
+      this.gainXp(3);
+    }
+    this.openChoice({
+      kind: 'god',
+      key: 'god',
+      x: god.x,
+      y: god.y,
+      title: 'GOD, EXISTING AS A CRICKET',
+      options: [
+        { id: 'question', label: 'ASK THE BIG QUESTION' },
+        { id: 'confess', label: 'CONFESS' },
+        { id: 'sit', label: 'SIT WITH GOD A WHILE' },
+        { id: 'shoo', label: 'SHOO THE FROGS' },
+        { id: 'leave', label: 'LEAVE QUIETLY' },
+      ],
+    });
+  }
+
+  /**
+   * v0.21: the world no longer ambushes the player with menus — encounters
+   * open when CLICKED (interactAt / interactNearest / the action key). The
+   * only interruptions left are the ones something else starts: hostiles
+   * pull the world turn-based (checkBattle), and God — who has been
+   * expecting you — opens the audience when you arrive.
+   */
+  checkEncounters() {
+    if (this.choice) return;
+    if (this.location !== 'world') return;
+    if (this.active !== 'person') return;
+    if (this.mode === 'turn') return;
+    const p = this.person;
+    // The re-arm walk-away only gates the self-opening menus now; clicks
+    // never consult it.
+    if (this.choiceCooldown) {
+      const cd = this.choiceCooldown;
+      if (Math.hypot(cd.x - p.x, cd.y - p.y) > ENCOUNTER_REARM) {
+        this.choiceCooldown = null;
+        this.cooldownKeys.clear();
       }
     }
-
-    // God (v0.20): a cricket on the east shore of a lake, ringed by
-    // redwoods, occasionally menaced by frogs, entirely unbothered.
-    if (this.plane === 'heaven') {
-      const god = godSpot(this.world.seed);
-      if (god && !blocked('god') && Math.hypot(god.x - p.x, god.y - p.y) <= 48) {
-        if (!this.godMet) {
-          this.godMet = true;
-          this.emit('chirp');
-          this.announce([
-            'THE SIGNS ALL POINTED HERE',
-            'GOD IS A CRICKET. GOD HAS ALWAYS BEEN A CRICKET',
-          ]);
-          this.gainXp(3);
-        }
-        this.openChoice({
-          kind: 'god',
-          key: 'god',
-          x: god.x,
-          y: god.y,
-          title: 'GOD, EXISTING AS A CRICKET',
-          options: [
-            { id: 'question', label: 'ASK THE BIG QUESTION' },
-            { id: 'confess', label: 'CONFESS' },
-            { id: 'sit', label: 'SIT WITH GOD A WHILE' },
-            { id: 'shoo', label: 'SHOO THE FROGS' },
-            { id: 'leave', label: 'LEAVE QUIETLY' },
-          ],
-        });
-        return;
-      }
-      for (const sn of near('signsInRect')) {
-        const key = `sn:${sn.x},${sn.y}`;
-        if (blocked(key)) continue;
-        this.emit('sign');
-        this.openChoice({
-          kind: 'sign',
-          key,
-          x: sn.x,
-          y: sn.y,
-          title: 'A SIGN, HAND-PAINTED, PATIENT',
-          options: [
-            { id: 'read', label: 'READ IT' },
-            { id: 'follow', label: 'FOLLOW WHERE IT POINTS' },
-            { id: 'lean', label: 'LEAN ON IT' },
-            { id: 'walkon', label: 'WALK ON' },
-          ],
-        });
-        return;
-      }
-      for (const sh of near('shrinesInRect')) {
-        const key = `sh:${sh.x},${sh.y}`;
-        if (blocked(key)) continue;
-        this.openChoice({
-          kind: 'shrine',
-          key,
-          x: sh.x,
-          y: sh.y,
-          title: 'THE ISLAND SHRINE. YOU MADE IT',
-          options: [
-            { id: 'offer', label: 'LEAVE AN OFFERING (1 COIN)' },
-            { id: 'shade', label: 'SIT IN ITS SHADE' },
-            { id: 'stones', label: 'READ THE STACKED STONES' },
-            { id: 'swim', label: 'SWIM ON' },
-          ],
-        });
-        return;
-      }
-    } else {
-      // Night (v0.20): the ghost town's people, such as they are.
-      for (const pt of near('pirtsInRect')) {
-        const key = `pi:${pt.x},${pt.y}`;
-        if (this.choiceCooldown?.key === key || this.cooldownKeys.has(key)) continue; // Pirts never one-shots
-        this.emit('ghost');
-        this.openPirtsMenu(key, pt.x, pt.y);
-        return;
-      }
-      for (const gh of near('ghostsInRect')) {
-        if (gh.temper === 'hostile') continue; // the battle system owns those
-        const key = `gh:${gh.x},${gh.y}`;
-        if (blocked(key)) continue;
-        this.emit('ghost');
-        this.openChoice({
-          kind: 'ghost',
-          key,
-          x: gh.x,
-          y: gh.y,
-          title: gh.temper === 'sullen' ? 'A GHOST, BUFFERING ITS GRIEF' : 'A GHOST DRIFTS THROUGH ITS OLD ROUTINE',
-          options: [
-            { id: 'what', label: 'ASK WHAT HAPPENED HERE' },
-            { id: 'coin', label: 'OFFER A COIN' },
-            { id: 'sit', label: 'KEEP IT COMPANY' },
-            { id: 'back', label: 'BACK AWAY SLOWLY' },
-          ],
-        });
-        return;
-      }
-      for (const ts of near('townsignsInRect')) {
-        const key = `ts:${ts.x},${ts.y}`;
-        if (blocked(key)) continue;
-        this.openChoice({
-          kind: 'townsign',
-          key,
-          x: ts.x,
-          y: ts.y,
-          title: 'A LEANING SIGN',
-          options: [
-            { id: 'read', label: 'READ IT' },
-            { id: 'straighten', label: 'STRAIGHTEN IT' },
-            { id: 'listen', label: 'LISTEN TO IT CREAK' },
-            { id: 'along', label: 'MOVE ALONG' },
-          ],
-        });
-        return;
-      }
-    }
-
-    // Zombies get their own path: options depend on the bone, and they groan.
-    // (While turn-based, the round structure owns them — the guard at the
-    // top already returned.) In heaven the same spots hold angels, and the
-    // angels hold no grudges.
-    for (const z of near('zombiesInRect')) {
-      const key = `z:${z.x},${z.y}`;
-      if (blocked(key)) continue;
-      if (this.plane === 'heaven') {
-        this.emit('blessing');
-        this.openChoice({
-          kind: 'angel',
-          key,
-          x: z.x,
-          y: z.y,
-          title: 'AN ANGEL CONSIDERS YOU',
-          options: [
-            { id: 'befriend', label: 'TRY TO BEFRIEND IT' },
-            { id: 'bask', label: 'BASK IN ITS LIGHT' },
-            { id: 'ask', label: 'ASK THE WAY HOME' },
-            { id: 'walkaway', label: 'LEAVE IT BE' },
-          ],
-        });
-        return;
-      }
-      this.emit('zombie');
-      this.openChoice(this.zombieMenu(key, z.x, z.y));
-      return;
-    }
+    if (this.plane !== 'heaven') return;
+    const god = godSpot(this.world.seed);
+    if (!god || this.cooldownKeys.has('god') || this.choiceCooldown?.key === 'god') return;
+    if (Math.hypot(god.x - p.x, god.y - p.y) <= 48) this.openGodMenu();
   }
 
   /** Resolve the open menu (docs/RULES.md has the numbers). */
@@ -1564,6 +1676,8 @@ export class Game {
         } else {
           this.announce(['THE FIRE HAS BEEN KIND ONCE ALREADY', 'IT HAS A REPUTATION TO KEEP']);
         }
+      } else if (id === 'take') {
+        this.announce(['YOU CANNOT POCKET A FIRE', 'YOU CAN ONLY RESPECT IT']);
       } else if (id === 'putout') {
         const r = this.check('str');
         if (r.total >= DC_SMOTHER) {
@@ -1595,10 +1709,18 @@ export class Game {
       else if (id === 'punch') this.attackFromSheet('fists');
       else if (id === 'swing') this.attackFromSheet('bone');
       else if (id === 'swing-axe') this.attackFromSheet('axe');
+      else if (id === 'swing-sword') this.attackFromSheet('sword');
+      else if (id === 'flick-wand') this.attackFromSheet('wand');
       else if (id === 'chop') this.chopTree();
       else if (id === 'build') this.buildBoat();
       else if (id === 'throw') this.throwBall();
-      else this.resolveDetailFlavor(id);
+      else if (id.startsWith('cast-')) this.castScroll(id.slice(5));
+      else if (id.startsWith('inscribe-')) this.inscribeScroll(id.slice(9));
+      else if (id === 'rub-lamp') this.rubLamp('lamp:carried', this.person.x, this.person.y);
+      else if (id === 'smoke-pipe') {
+        this.pipeSpent = true;
+        this.smokeThePipe();
+      } else this.resolveDetailFlavor(id);
     } else if (c.kind === 'levelup') {
       if (ABILITIES.includes(id) && this.statPoints > 0) {
         this.stats[id]++;
@@ -1641,36 +1763,7 @@ export class Game {
       }
     } else if (c.kind === 'lamp') {
       if (id === 'rub') {
-        const r = this.check('cha');
-        if (this.polishedLamps.has(c.key)) {
-          // A polished lamp answers a shade easier — once.
-          this.polishedLamps.delete(c.key);
-          r.mod += 1;
-          r.total += 1;
-        }
-        const roll = r.total;
-        if (roll >= DC_GENIE) {
-          this.emit('genie');
-          this.triggerGlitch(0.5);
-          this.announce([`${this.rollText(r)} - A GENIE BILLOWS OUT IN VIOLET SMOKE`]);
-          // Chain straight into the wish menu (same key: resolving any wish
-          // finishes the lamp).
-          this.openChoice({
-            kind: 'genie',
-            key: c.key,
-            x: c.x,
-            y: c.y,
-            title: 'THE GENIE OFFERS ONE WISH',
-            options: [
-              { id: 'health', label: 'WISH FOR HEALTH' },
-              { id: 'home', label: 'WISH FOR HOME' },
-              { id: 'wishes', label: 'WISH FOR MORE WISHES' },
-              { id: 'nothing', label: 'WISH FOR NOTHING' },
-            ],
-          });
-        } else {
-          this.announce([`${this.rollText(r)} - ONLY DUST AND A FAINT COUGH INSIDE`]);
-        }
+        this.rubLamp(c.key, c.x, c.y);
       } else if (id === 'polish') {
         this.polishedLamps.add(c.key);
         this.triggerGlitch(0.3);
@@ -1679,6 +1772,15 @@ export class Game {
       } else if (id === 'ear') {
         this.emit('whimper');
         this.announce(['INSIDE: SNORING. FAINT, ANCIENT, CONTENT', 'YOU SET IT DOWN GENTLY. LET SOMETHING SLEEP']);
+      } else if (id === 'take') {
+        // v0.21: it goes in the pocket. The polish rides along — and a fresh
+        // lamp brings a fresh sleeper, even if an old wish was spent.
+        this.encounterDone.add(c.key);
+        this.encounterDone.delete('lamp:carried');
+        if (this.polishedLamps.delete(c.key)) this.polishedLamps.add('lamp:carried');
+        this.hasLamp = true;
+        this.emit('pickup');
+        this.announce(['YOU TAKE THE LAMP. IT IS HEAVIER THAN A SECRET', 'SOMETHING INSIDE TURNS OVER IN ITS SLEEP']);
       }
       // walkaway: the lamp keeps glinting.
     } else if (c.kind === 'genie') {
@@ -1693,9 +1795,9 @@ export class Game {
         this.announce([`THE GENIE POINTS. HOME IS FAR TO THE ${this.homeCompass()}`]);
       } else if (id === 'nothing') {
         const lines = ['THE GENIE STARES. NOBODY HAS EVER ASKED FOR THAT', 'HE GRANTS IT FLAWLESSLY. NOTHING ARRIVES'];
-        if (this.spells.length && this.focus < this.maxFocus()) {
-          this.focus += 1;
-          lines.push('YOU FEEL STRANGELY LOOKED AFTER (+1 FOCUS)');
+        if (this.spells.length && this.slots[1] < this.maxSlots(1)) {
+          this.slots[1] += 1;
+          lines.push('YOU FEEL STRANGELY LOOKED AFTER (+1 SLOT)');
         } else {
           lines.push('YOU FEEL STRANGELY LOOKED AFTER');
         }
@@ -1706,35 +1808,19 @@ export class Game {
     } else if (c.kind === 'pipe') {
       if (id === 'smoke') {
         this.encounterDone.add(c.key); // the leaf only had one bowl in it
-        const r = this.check('wis');
-        if (r.total >= DC_VISION) {
-          // The leaf is not a drug, it is a teacher. The vision hands you a
-          // spell — and the colors stay leaned in for ten minutes.
-          this.drunk = DRUNK_TIME;
-          this.emit('vision');
-          this.emit('drunk');
-          this.triggerGlitch(1.2); // the long one
-          this.announce([
-            `${this.rollText(r)} - THE STARS LEAN CLOSER`,
-            'A VISION: THE INFLATABLES DANCE AT THE CENTER OF ALL THINGS',
-            'THE COLORS LEAN CLOSER TOO (DRUNK 10:00)',
-          ]);
-          this.learnSpell();
-        } else if (r.total <= DC_COUGH) {
-          // No damage: the smoke is never the thing that hurts you. It just
-          // doesn't take, and the woods stay quiet.
-          this.announce([
-            `${this.rollText(r)} - THE SMOKE GOES NOWHERE`,
-            'NO VISION. THE PIPE IS SPENT',
-          ]);
-        } else {
-          this.announce([`${this.rollText(r)} - NOTHING. PROBABLY OAK LEAF`, 'THE PIPE IS SPENT']);
-        }
+        this.smokeThePipe();
       } else if (id === 'sniff') {
         this.announce(['IT SMELLS LIKE REGRET AND LAWN CLIPPINGS']);
       } else if (id === 'tap') {
         this.triggerGlitch(0.25);
         this.announce(['THE ASH MAKES ONE SMALL GRAY GHOST AND JOINS THE NIGHT']);
+      } else if (id === 'take') {
+        this.encounterDone.add(c.key);
+        this.encounterDone.add(`${c.key}:taken`); // gone from the ground, not just spent
+        this.hasPipe = true;
+        this.pipeSpent = false; // a fresh pipe is a fresh bowl
+        this.emit('pickup');
+        this.announce(['YOU POCKET THE PIPE, STILL FAINTLY WARM', 'THE WOODS PRETEND NOT TO NOTICE']);
       }
       // walkaway: it keeps smoldering.
     } else if (c.kind === 'battle') {
@@ -1795,6 +1881,7 @@ export class Game {
         if (foe && r.total >= DC_DIRECTIONS) {
           this.encounterDone.add(foe.key);
           this.zombieHp.delete(foe.key);
+          this.foeOffsets.delete(foe.key);
           this.emit('vanish');
           this.triggerGlitch(0.5);
           this.announce([
@@ -1816,8 +1903,13 @@ export class Game {
       }
     } else if (c.kind === 'spell') {
       if (id === 'breathe') {
-        if (this.focus < this.maxFocus()) this.focus += 1;
-        this.announce(['IN. OUT. THE CHEAPEST SPELL, AND STILL NOBODY CASTS IT (+1 FOCUS)']);
+        if (!this.breathed && this.slots[1] < this.maxSlots(1)) {
+          this.breathed = true;
+          this.slots[1] += 1;
+          this.announce(['IN. OUT. THE CHEAPEST SPELL, AND STILL NOBODY CASTS IT (+1 SLOT)']);
+        } else {
+          this.announce(['IN. OUT.', 'THE BREATH IS FREE. THE SLOT WAS A ONE-TIME COURTESY']);
+        }
         if (this.mode === 'turn') this.endPlayerTurn(); // breathing takes the turn
       } else if (id === 'hum') {
         this.emit('spell-fail');
@@ -1835,9 +1927,9 @@ export class Game {
         this.emit('chirp');
         this.announce(['YOU CONFESS. THE LAKE HOLDS STILL FOR IT', 'GOD CLEANS ONE ANTENNA', 'YOU ARE NOT FORGIVEN. YOU ARE SOMETHING BETTER. HEARD']);
       } else if (id === 'sit') {
-        this.focus = this.maxFocus();
+        this.rest();
         this.hearts.push({ x: c.x, y: c.y - 21, t: HEART_TTL });
-        this.announce(['YOU SIT. GOD EXISTS. YOU EXIST', 'THE FROGS WATCH FROM THEIR LILIPADS', 'YOUR FOCUS RETURNS, ALL OF IT']);
+        this.announce(['YOU SIT. GOD EXISTS. YOU EXIST', 'THE FROGS WATCH FROM THEIR LILIPADS', 'SITTING WITH GOD IS A REST. EVERY SLOT RETURNS']);
       } else if (id === 'shoo') {
         this.emit('frog');
         if (!this.encounterDone.has('god:shooed')) {
@@ -1862,8 +1954,10 @@ export class Game {
         }
       } else if (id === 'lean') {
         this.announce(['YOU LEAN. IT LEANS BACK, SLIGHTLY', 'THE SIGN DOES NOT MIND']);
+      } else if (id === 'take') {
+        this.announce(['YOU PULL. HEAVEN HOLDS ON', 'A DIRECTION IS A GIFT, NOT A THING']);
       }
-      // walkon: the cooldown covers it.
+      // walkon: nothing.
     } else if (c.kind === 'shrine') {
       if (id === 'offer') {
         if (this.islandBlessed) {
@@ -1873,7 +1967,7 @@ export class Game {
           this.islandBlessed = true;
           this.emit('blessing');
           this.triggerGlitch(0.5);
-          this.announce(['THE COIN SETTLES LIKE IT ALWAYS LIVED THERE', "THE ISLANDER'S CALM: +2 MAX FOCUS, ALWAYS"]);
+          this.announce(['THE COIN SETTLES LIKE IT ALWAYS LIVED THERE', "THE ISLANDER'S CALM: ONE MORE SLOT, ALWAYS"]);
         } else {
           this.announce(['YOU HAVE NOTHING TO GIVE', 'THE SHRINE FINDS THIS EXTREMELY RELATABLE']);
         }
@@ -1882,6 +1976,8 @@ export class Game {
         this.announce(['YOU SWAM AN OCEAN FOR THIS SHADE (+1 HP)', 'WORTH IT']);
       } else if (id === 'stones') {
         this.announce(['SOMEBODY STACKED THESE ONE AT A TIME', 'THAT IS THE WHOLE TEACHING']);
+      } else if (id === 'take') {
+        this.announce(['YOU LIFT A STONE. THE STACK LEANS, DISAPPOINTED', 'YOU PUT IT BACK. SOME THINGS ARE A PLACE']);
       }
       // swim: back into the warm water.
     } else if (c.kind === 'ghost') {
@@ -1904,6 +2000,102 @@ export class Game {
       } else if (id === 'back') {
         this.announce(['YOU BACK AWAY. IT DOES NOT FOLLOW', 'NOTHING HERE FOLLOWS. THAT IS THE PROBLEM']);
       }
+    } else if (c.kind === 'wizard') {
+      const GRUMPS = [
+        ['HRMPH, HE SAYS', 'IT IS A COMPLETE SENTENCE, THE WAY HE SAYS IT'],
+        ['HE LOOKS AT YOU. HE LOOKS AT HIS STAFF', 'HE DECIDES YOU ARE NOT WORTH THE STAFF'],
+        ['GOOD EVENING, YOU SAY. HE DISAGREES'],
+      ];
+      if (id === 'talk') {
+        this.wizardGrump = ((this.wizardGrump ?? -1) + 1) % GRUMPS.length;
+        this.announce(GRUMPS[this.wizardGrump]);
+      } else if (id === 'ask') {
+        this.announce([
+          'QUEUE TOWN, HE GRUMBLES. NAMED FOR THE WAITING',
+          'WIZARDS QUEUE FOR EVERYTHING. POWER, MOSTLY',
+          "CORTIE SELLS THE SHARP THINGS. QUEEBEE THE PAPER ONES",
+        ]);
+      } else if (id === 'hat') {
+        this.hearts.push({ x: c.x, y: c.y - 30, t: HEART_TTL });
+        this.announce(['THE SCOWL FLICKERS. THE HAT PREENS', 'IT IS A VERY GOOD HAT AND HE KNOWS IT']);
+      } else if (id === 'spells') {
+        this.announce([
+          'LEVELS, HE SAYS, HOLDING UP THREE FINGERS',
+          'YOUR MIND CARRIES SO MANY CASTINGS BETWEEN RESTS',
+          'INT FILLS THE FIRST SHELF. WIS THE SECOND. CHA THE THIRD',
+        ]);
+      }
+      // leave: he was already done with you.
+    } else if (c.kind === 'qtownsign') {
+      if (id === 'read') {
+        this.announce(['QUEUE TOWN', 'UNDERNEATH, SMALLER: NO CUTTING']);
+      } else if (id === 'glyph') {
+        this.triggerGlitch(0.4);
+        this.announce(['THE GLYPH IS WARM AND FAINTLY OFFENDED', 'YOU PUT YOUR FINGER DOWN. IT DIMS, SATISFIED']);
+      } else if (id === 'wait') {
+        this.announce(['YOU STAND IN LINE. THERE IS NO LINE', 'A PASSING WIZARD NODS. CORRECT FORM']);
+      }
+    } else if (c.kind === 'cortie-buy') {
+      const buy = (flag, price, lines) => {
+        if (this.coins < price) {
+          this.announce(['NOT ENOUGH COIN', 'CORTIE SHRUGS. STEEL WAITS. STEEL IS GOOD AT IT']);
+        } else {
+          this.coins -= price;
+          this[flag] = true;
+          this.emit('buy');
+          this.announce(lines);
+        }
+        this.openCortieBuy(c.key);
+      };
+      if (id === 'sword') buy('hasSword', PRICES.sword, ['A GOOD SWORD. IT HAS OPINIONS ABOUT ZOMBIES', 'CORTIE OILS THE SCABBARD, FREE']);
+      else if (id === 'wand') buy('hasWand', PRICES.wand, ['THE WAND HUMS AGAINST YOUR PALM', 'POINT IT AWAY FROM THE HAT, CORTIE SAYS']);
+      else if (id === 'look') {
+        this.announce(['RACKS OF STEEL AND CROOKED LIGHTNING', 'EVERYTHING IS SHARP, INCLUDING THE PRICES']);
+        this.openCortieBuy(c.key);
+      } else if (id === 'back') this.openSpotMenu(this.location, { id: 'cortie-counter' }, c.key);
+    } else if (c.kind === 'queebee-buy') {
+      const buyScroll = (spell) => {
+        const price = SCROLL_PRICES[spell];
+        if (this.coins < price) {
+          this.announce(['NOT ENOUGH COIN', 'QUEEBEE MARKS HER PLACE AND WAITS']);
+        } else {
+          this.coins -= price;
+          this.scrolls[spell] = (this.scrolls[spell] ?? 0) + 1;
+          this.emit('buy');
+          const spec = SPELLS.find((sp) => sp.id === spell);
+          this.announce([`ONE SCROLL OF ${spec.name}, TIED WITH VIOLET RIBBON`, 'CAST IT ONCE — OR INSCRIBE IT FOREVER, WITH PAPER OR THE BOOK']);
+        }
+        this.openQueebeeBuy(c.key);
+      };
+      if (id in SCROLL_PRICES) buyScroll(id);
+      else if (id === 'paper') {
+        if (this.coins < PAPER_PRICE) {
+          this.announce(['NOT ENOUGH COIN', 'THE PAPER RUSTLES, UNBOUGHT']);
+        } else {
+          this.coins -= PAPER_PRICE;
+          this.paper += 1;
+          this.emit('buy');
+          this.announce([`ONE BLANK PAGE (${this.paper} HELD)`, 'IT SMELLS OF POSSIBILITY AND A LITTLE OF GLUE']);
+        }
+        this.openQueebeeBuy(c.key);
+      } else if (id === 'book') {
+        if (this.coins < BOOK_PRICE) {
+          this.announce(['NOT ENOUGH COIN', 'THE BOOK CLOSES ITSELF, UNHURT']);
+        } else {
+          this.coins -= BOOK_PRICE;
+          this.hasBook = true;
+          this.emit('buy');
+          this.announce(['THE BLANK BOOK. PAGES FOREVER', 'INSCRIBE INTO IT AND NEVER BUY PAPER AGAIN']);
+        }
+        this.openQueebeeBuy(c.key);
+      } else if (id === 'how') {
+        this.announce([
+          'A SCROLL CASTS ITS SPELL ONCE, FREE, AND BURNS',
+          'OR: INSCRIBE IT — SPEND A PAGE (OR USE THE BOOK) AND THE SCROLL',
+          'THE SPELL IS YOURS FOREVER AFTER. SLOTS APPLY',
+        ]);
+        this.openQueebeeBuy(c.key);
+      } else if (id === 'back') this.openSpotMenu(this.location, { id: 'queebee-counter' }, c.key);
     } else if (c.kind === 'townsign') {
       if (id === 'read') {
         this.announce(['WELCOME, IT SAYS. THE TOWN NAME IS WEATHER NOW', 'POP. 0 AND RISING']);
@@ -1913,6 +2105,8 @@ export class Game {
       } else if (id === 'listen') {
         this.emit('sign');
         this.announce(['CREAK. CREAK.', 'IT IS THE ONLY ONE STILL DOING ITS JOB']);
+      } else if (id === 'take') {
+        this.announce(['IT IS NAILED DOWN WITH GHOST NAILS', 'THE TOWN KEEPS ITS NAME, SUCH AS IT IS']);
       }
     } else if (c.kind === 'pirts') {
       if (id === 'buy') this.openPirtsBuy(c.key, c.x, c.y);
@@ -2014,10 +2208,8 @@ export class Game {
           'THE RAGAS DO NOT END. THEY HAND EACH OTHER THE MELODY',
           'THE SINGERS NOD. YOU WERE ALWAYS PART OF THE CHORD',
         ];
-        if (this.spells.length && this.focus < this.maxFocus()) {
-          this.focus = this.maxFocus();
-          lines.push('YOUR FOCUS RETURNS, ALL OF IT');
-        }
+        this.rest();
+        if (this.spells.length) lines.push('THE MUSIC IS A REST. EVERY SLOT RETURNS');
         this.announce(lines);
       } else if (id === 'gold') {
         this.emit('gold');
@@ -2051,6 +2243,67 @@ export class Game {
         ]);
       }
       // walkaway: it was going to let you anyway.
+    }
+  }
+
+  /** Rub a lamp — in the litter or from the pocket: CHA vs the genie. */
+  rubLamp(key, x, y) {
+    const r = this.check('cha');
+    if (this.polishedLamps.has(key)) {
+      // A polished lamp answers a shade easier — once.
+      this.polishedLamps.delete(key);
+      r.mod += 1;
+      r.total += 1;
+    }
+    if (r.total >= DC_GENIE) {
+      this.emit('genie');
+      this.triggerGlitch(0.5);
+      this.announce([`${this.rollText(r)} - A GENIE BILLOWS OUT IN VIOLET SMOKE`]);
+      // Chain straight into the wish menu (same key: resolving any wish
+      // finishes the lamp).
+      this.openChoice({
+        kind: 'genie',
+        key,
+        x,
+        y,
+        title: 'THE GENIE OFFERS ONE WISH',
+        options: [
+          { id: 'health', label: 'WISH FOR HEALTH' },
+          { id: 'home', label: 'WISH FOR HOME' },
+          { id: 'wishes', label: 'WISH FOR MORE WISHES' },
+          { id: 'nothing', label: 'WISH FOR NOTHING' },
+        ],
+      });
+    } else {
+      this.announce([`${this.rollText(r)} - ONLY DUST AND A FAINT COUGH INSIDE`]);
+    }
+  }
+
+  /** One bowl of the half-burnt leaf: WIS vs a vision. */
+  smokeThePipe() {
+    const r = this.check('wis');
+    if (r.total >= DC_VISION) {
+      // The leaf is not a drug, it is a teacher. The vision hands you a
+      // spell — and the colors stay leaned in for ten minutes.
+      this.drunk = DRUNK_TIME;
+      this.emit('vision');
+      this.emit('drunk');
+      this.triggerGlitch(1.2); // the long one
+      this.announce([
+        `${this.rollText(r)} - THE STARS LEAN CLOSER`,
+        'A VISION: THE INFLATABLES DANCE AT THE CENTER OF ALL THINGS',
+        'THE COLORS LEAN CLOSER TOO (DRUNK 10:00)',
+      ]);
+      this.learnSpell();
+    } else if (r.total <= DC_COUGH) {
+      // No damage: the smoke is never the thing that hurts you. It just
+      // doesn't take, and the woods stay quiet.
+      this.announce([
+        `${this.rollText(r)} - THE SMOKE GOES NOWHERE`,
+        'NO VISION. THE PIPE IS SPENT',
+      ]);
+    } else {
+      this.announce([`${this.rollText(r)} - NOTHING. PROBABLY OAK LEAF`, 'THE PIPE IS SPENT']);
     }
   }
 
@@ -2171,9 +2424,9 @@ export class Game {
         this.announce(['THE MOON DEFERS TO YOUR JUDGMENT', 'TYPICAL']);
         break;
       case 'sit': {
-        if (this.spells.length && this.focus < this.maxFocus()) {
-          this.focus += 1;
-          this.announce(['NOTHING IMPROVES. IT HELPS ANYWAY (+1 FOCUS)']);
+        if (this.spells.length && this.slots[1] < this.maxSlots(1)) {
+          this.slots[1] += 1;
+          this.announce(['NOTHING IMPROVES. IT HELPS ANYWAY (+1 SLOT)']);
         } else {
           this.announce(['NOTHING IMPROVES. IT HELPS ANYWAY']);
         }
@@ -2299,6 +2552,59 @@ export class Game {
       case 'margins':
         this.announce(['THE MARGINS SAY: SHE FLOATS. UNDERLINED TWICE', 'THE PEN WAS RUNNING OUT. THE FAITH WAS NOT']);
         break;
+      // SWORD
+      case 'hone-sword':
+        this.announce(['THE EDGE IS TRUE', 'CORTIE OILED IT. YOU CAN TELL. IT SMELLS RESPONSIBLE']);
+        break;
+      case 'flourish':
+        this.emit('chop');
+        this.announce(['A CLEAN FIGURE-EIGHT. THE NIGHT APPLAUDS SILENTLY', 'YOU CHECK NOBODY SAW. SOMETHING SAW']);
+        break;
+      case 'sheathe':
+        this.announce(['THE SLOW SHEATHE. THE COOLEST THING A PERSON CAN DO', 'THE DOG WAGS ONCE, OBJECTIVELY CORRECT']);
+        break;
+      // WAND
+      case 'point-wand':
+        this.triggerGlitch(0.25);
+        this.announce(['YOU POINT IT AT A TREE. THE TREE STIFFENS', 'POWER IS MOSTLY AIM, PLUS RESTRAINT']);
+        break;
+      case 'listen-wand':
+        this.announce(['IT HUMS A NOTE JUST UNDER HEARING', 'YOUR TEETH AGREE IT IS THERE']);
+        break;
+      case 'warm-wand':
+        this.announce(['IT WARMS LIKE A SMALL OPINIONATED STONE', 'IT LIKES YOU. PROBABLY']);
+        break;
+      // SCROLLS
+      case 'riffle':
+        this.announce(['THEY RUSTLE LIKE SMALL CONTAINED WEATHER', 'ONE OF THEM HUMS YOUR NAME. YOU PUT IT DOWN']);
+        break;
+      // LAMP (carried)
+      case 'polish-lamp':
+        this.polishedLamps.add('lamp:carried');
+        this.triggerGlitch(0.3);
+        this.announce(['THE BRASS COMES UP LIKE A SMALL DROWNED SUN', 'SOMETHING INSIDE SHIFTS ITS WEIGHT']);
+        break;
+      case 'ear-lamp':
+        this.emit('whimper');
+        this.announce(['INSIDE: SNORING. FAINT, ANCIENT, CONTENT']);
+        break;
+      case 'heft-lamp':
+        this.announce([`${WEIGHT.lamp} LBS OF BRASS AND SOMEBODY'S PATIENCE`]);
+        break;
+      case 'shine-lamp':
+        this.announce(['YOUR REFLECTION, STRETCHED THIN AND GOLD', 'IT WAVES FIRST. YOU LET IT HAVE THAT']);
+        break;
+      // PIPE (carried)
+      case 'sniff-pipe':
+        this.announce(['IT SMELLS LIKE REGRET AND LAWN CLIPPINGS']);
+        break;
+      case 'tap-pipe':
+        this.triggerGlitch(0.25);
+        this.announce(['THE ASH MAKES ONE SMALL GRAY GHOST AND JOINS THE NIGHT']);
+        break;
+      case 'twirl-pipe':
+        this.announce(['A CLEAN TWIRL. SOMEWHERE, A CASE CLOSES']);
+        break;
       // BOAT
       case 'pat':
         this.announce(['YOU PAT THE HULL. A GOOD HOLLOW SOUND', 'SHE FLOATS. SOMEHOW, SHE FLOATS']);
@@ -2346,6 +2652,13 @@ export class Game {
         ...(this.hasRope ? [{ id: 'rope', label: 'ROPE', icon: 'rope' }] : []),
         ...(this.hasManual ? [{ id: 'manual', label: 'MANUAL', icon: 'manual' }] : []),
         ...(this.hasBoat ? [{ id: 'boat', label: 'BOAT', icon: 'boat' }] : []),
+        ...(this.hasSword ? [{ id: 'sword', label: 'SWORD', icon: 'sword' }] : []),
+        ...(this.hasWand ? [{ id: 'wand', label: 'WAND', icon: 'wand' }] : []),
+        ...(Object.values(this.scrolls).some((n) => n > 0)
+          ? [{ id: 'scrolls-item', label: 'SCROLLS', icon: 'scroll' }]
+          : []),
+        ...(this.hasLamp ? [{ id: 'lamp', label: 'LAMP', icon: 'lamp' }] : []),
+        ...(this.hasPipe ? [{ id: 'pipe', label: 'PIPE', icon: 'pipe' }] : []),
         { id: 'close', label: 'CLOSE' },
       ],
     });
@@ -2527,6 +2840,83 @@ export class Game {
           { id: 'christen', label: 'NAME HER' },
         ],
       },
+      sword: {
+        title: 'THE SWORD',
+        body: [`SWINGS AT DC ${DC_BONE}, ${this.fistDamage() + 3} DMG`, "CORTIE'S HONEST STEEL"],
+        options: [
+          ...(person ? [{ id: 'swing-sword', label: 'SWING THE SWORD' }] : []),
+          { id: 'hone-sword', label: 'CHECK THE EDGE' },
+          { id: 'flourish', label: 'TRY A FLOURISH' },
+          { id: 'sheathe', label: 'SHEATHE IT, SLOWLY' },
+        ],
+      },
+      wand: {
+        title: 'THE WAND',
+        body: [`FLICKS AT DC ${DC_WAND} (INT), ${2 + Math.max(0, this.mod('int'))} DMG`, 'POINT IT AWAY FROM THE HAT'],
+        options: [
+          ...(person ? [{ id: 'flick-wand', label: 'FLICK THE WAND' }] : []),
+          { id: 'point-wand', label: 'POINT IT AT THINGS' },
+          { id: 'listen-wand', label: 'LISTEN TO IT HUM' },
+          { id: 'warm-wand', label: 'WARM IT IN YOUR PALM' },
+        ],
+      },
+      'scrolls-item': {
+        title: 'SCROLLS',
+        body: [
+          ...Object.entries(this.scrolls)
+            .filter(([, n]) => n > 0)
+            .map(([sid, n]) => {
+              const spec = SPELLS.find((sp) => sp.id === sid);
+              return `${spec.name} (L${spec.level}) X${n}`;
+            }),
+          `PAGES ${this.paper}${this.hasBook ? ' + THE BOOK' : ''}`,
+        ],
+        options: [
+          ...Object.entries(this.scrolls)
+            .filter(([, n]) => n > 0)
+            .flatMap(([sid]) => {
+              const spec = SPELLS.find((sp) => sp.id === sid);
+              return [
+                { id: `cast-${sid}`, label: `CAST ${spec.name} (FREE)` },
+                { id: `inscribe-${sid}`, label: `INSCRIBE ${spec.name}` },
+              ];
+            }),
+          { id: 'riffle', label: 'RIFFLE THROUGH THEM' },
+        ],
+      },
+      lamp: {
+        title: this.encounterDone.has('lamp:carried') ? 'THE LAMP, QUIET NOW' : 'THE LAMP',
+        body: [
+          this.encounterDone.has('lamp:carried')
+            ? 'THE WISH IS SPENT. THE BRASS REMEMBERS'
+            : 'SOMETHING IN THERE SLEEPS LIGHTLY',
+          `WEIGHS ${WEIGHT.lamp} LBS`,
+        ],
+        options: [
+          ...(this.encounterDone.has('lamp:carried')
+            ? []
+            : [
+                { id: 'rub-lamp', label: 'RUB THE LAMP' },
+                { id: 'polish-lamp', label: 'POLISH IT' },
+              ]),
+          { id: 'ear-lamp', label: 'HOLD IT TO YOUR EAR' },
+          { id: 'heft-lamp', label: 'FEEL ITS HEFT' },
+          { id: 'shine-lamp', label: 'ADMIRE YOUR REFLECTION' },
+        ],
+      },
+      pipe: {
+        title: this.pipeSpent ? 'THE PIPE, SPENT' : 'THE PIPE',
+        body: [
+          this.pipeSpent ? 'ONE BOWL. IT WAS A GOOD BOWL' : 'ONE BOWL LEFT OF THE GREEN LEAF',
+          `WEIGHS ${WEIGHT.pipe} LB`,
+        ],
+        options: [
+          ...(this.pipeSpent ? [] : [{ id: 'smoke-pipe', label: 'SMOKE THE PIPE' }]),
+          { id: 'sniff-pipe', label: 'SNIFF IT' },
+          { id: 'tap-pipe', label: 'TAP OUT THE ASH' },
+          { id: 'twirl-pipe', label: 'TWIRL IT, DETECTIVE-STYLE' },
+        ],
+      },
     };
     const d = DETAILS[id];
     if (!d) return;
@@ -2543,16 +2933,12 @@ export class Game {
 
   /** Swing from the inventory at whatever undead thing is in reach. */
   attackFromSheet(id) {
-    const p = this.person;
-    // Indoors, interior coordinates would alias world chunks near the origin
-    // — and the mansion keeps no zombies anyway. You swing at the dark.
-    const zombies = this.location !== 'world' ? [] : this.world.zombiesInRect(
-      p.x - ENCOUNTER_RADIUS, p.y - ENCOUNTER_RADIUS, ENCOUNTER_RADIUS * 2, ENCOUNTER_RADIUS * 2,
-    );
-    for (const z of zombies) {
-      const key = `z:${z.x},${z.y}`;
-      if (this.encounterDone.has(key)) continue;
-      this.resolveZombie({ kind: 'zombie', key, x: z.x, y: z.y }, id);
+    // Live positions (v0.21: zombies drift off their posts to chase you) —
+    // hostilesNear already speaks zombiePos/ghostPos/minotaurPos. Indoors it
+    // returns nothing, and you swing at the dark.
+    const foe = this.hostilesNear(ENCOUNTER_RADIUS)[0] ?? null;
+    if (foe) {
+      this.resolveZombie({ kind: 'zombie', foe: foe.kind, key: foe.key, x: foe.x, y: foe.y }, id);
       return;
     }
     this.emit('throw'); // the whoosh of hitting nothing
@@ -2567,20 +2953,74 @@ export class Game {
 
   // --- Magic ---------------------------------------------------------------
 
-  /** Focus pool: 3 + WIS modifier, never below 1. */
-  maxFocus() {
-    return Math.max(1, FOCUS_BASE + this.mod('wis')) + (this.islandBlessed ? 2 : 0);
+  /**
+   * Spell slots per level (v0.21): the mind sets the shelf. Level 1 leans
+   * on INT, level 2 on WIS, level 3 on CHA. The island's calm adds a first-
+   * level slot, always.
+   */
+  maxSlots(level) {
+    const base =
+      level === 1
+        ? Math.max(1, 2 + this.mod('int')) + (this.islandBlessed ? 1 : 0)
+        : level === 2
+          ? Math.max(0, 1 + this.mod('wis'))
+          : Math.max(0, this.mod('cha'));
+    return base;
+  }
+
+  /** A rest — a bed, a warm stove, the ragas, God — returns every slot. */
+  rest() {
+    for (const lv of SLOT_LEVELS) this.slots[lv] = this.maxSlots(lv);
+    this.breathed = false;
+    if (this.spells.length) this.say('YOUR SLOTS RETURN, EVERY LEVEL OF THEM');
+  }
+
+  /** Cast straight off a scroll: free, once, and the scroll burns. */
+  castScroll(id) {
+    if (!(this.scrolls[id] > 0)) return;
+    this.scrolls[id] -= 1;
+    this.emit('spell-cast');
+    this.say('THE SCROLL BURNS AS IT SPEAKS');
+    this.castSpellEffect(id);
+    if (this.mode === 'turn') this.endPlayerTurn();
+  }
+
+  /**
+   * Inscribe a scroll: spend a page (or use the book) and the scroll, and
+   * the spell joins your list forever.
+   */
+  inscribeScroll(id) {
+    if (!(this.scrolls[id] > 0)) return;
+    const spec = SPELLS.find((sp) => sp.id === id);
+    if (this.spells.includes(id)) {
+      this.announce([`YOU KNOW ${spec.name}. THE SCROLL SIGHS, UNBURNT`]);
+      return;
+    }
+    if (this.paper > 0) this.paper -= 1;
+    else if (!this.hasBook) {
+      this.announce(['NOTHING TO INSCRIBE ONTO', 'QUEEBEE SELLS PAGES. AND THE BOOK']);
+      return;
+    }
+    this.scrolls[id] -= 1;
+    this.spells.push(id);
+    this.emit('spell-learn');
+    this.triggerGlitch(0.5);
+    this.announce([
+      `YOU INSCRIBE ${spec.name}, LETTER BY BURNING LETTER`,
+      'THE INK SETS. THE SPELL IS YOURS FOREVER',
+    ]);
   }
 
   /** A vision teaches the next spell in the book (if any are left). */
   learnSpell() {
-    const next = SPELLS.find((s) => !this.spells.includes(s.id));
+    // The leaf teaches its own book, never Queebee's scroll-spells.
+    const next = SPELLS.find((s) => !s.scroll && !this.spells.includes(s.id));
     if (!next) {
       this.say('THE LEAF HAS NOTHING LEFT TO TEACH');
       return;
     }
     this.spells.push(next.id);
-    this.focus = this.maxFocus();
+    this.rest(); // a vision is a rest for the mind
     this.emit('spell-learn');
     this.say(`YOU LEARN ${next.name}: ${next.blurb}`);
   }
@@ -2596,12 +3036,12 @@ export class Game {
       key: 'spell',
       x: this.person.x,
       y: this.person.y,
-      title: `FOCUS ${this.focus} OF ${this.maxFocus()}`,
+      title: `SLOTS  L1 ${this.slots[1]}/${this.maxSlots(1)}  L2 ${this.slots[2]}/${this.maxSlots(2)}  L3 ${this.slots[3]}/${this.maxSlots(3)}`,
       body: SPELLS.filter((s) => this.spells.includes(s.id)).map((s) => `${s.name}: ${s.blurb}`),
       options: [
         ...SPELLS.filter((s) => this.spells.includes(s.id)).map((s) => ({
           id: s.id,
-          label: `${s.name} (${s.cost})`,
+          label: `${s.name} (L${s.level})`,
         })),
         { id: 'breathe', label: 'JUST BREATHE (0)' },
         { id: 'hum', label: 'HUM THE WORDS (0)' },
@@ -2610,17 +3050,29 @@ export class Game {
     });
   }
 
-  /** Cast a known spell, if focus allows. Costs your turn in battle. */
+  /**
+   * Cast a known spell by spending a slot of its level (or the next level
+   * up, burning bright). Costs your turn in battle.
+   */
   castSpell(id) {
     const spell = SPELLS.find((s) => s.id === id);
     if (!spell || !this.spells.includes(id)) return;
-    if (this.focus < spell.cost) {
+    const lv = SLOT_LEVELS.find((l) => l >= spell.level && this.slots[l] > 0);
+    if (!lv) {
       this.emit('spell-fail');
-      this.announce(['NOT ENOUGH FOCUS. THE WORDS SCATTER']);
+      this.announce([`NO LEVEL ${spell.level} SLOT LEFT. REST, SOMEWHERE KIND`]);
       if (this.mode === 'turn') this.endPlayerTurn();
       return;
     }
-    this.focus -= spell.cost;
+    this.slots[lv] -= 1;
+    this.castSpellEffect(id);
+    // Queued after the effect's announce, or that would wipe it.
+    if (lv > spell.level) this.say('A BIGGER SLOT BURNS FOR A SMALLER SPELL');
+    if (this.mode === 'turn') this.endPlayerTurn();
+  }
+
+  /** The spell's actual effect — shared by slot casts and scroll casts. */
+  castSpellEffect(id) {
     this.triggerGlitch(0.35);
     if (id === 'ember') {
       this.emit('spell-cast');
@@ -2656,11 +3108,95 @@ export class Game {
       this.heal(3);
       this.hearts.push({ x: this.person.x, y: this.person.y - 30, t: 1.6 });
       this.announce(['YOU DRINK THE MOON (+3 HP)']);
+    } else if (id === 'bolt') {
+      this.emit('spell-cast');
+      const target = this.nearestFoe();
+      const dmg = 2 + Math.max(0, this.mod('int'));
+      if (!target) {
+        this.announce(['THE BOLT CRACKS INTO THE DARK AND FINDS NOTHING']);
+      } else {
+        this.dealSpellDamage(target, dmg, {
+          kills: 'THE BOLT TAKES IT. THE AIR SMELLS OF VIOLETS AND OZONE',
+          hurts: `THE BOLT BITES (${dmg}). IT KEEPS COMING`,
+        });
+      }
+    } else if (id === 'mend') {
+      this.emit('heal');
+      this.heal(2);
+      this.hearts.push({ x: this.person.x, y: this.person.y - 30, t: 1.6 });
+      this.announce(['SMALL STITCHES OF LIGHT (+2 HP)']);
+    } else if (id === 'shield') {
+      this.warded = true;
+      this.shielded = true; // the second bite too
+      this.emit('ward');
+      this.announce(['A SHIELD SETTLES OVER YOU, PATIENT AS PLATE']);
+    } else if (id === 'starfall') {
+      this.emit('spell-cast');
+      this.triggerGlitch(0.8);
+      const foes = this.hostilesNear(ENCOUNTER_RADIUS);
+      if (!foes.length) {
+        this.announce(['THE SKY LEANS IN, FINDS NOBODY, AND STRAIGHTENS UP']);
+      } else {
+        this.announce(['THE SKY LEANS IN']);
+        for (const f of foes) {
+          this.dealSpellDamage(f, 4, {
+            kills: `${FOES[f.kind].name} GOES OUT UNDER THE STARS`,
+            hurts: `${FOES[f.kind].name} STAGGERS UNDER THE FALL`,
+          });
+        }
+      }
     }
-    if (this.mode === 'turn') this.endPlayerTurn();
+  }
+
+  /** Spell damage against one foe: shared kill/stagger bookkeeping. */
+  dealSpellDamage(target, dmg, lines) {
+    const spec = FOES[target.kind];
+    const left = (this.zombieHp.get(target.key) ?? spec.hp) - dmg;
+    if (left <= 0) {
+      this.encounterDone.add(target.key);
+      this.zombieHp.delete(target.key);
+      this.foeOffsets.delete(target.key);
+      this.emit('vanish');
+      this.announce([lines.kills]);
+      this.gainXp(spec.xp);
+    } else {
+      this.zombieHp.set(target.key, left);
+      this.announce([lines.hurts]);
+    }
   }
 
   // --- Turn-based combat ---------------------------------------------------
+
+  /** Where a chasing zombie stands now: its post plus its hungry drift. */
+  zombiePos(z) {
+    const o = this.foeOffsets.get(`z:${z.x},${z.y}`);
+    return { x: z.x + (o?.dx ?? 0), y: z.y + (o?.dy ?? 0) };
+  }
+
+  /** Free-mode pursuit: zombies in lock range drift toward the person. */
+  chaseZombies(dt) {
+    const p = this.person;
+    const R = ZOMBIE_LOCK + ZOMBIE_LEASH;
+    for (const z of this.world.zombiesInRect(p.x - R, p.y - R, R * 2, R * 2)) {
+      const key = `z:${z.x},${z.y}`;
+      if (this.encounterDone.has(key)) continue;
+      const pos = this.zombiePos(z);
+      const dx = p.x - pos.x;
+      const dy = p.y - pos.y;
+      const d = Math.hypot(dx, dy);
+      if (d > ZOMBIE_LOCK || d < 14) continue; // unnoticed, or already breathing on you
+      const o = this.foeOffsets.get(key) ?? { dx: 0, dy: 0 };
+      const step = ZOMBIE_SPEED * dt;
+      o.dx += (dx / d) * step;
+      o.dy += (dy / d) * step;
+      const len = Math.hypot(o.dx, o.dy);
+      if (len > ZOMBIE_LEASH) {
+        o.dx *= ZOMBIE_LEASH / len;
+        o.dy *= ZOMBIE_LEASH / len;
+      }
+      this.foeOffsets.set(key, o);
+    }
+  }
 
   /** Hostiles within a radius of the person: {kind, key, x, y, d}. */
   hostilesNear(radius) {
@@ -2681,8 +3217,9 @@ export class Game {
       }
       return out;
     }
-    for (const z of this.world.zombiesInRect(p.x - radius, p.y - radius, radius * 2, radius * 2)) {
-      consider('zombie', `z:${z.x},${z.y}`, z.x, z.y);
+    for (const z of this.world.zombiesInRect(p.x - radius - ZOMBIE_LEASH, p.y - radius - ZOMBIE_LEASH, (radius + ZOMBIE_LEASH) * 2, (radius + ZOMBIE_LEASH) * 2)) {
+      const pos = this.zombiePos(z);
+      consider('zombie', `z:${z.x},${z.y}`, pos.x, pos.y);
     }
     for (const g of this.world.ghostsInRect(p.x - radius - 40, p.y - radius - 40, (radius + 40) * 2, (radius + 40) * 2)) {
       if (g.temper !== 'hostile') continue;
@@ -2742,6 +3279,7 @@ export class Game {
     this.turn = 'you';
     this.battleFoes = [];
     this.warded = false;
+    this.shielded = false;
     this.dazed = false; // thrown dirt does not carry to the next fight
     this.emit('battle-end');
     this.say(line);
@@ -2772,6 +3310,8 @@ export class Game {
         ...(inReach ? [{ id: 'fists', label: 'ATTACK WITH FISTS' }] : []),
         ...(inReach && this.hasBone ? [{ id: 'bone', label: 'SWING THE BONE' }] : []),
         ...(inReach && this.hasAxe ? [{ id: 'axe', label: 'SWING THE AXE' }] : []),
+        ...(inReach && this.hasSword ? [{ id: 'sword', label: 'SWING THE SWORD' }] : []),
+        ...(inReach && this.hasWand ? [{ id: 'wand', label: 'FLICK THE WAND' }] : []),
         ...(this.spells.length ? [{ id: 'cast', label: 'CAST A SPELL' }] : []),
         { id: 'taunt', label: 'SHOUT SOMETHING BRAVE' },
         { id: 'dirt', label: 'THROW DIRT IN ITS EYES' },
@@ -2785,12 +3325,28 @@ export class Game {
   endPlayerTurn() {
     if (this.mode !== 'turn') return;
     this.turn = 'foes';
+    // The hungry close the distance on their turn (v0.21).
+    if (this.plane !== 'heaven') {
+      for (const foe of this.hostilesNear(BATTLE_LEAVE)) {
+        if (foe.kind !== 'zombie' || foe.d <= ENCOUNTER_RADIUS || foe.d < 1) continue;
+        const o = this.foeOffsets.get(foe.key) ?? { dx: 0, dy: 0 };
+        o.dx += ((this.person.x - foe.x) / foe.d) * ZOMBIE_STEP;
+        o.dy += ((this.person.y - foe.y) / foe.d) * ZOMBIE_STEP;
+        const len = Math.hypot(o.dx, o.dy);
+        if (len > ZOMBIE_LEASH) {
+          o.dx *= ZOMBIE_LEASH / len;
+          o.dy *= ZOMBIE_LEASH / len;
+        }
+        this.foeOffsets.set(foe.key, o);
+      }
+    }
     const dazed = this.dazed;
     this.dazed = false; // dirt only buys the one round, spent or not
     for (const foe of this.hostilesNear(ENCOUNTER_RADIUS)) {
       if (dazed) break; // their answer goes wide
       if (this.warded) {
-        this.warded = false;
+        if (this.shielded) this.shielded = false; // the shield holds for one more
+        else this.warded = false;
         this.emit('ward');
         this.say('THE WARD TAKES THE BITE FOR YOU');
         continue;
@@ -2825,6 +3381,69 @@ export class Game {
   /** A named interior spot's menu (the detective, the altar, the pegs...). */
   openSpotMenu(kind, spot, key) {
     const MENUS = {
+      'cortie-counter': {
+        title: 'CORTIE LOOKS UP FROM A WHETSTONE',
+        options: [
+          { id: 'wares', label: 'SEE THE RACK' },
+          { id: 'talk', label: 'TALK SHOP' },
+          { id: 'town3', label: 'ASK ABOUT QUEUE TOWN' },
+          { id: 'leave', label: 'LEAVE HIM TO THE EDGE' },
+        ],
+      },
+      'queebee-counter': {
+        title: 'QUEEBEE PEERS OVER HER SPECTACLES',
+        options: [
+          { id: 'wares', label: 'SEE THE SHELF' },
+          { id: 'talk', label: 'TALK PAPER' },
+          { id: 'inscribe-how', label: 'ASK ABOUT INSCRIBING' },
+          { id: 'leave', label: 'LEAVE HER TO THE INK' },
+        ],
+      },
+      weaponrack: {
+        title: 'THE WEAPON RACK, STANDING AT ATTENTION',
+        options: [
+          { id: 'admire', label: 'ADMIRE THE STEEL' },
+          { id: 'thumb', label: 'THUMB AN EDGE' },
+          { id: 'count', label: 'COUNT THE WANDS' },
+          { id: 'step', label: 'STEP BACK' },
+        ],
+      },
+      wandcase: {
+        title: 'THE WAND CASE, GLINTING',
+        options: [
+          { id: 'peer', label: 'PEER THROUGH THE GLASS' },
+          { id: 'tap-glass', label: 'TAP THE GLASS' },
+          { id: 'reflect', label: 'CHECK YOUR REFLECTION' },
+          { id: 'step', label: 'STEP BACK' },
+        ],
+      },
+      bookshelf: {
+        title: 'A SHELF OF SPINES, ALL COLORS OF PLUM',
+        options: [
+          { id: 'browse', label: 'BROWSE THE SPINES' },
+          { id: 'sniff-books', label: 'SMELL THE PAPER' },
+          { id: 'straighten-b', label: 'STRAIGHTEN ONE' },
+          { id: 'step', label: 'STEP BACK' },
+        ],
+      },
+      scrollrack: {
+        title: 'PIGEONHOLES OF ROLLED THUNDER',
+        options: [
+          { id: 'peek', label: 'PEEK IN A HOLE' },
+          { id: 'count-scrolls', label: 'COUNT THE EMPTIES' },
+          { id: 'resist', label: 'RESIST UNROLLING ONE' },
+          { id: 'step', label: 'STEP BACK' },
+        ],
+      },
+      inkdesk: {
+        title: "QUEEBEE'S DESK. THE INK IS STILL WET",
+        options: [
+          { id: 'read-desk', label: 'READ THE OPEN PAGE' },
+          { id: 'quill', label: 'ADMIRE THE QUILL' },
+          { id: 'spill', label: 'WORRY ABOUT THE SPILL' },
+          { id: 'step', label: 'STEP BACK' },
+        ],
+      },
       detective: {
         title: 'THE DETECTIVE LOOKS UP FROM THE DEVIL FILE',
         options: [
@@ -2926,6 +3545,60 @@ export class Game {
   /** Resolve an interior spot menu. Returns true when it handled the id. */
   resolveSpot(c, id) {
     const spot = c.kind.slice(5);
+    if (spot === 'cortie-counter') {
+      if (id === 'wares') this.openCortieBuy(c.key);
+      else if (id === 'talk') {
+        this.announce(['A BLADE WANTS STRENGTH. A WAND WANTS BRAINS', 'HE TAPS HIS TEMPLE, THEN THE WHETSTONE. BOTH, IDEALLY']);
+      } else if (id === 'town3') {
+        this.announce(['GRUMPY? THEY ARE WIZARDS, HE SAYS', 'WAITING IS THE WHOLE DISCIPLINE. THE TOWN IS NAMED FOR IT']);
+      }
+      return true;
+    }
+    if (spot === 'queebee-counter') {
+      if (id === 'wares') this.openQueebeeBuy(c.key);
+      else if (id === 'talk') {
+        this.announce(['PAPER REMEMBERS WHAT MINDS FORGET, SHE SAYS', 'SHE UNDERLINES SOMETHING TWICE, FONDLY']);
+      } else if (id === 'inscribe-how') {
+        this.announce([
+          'A SCROLL CASTS ONCE AND BURNS. OR:',
+          'INSCRIBE IT — A PAGE (OR THE BOOK) MAKES IT YOURS FOREVER',
+          'THE SPELL JOINS YOUR LIST. SLOTS APPLY AS EVER',
+        ]);
+      }
+      return true;
+    }
+    if (spot === 'weaponrack') {
+      if (id === 'admire') this.announce(['THE STEEL ADMIRES YOU BACK, COLDLY']);
+      else if (id === 'thumb') this.announce(['SHARP. CORTIE CLEARS HIS THROAT, ONCE', 'YOU PUT YOUR THUMB AWAY']);
+      else if (id === 'count') this.announce(['THREE WANDS, EACH PRETENDING TO BE ASLEEP']);
+      return true;
+    }
+    if (spot === 'wandcase') {
+      if (id === 'peer') this.announce(['THE WAND TIPS GLOW FAINTLY, LIKE BANKED COALS']);
+      else if (id === 'tap-glass') {
+        this.triggerGlitch(0.3);
+        this.announce(['EVERY WAND POINTS AT YOU AT ONCE', 'THEN THEY PRETEND THEY DID NOT']);
+      } else if (id === 'reflect') this.announce(['YOU, WARPED IN SHOP GLASS, AMONG LIGHTNING', 'IT SUITS YOU']);
+      return true;
+    }
+    if (spot === 'bookshelf') {
+      if (id === 'browse') this.announce(['TITLES IN LANGUAGES THAT DECLINE TO BE READ', 'ONE SPINE SAYS, SIMPLY: NO']);
+      else if (id === 'sniff-books') this.announce(['DUST, INK, AND ONE CENTURY PER SHELF']);
+      else if (id === 'straighten-b') this.announce(['YOU STRAIGHTEN ONE. THE SHELF SIGHS', 'QUEEBEE PRETENDS NOT TO BE PLEASED']);
+      return true;
+    }
+    if (spot === 'scrollrack') {
+      if (id === 'peek') this.announce(['ROLLED TIGHT, TIED IN VIOLET, HUMMING SMALL']);
+      else if (id === 'count-scrolls') this.announce(['TWO PIGEONHOLES STAND EMPTY', 'SOMEBODY CAST FIRST AND PAID AFTER, QUEEBEE SAYS DARKLY']);
+      else if (id === 'resist') this.announce(['YOU DO NOT UNROLL ONE', 'THE RESTRAINT IS NOTED SOMEWHERE']);
+      return true;
+    }
+    if (spot === 'inkdesk') {
+      if (id === 'read-desk') this.announce(['THE OPEN PAGE IS A LEDGER OF NAMES AND SPELLS', 'YOURS IS NOT IN IT. YET, SAYS THE HANDWRITING']);
+      else if (id === 'quill') this.announce(['THE QUILL IS FROM NO BIRD YOU COULD NAME']);
+      else if (id === 'spill') this.announce(['THE SPILL IS SHAPED LIKE A SMALL DOG', 'EVERYTHING GOOD IS, EVENTUALLY']);
+      return true;
+    }
     if (spot === 'detective') {
       if (id === 'case') {
         this.emit('typewriter');
@@ -2968,9 +3641,9 @@ export class Game {
     }
     if (spot === 'altar') {
       if (id === 'pray') {
-        this.focus = this.maxFocus();
+        this.rest();
         this.emit('pray');
-        this.announce(['YOU PRAY TO WHATEVER LISTENS. THE GOLD LISTENS', 'YOUR FOCUS RETURNS, ALL OF IT']);
+        this.announce(['YOU PRAY TO WHATEVER LISTENS. THE GOLD LISTENS', 'PRAYER IS A REST. EVERY SLOT RETURNS']);
       } else if (id === 'candle') {
         if (this.coins >= 1) {
           this.coins -= 1;
@@ -2999,9 +3672,9 @@ export class Game {
     }
     if (spot === 'singer') {
       if (id === 'listen') {
-        this.focus = this.maxFocus();
+        this.rest();
         this.emit('raga');
-        this.announce(['THE MELODY PASSES THROUGH YOU LIKE WEATHER', 'YOUR FOCUS RETURNS, ALL OF IT']);
+        this.announce(['THE MELODY PASSES THROUGH YOU LIKE WEATHER', 'THE MUSIC IS A REST. EVERY SLOT RETURNS']);
       } else if (id === 'hum') {
         this.emit('raga');
         this.announce(['YOU HUM. THE SINGER SMILES WITHOUT STOPPING', 'FOR FOUR NOTES, YOU ARE PART OF THE CHORD']);
@@ -3032,6 +3705,7 @@ export class Game {
         if (!this.encounterDone.has(wk)) {
           this.encounterDone.add(wk);
           this.heal(1);
+          this.rest();
           this.announce(['THE COAL DOES ITS ONE KIND THING (+1 HP)']);
         } else {
           this.announce(['THE COAL IS SPENT FOR TONIGHT', 'IT GLOWS ANYWAY. FOR MORALE']);
@@ -3073,6 +3747,7 @@ export class Game {
         if (!this.encounterDone.has(bk)) {
           this.encounterDone.add(bk);
           this.heal(2);
+          this.rest();
           this.announce(['YOU LIE DOWN FOR EXACTLY ONE MINUTE (+2 HP)', 'THE CEILING HAS A WATER STAIN SHAPED LIKE A DOG']);
         } else {
           this.announce(['THE BED HAS GIVEN WHAT IT HAS TO GIVE TONIGHT']);
@@ -3143,6 +3818,45 @@ export class Game {
     });
   }
 
+  /** Cortie's rack: steel and crooked lightning (v0.21). */
+  openCortieBuy(key) {
+    this.openChoice({
+      kind: 'cortie-buy',
+      key,
+      x: this.person.x,
+      y: this.person.y,
+      title: `CORTIE'S RACK - YOU HOLD ${this.coins}C`,
+      options: [
+        ...(this.hasSword ? [] : [{ id: 'sword', label: `SWORD - ${PRICES.sword}C` }]),
+        ...(this.hasWand ? [] : [{ id: 'wand', label: `WAND - ${PRICES.wand}C` }]),
+        { id: 'look', label: 'JUST LOOK AT EVERYTHING' },
+        { id: 'back', label: 'BACK' },
+      ],
+    });
+  }
+
+  /** Queebee's shelf: scrolls, paper, and the blank book (v0.21). */
+  openQueebeeBuy(key) {
+    const scrollRows = Object.entries(SCROLL_PRICES).map(([id, price]) => {
+      const spec = SPELLS.find((sp) => sp.id === id);
+      return { id, label: `SCROLL OF ${spec.name} (L${spec.level}) - ${price}C` };
+    });
+    this.openChoice({
+      kind: 'queebee-buy',
+      key,
+      x: this.person.x,
+      y: this.person.y,
+      title: `QUEEBEE'S SHELF - YOU HOLD ${this.coins}C`,
+      options: [
+        ...scrollRows,
+        { id: 'paper', label: `BLANK PAGE - ${PAPER_PRICE}C (${this.paper} HELD)` },
+        ...(this.hasBook ? [] : [{ id: 'book', label: `THE BLANK BOOK - ${BOOK_PRICE}C` }]),
+        { id: 'how', label: 'ASK HOW SCROLLS WORK' },
+        { id: 'back', label: 'BACK' },
+      ],
+    });
+  }
+
   /** The zombie fight menu (options depend on what you're carrying). */
   zombieMenu(key, x, y) {
     return {
@@ -3185,11 +3899,30 @@ export class Game {
       return;
     }
 
-    const weapon = id === 'bone' && this.hasBone ? 'bone' : id === 'axe' && this.hasAxe ? 'axe' : null;
-    const r = this.check('str');
-    const dc = weapon === 'bone' ? DC_BONE : weapon === 'axe' ? DC_AXE : DC_FISTS;
+    const weapon =
+      id === 'bone' && this.hasBone
+        ? 'bone'
+        : id === 'axe' && this.hasAxe
+          ? 'axe'
+          : id === 'sword' && this.hasSword
+            ? 'sword'
+            : id === 'wand' && this.hasWand
+              ? 'wand'
+              : null;
+    // The wand is the one weapon that answers to the MIND.
+    const r = weapon === 'wand' ? this.check('int') : this.check('str');
+    const dc =
+      weapon === 'bone' ? DC_BONE : weapon === 'axe' ? DC_AXE : weapon === 'sword' ? DC_BONE : weapon === 'wand' ? DC_WAND : DC_FISTS;
     const dmg =
-      weapon === 'bone' ? this.boneDamage() : weapon === 'axe' ? this.fistDamage() + 2 : this.fistDamage();
+      weapon === 'bone'
+        ? this.boneDamage()
+        : weapon === 'axe'
+          ? this.fistDamage() + 2
+          : weapon === 'sword'
+            ? this.fistDamage() + 3
+            : weapon === 'wand'
+              ? 2 + Math.max(0, this.mod('int'))
+              : this.fistDamage();
     const DIES = {
       zombie: 'THE ZOMBIE CRUMBLES. THE FOREST EXHALES',
       ghost: 'THE SIGNAL DROPS FOR GOOD. IT LOOKS RELIEVED',
@@ -3197,23 +3930,26 @@ export class Game {
     };
     const LOOT = { zombie: 1, ghost: 2, minotaur: 5 };
     if (r.total >= dc) {
-      if (dmg <= 0) {
-        // A STR-3 punch lands and accomplishes nothing. No bite either —
-        // you did, technically, hit it.
-        this.announce([`${this.rollText(r)} - YOUR FISTS BOUNCE OFF HARMLESSLY`]);
-        if (this.mode === 'turn') this.endPlayerTurn();
-        else this.openChoice(this.zombieMenu(c.key, c.x, c.y));
-        return;
-      }
       const left = hp - dmg;
-      if (weapon) this.emit(weapon === 'bone' ? 'bonk' : 'chop');
+      if (weapon) this.emit(weapon === 'bone' ? 'bonk' : weapon === 'wand' ? 'spell-cast' : 'chop');
       if (left <= 0) {
         this.encounterDone.add(c.key);
         this.zombieHp.delete(c.key);
+        this.foeOffsets.delete(c.key);
         this.emit('vanish');
         this.triggerGlitch(0.4);
         this.announce([
-          `${this.rollText(r)} - ${weapon ? (weapon === 'bone' ? 'BONK! THE BONE RINGS TRUE' : 'THE AXE REMEMBERS ITS FIRST JOB') : 'YOU LAND ONE'}`,
+          `${this.rollText(r)} - ${
+            weapon === 'bone'
+              ? 'BONK! THE BONE RINGS TRUE'
+              : weapon === 'axe'
+                ? 'THE AXE REMEMBERS ITS FIRST JOB'
+                : weapon === 'sword'
+                  ? 'THE STEEL SINGS ONE CLEAN NOTE'
+                  : weapon === 'wand'
+                    ? 'THE WAND CRACKS VIOLET'
+                    : 'YOU LAND ONE'
+          }`,
           DIES[kind],
         ]);
         this.gainXp(spec.xp);
@@ -3221,7 +3957,17 @@ export class Game {
         if (this.mode === 'turn') this.endPlayerTurn();
       } else {
         this.zombieHp.set(c.key, left);
-        this.announce([`${this.rollText(r)} - ${weapon ? (weapon === 'bone' ? 'BONK! IT STAGGERS' : 'THE AXE BITES. IT STAGGERS') : 'YOU LAND ONE. IT STAGGERS'}`]);
+        this.announce([`${this.rollText(r)} - ${
+          weapon === 'bone'
+            ? 'BONK! IT STAGGERS'
+            : weapon === 'axe'
+              ? 'THE AXE BITES. IT STAGGERS'
+              : weapon === 'sword'
+                ? 'THE STEEL BITES. IT STAGGERS'
+                : weapon === 'wand'
+                  ? 'VIOLET SPARKS. IT STAGGERS'
+                  : 'YOU LAND ONE. IT STAGGERS'
+        }`]);
         if (this.mode === 'turn') this.endPlayerTurn();
         else this.openChoice(this.zombieMenu(c.key, c.x, c.y));
       }

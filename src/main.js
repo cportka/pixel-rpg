@@ -61,7 +61,9 @@ const enc = params.get('enc');
 if (enc === 'dumpster' || enc === 'cat' || enc === 'lamp' || enc === 'pipe' || enc === 'zombie') {
   const field = { dumpster: 'dumpsters', cat: 'cats', lamp: 'lamps', pipe: 'pipes', zombie: 'zombies' }[enc];
   game.world.chunkAt(0, 0)[field].push({ x: 22, y: 4, phase: 0 });
-  game.checkEncounters();
+  // v0.21: encounters open by interaction — except the zombie, whose battle
+  // engages by itself a few ticks in.
+  if (enc !== 'zombie') game.interactNearest();
 }
 
 
@@ -169,9 +171,37 @@ canvas.addEventListener('pointerdown', (e) => {
   } else {
     lastSelfTap = 0;
   }
+  // v0.21: a tap on an interactable talks to it (walking over if needed);
+  // anywhere else is plain tap-to-move.
+  if (game.interactAt(w.x, w.y)) return;
   game.setMoveTarget(w.x, w.y);
 });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Hovering an interactable makes it glow (mouse only — touch has no hover).
+// The event just records the pointer; the hit-test runs once per frame in
+// the loop below, so a 1000Hz mouse can't out-poll the 15fps world.
+let hoverAt = null;
+canvas.addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'mouse') return;
+  hoverAt = { cx: e.clientX, cy: e.clientY };
+});
+canvas.addEventListener('pointerleave', () => {
+  hoverAt = null;
+  game.hover = null;
+});
+function refreshHover() {
+  if (!hoverAt) return;
+  if (game.choice || renderer.lastLocation !== game.location) {
+    game.hover = null;
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const sx = ((hoverAt.cx - rect.left) / rect.width) * SCREEN_W;
+  const sy = ((hoverAt.cy - rect.top) / rect.height) * SCREEN_H;
+  const w = renderer.screenToWorld(sx, sy);
+  game.hover = game.interactableAt(w.x, w.y);
+}
 
 function inputState() {
   return {
@@ -211,6 +241,7 @@ function frame(now) {
   for (const name of game.events) audio.play(name);
   game.events.length = 0;
   if (renderAcc >= RENDER_STEP) {
+    refreshHover(); // one hover hit-test per drawn frame, not per mouse event
     renderer.render(game, renderAcc);
     // Carry the overshoot so cadence averages a true RENDER_FPS (zeroing it
     // ran ~13-14 fps with an irregular limp); clamp to one step so a long

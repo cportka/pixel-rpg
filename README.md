@@ -7,7 +7,7 @@ things dancing where the woods grow deep. Somewhere out there
 waits a friendly lost dog, a marching purple leash, a pink ball for fetch, and,
 eventually, home. The story lives in `docs/STORY.md`.
 
-**Version:** 0.20.0
+**Version:** 0.21.0
 
 ## Play
 
@@ -25,10 +25,11 @@ then open <http://localhost:8000>. Append `?seed=123` for a reproducible forest.
 
 | Key | Action |
 | --- | --- |
-| Tap / click | Walk to that spot (works on mobile and desktop) |
+| Tap / click | Walk to that spot — or, on anything glowing, talk to it |
+| Hover (mouse) | Interactables glow and pulse under the pointer |
 | Arrows / WASD | Walk (keys override a tap target) |
 | Tab or C | Swap control between the person and the dog (once you've found them) |
-| Space or E | Throw the ball (as the person) — the dog fetches |
+| Space or E | Talk to what's in front of you; otherwise throw the ball |
 | Double-click your character (or I) | Pause: the action & inventory screen |
 | Click the HUD minimap (or P) | Pause: the map — everything you remember |
 | Space or E (in a fight) | Open your action menu for the turn |
@@ -103,6 +104,25 @@ portrait), the cathedral nave (altar, pile of god, singers), the cabin's
 one room (a wall axe to take, a stove), and the detective's office with
 its red-string corkboard.
 
+**Everything answers to a click now (0.21).** Friendly encounters stopped
+ambushing: dumpsters, cats, lamps, pipes, ghosts, merchants, wizards,
+signs, shrines, interior spots, the portrait, and the television all wait
+to be clicked (or answered with Space/E), glowing and pulsing under the
+pointer — click again and they answer again, immediately. Only hostiles,
+the dog, and God still interrupt. Zombies lock on within 150px and
+shamble toward dinner; fists are DC 10 with a minimum of one damage.
+Buildings finally tower — a 230px mansion, log cabins and shop fronts
+two-and-a-half people tall — while interiors tightened to fit their
+furniture. Deep in the redwoods (now strung with ridiculous garlands of
+twinkling noir Christmas lights) waits **Queue Town**, the wizard town:
+five grumpy wizards, two crooked towers, Cortie's weapon shop (a sword,
+and a wand that answers to INT), and Queebee's scroll shop — scrolls
+cast once free or inscribe forever with paper or the blank book. Spells
+carry levels now, spent from slots the mind sets (INT/WIS/CHA) and only
+a rest returns: a bed, a warm stove, the ragas, prayer, or God. The lamp
+and the pipe ride in your pocket; everything else at least answers a
+pick-up attempt.
+
 The person walks lanky now: a 14×32 anime silhouette, half leg, with a
 swept fall of hair that stays swept through the whole stride, a bounce
 built into the walk cycle's down beat, and an idle sway so standing still
@@ -136,8 +156,8 @@ nearby 5×5 of regions as you last saw them — each landmark as its own
 pictogram, a bending river, planks across it, a gabled cabin with one lit
 window, a taller mansion with two and an open door, a cave mouth with a
 glint — sharp for a minute or two, dithering away over minutes until only
-the barest outline remains. Zelda-overworld style, but sparser. The full
-remembered map is the map pause screen, same glyphs, with a legend.
+the barest outline remains. The full remembered map is the map pause
+screen, same glyphs, with a legend.
 Everything makes a soft 8-bit sound, synthesized on demand by
 [`8bit-sfx`](https://www.npmjs.com/package/8bit-sfx) 1.0.0: footsteps pace
 with the stride, captions blip like retro dialog, dice rattle, the genie

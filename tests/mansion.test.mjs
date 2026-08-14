@@ -169,14 +169,16 @@ test('the portrait opens its menu once, and only once', () => {
   g.person.x = p.x;
   g.person.y = 56;
   g.update(STEP, {});
-  assert.ok(g.choice, 'the portrait noticed you');
+  g.interactNearest(); // v0.21: you notice the portrait, not the reverse
+  assert.ok(g.choice, 'the portrait answers');
   assert.equal(g.choice.kind, 'portrait');
   assert.equal(g.choice.title, 'AN OLD PORTRAIT');
   g.resolveChoice('look');
   assert.equal(g.caption.text, 'IT IS NO ONE YOU KNOW');
   assert.ok(g.captionQueue.includes('IT KNOWS YOU, THOUGH'));
   runSeconds(g, 1);
-  assert.equal(g.choice, null, 'seen once is seen forever');
+  assert.equal(g.interactNearest(), false, 'seen once is seen forever');
+  assert.equal(g.choice, null);
 });
 
 test('the lock rusted through: the stairs climb to the second floor and back', () => {
@@ -191,7 +193,7 @@ test('the lock rusted through: the stairs climb to the second floor and back', (
   assert.ok(g.captionQueue.includes('THE STAIRS REMEMBER FEET. THEY CREAK ANYWAY'));
   assert.equal(g.mansionReturn, worldReturn, 'the way back outside rides along');
   // Walk onto the stairwell tiles: back down, still inside the mansion.
-  g.person.x = 14.5 * 24;
+  g.person.x = 10.5 * 24; // v0.21: the shrunk upstairs' stairwell
   g.person.y = 1.5 * 24;
   g.update(STEP, {});
   assert.equal(g.location, 'mansion', 'back on the ground floor');

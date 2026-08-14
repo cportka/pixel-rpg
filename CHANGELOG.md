@@ -4,6 +4,61 @@ All notable changes to this project are documented here. The format follows Keep
 (https://keepachangelog.com) and the project uses Semantic Versioning (https://semver.org).
 Every change bumps the version and adds an entry below.
 
+## [0.21.0] - 2026-08-14
+
+### Changed
+- **The world answers to a click now.** No friendly encounter opens its
+  menu on proximity anymore — dumpsters, cats, lamps, pipes, signs,
+  shrines, ghosts, Pirts, angels, wizards, interior spots, the portrait,
+  and the television all wait to be clicked, or answered with the action
+  key (which talks to whatever is in front of you before it throws the
+  ball). Hovering an interactable draws a pulsing neon ring — hotter
+  while you walk over to it — and clicking again re-interacts
+  immediately: the re-arm cooldowns are gone from the click path
+  entirely. The only self-opening moments left are hostiles pulling the
+  world turn-based, the dog, and God.
+- **Zombies hunt.** Inside 150px they lock on and shamble toward you at
+  36 px/s (you walk 69), and in battle an out-of-reach zombie closes
+  26px on its turn. Fists dropped to DC 10 with a minimum of one
+  damage — difficult, not impossible, exactly.
+- **Spells grew levels and slots.** EMBER/WARD/BOLT/MEND are level 1,
+  MOONLIGHT/SHIELD level 2, STARFALL level 3; casting spends a slot of
+  the spell's level (a bigger slot burns for a smaller spell) and slots
+  only return on a REST — a bed, the cabin stove, the ragas, prayer, a
+  singer, or sitting with God. INT sets the level-1 shelf (2 + mod, min
+  1), WIS level 2 (1 + mod), CHA level 3 (mod). The pipe's borrowed +2
+  WIS opens borrowed slots and takes them back at sobriety; the island
+  shrine's calm is one extra slot, always; JUST BREATHE recovers one
+  level-1 slot per rest.
+- **Buildings tower now** — the mansion is 230x170, cabins, ruins, the
+  office, and shop fronts run 120-150px wide with doorways where the art
+  says — and **interiors tightened** to fit their furniture (cathedral
+  18x10, upstairs 20x10, cabin 10x7, office 12x8). The ghost-town street
+  spread ~2.2x to give the facades room.
+- **The person's stride was redrawn** (rounder silhouette, real arm
+  swing, hair follow-through, a bounce on the down beat) and the dog's
+  trot tightened with ear and tail flicks. The noir pines are
+  ridiculously lit: sagging garlands of twinkling
+  magenta/pink/gold/violet/blue bulbs, deterministic per tree, under
+  denser Secret-of-Mana canopies. Zelda is out of the style references;
+  Secret of Mana is in.
+
+### Added
+- **Queue Town**, the dark wizard town, rare in the night's redwoods:
+  five grumpy (never hostile) wizards with idles and a very good hat,
+  two crooked 200px towers, a QUEUE TOWN board with one glowing glyph,
+  and two walkable shops. **Cortie** sells the SWORD (15c — STR, DC 9,
+  fists +3) and the WAND (20c — INT, DC 10, 2 + INT mod, the weapon
+  that answers to the mind). **Queebee** sells scrolls (BOLT 4c, MEND
+  4c, SHIELD 7c, STARFALL 12c), blank pages (1c), and the blank book
+  (8c): CAST a scroll once free and it burns, or INSCRIBE it — a page
+  or the book — and the spell is yours forever.
+- **Pick everything up (or try):** the genie lamp and the pipe are
+  genuinely takeable — they ride in the inventory with weight and work
+  from your pocket (the genie chain and the vision included) — and
+  fires, signs, shrine stones, and town signs answer the attempt in
+  voice. New sheet icons: sword, wand, scroll, lamp, pipe.
+
 ## [0.20.0] - 2026-08-14
 
 ### Added
